@@ -208,19 +208,6 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         except Exception:
             pass
 
-    def destroy(self):
-        unregister_modal_stack(self)
-        super().destroy()
-
-    def destroy(self):
-        try:
-            unregister_modal_stack(self)
-        except Exception:
-            pass
-        if hasattr(self.master, "glass_menu") and self.master.glass_menu == self:
-            self.master.glass_menu = None
-        super().destroy()
-
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
         if inputs.get("up", False) and not prev_inputs.get("up", False):
             self.select_prev()

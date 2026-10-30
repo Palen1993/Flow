@@ -17,10 +17,15 @@ from ui.theme import (
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
 )
 
 class SelectGameToEditDialog(ctk.CTkToplevel):
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
     """Panel de gestión rápida, filtrado y edición masiva / individual de juegos."""
     def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None):
         super().__init__(parent)
@@ -44,6 +49,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
+        hide_from_taskbar(self)
         
         # Opciones de monitores disponibles
         self.monitors = getattr(self.master, "monitors", None) or get_monitors()

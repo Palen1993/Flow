@@ -17,10 +17,15 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
 )
 
 class GamepadConfigDialog(ctk.CTkToplevel):
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
     """Diálogo modal para emparejamiento, calibración y automatización del mando."""
     def __init__(self, parent, on_save_callback=None):
         super().__init__(parent)
@@ -45,6 +50,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
+        hide_from_taskbar(self)
         
         self.is_monitoring = True
         self.drag_x = 0

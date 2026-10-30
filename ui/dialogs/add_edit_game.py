@@ -20,10 +20,16 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED_LIGHT,
-    font_button, font_body, apply_rounded_window_region
+    font_button, font_body, apply_rounded_window_region, hide_from_taskbar
 )
 
 class AddEditGameDialog(ctk.CTkToplevel):
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
+
     def __init__(self, parent, monitors: List[Dict[str, Any]], game_data: Optional[Dict[str, Any]] = None, callback=None, delete_callback=None, on_close_callback=None):
         super().__init__(parent)
         self.callback = callback
@@ -50,6 +56,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
+        hide_from_taskbar(self)
         
         self.current_cover_path = game_data.get("cover", "") if game_data else ""
         self.current_wallpaper_path = game_data.get("wallpaper", "") if game_data else ""

@@ -15,10 +15,15 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG,
     COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
 )
 
 class ScanResultsDialog(ctk.CTkToplevel):
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
     """Diálogo modal para previsualizar, renombrar e importar juegos escaneados."""
     def __init__(self, parent, scanned_folder: str, candidates: List[Dict[str, Any]], on_import_callback=None):
         super().__init__(parent)
@@ -43,6 +48,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
+        hide_from_taskbar(self)
         
         self.items_vars = []  # Lista de tuplas: (checkbox_var, name_entry, candidate_data)
         self._row_frames = []

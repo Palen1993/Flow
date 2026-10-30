@@ -36,13 +36,18 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_title, font_body
+    font_button, font_title, font_body, hide_from_taskbar
 )
 
 _GLOBAL_THUMB_CACHE: Dict[str, Image.Image] = {}
 
 
 class CoverPickerDialog(ctk.CTkToplevel):
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
     """
     Diálogo modal visual e interactivo para buscar, previsualizar en vivo y adaptar carátulas HD.
     
@@ -111,6 +116,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
 
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
+        hide_from_taskbar(self)
 
         # Estado interno de candidatos y caché de imágenes
         self.all_candidates: List[Dict[str, Any]] = []
@@ -1261,7 +1267,11 @@ class CoverPickerDialog(ctk.CTkToplevel):
                         pass
                 threading.Thread(target=_prewarm_other, daemon=True).start()
 
-            self.after(0, _apply_ui)
+            try:
+                if self.winfo_exists():
+                    self.after(0, _apply_ui)
+            except Exception:
+                pass
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1315,6 +1325,9 @@ class CoverPickerDialog(ctk.CTkToplevel):
             if not im:
                 im = fetch_image_from_url(primary_u, fallback_url=fallback_u, timeout=2.2)
                 if im:
+                    if len(_GLOBAL_THUMB_CACHE) > 100:
+                        for _k in list(_GLOBAL_THUMB_CACHE.keys())[:30]:
+                            _GLOBAL_THUMB_CACHE.pop(_k, None)
                     self._thumb_cache[primary_u] = im
 
             if im and gen == self._search_generation:
@@ -1614,7 +1627,11 @@ class CoverPickerDialog(ctk.CTkToplevel):
                             text_color="#f43f5e"
                         )
 
-                self.after(0, _finish_wp)
+                try:
+                    if self.winfo_exists():
+                        self.after(0, _finish_wp)
+                except Exception:
+                    pass
 
             threading.Thread(target=_wp_worker, daemon=True).start()
             return
@@ -1682,7 +1699,11 @@ class CoverPickerDialog(ctk.CTkToplevel):
                         text_color="#f43f5e"
                     )
 
-            self.after(0, _finish)
+            try:
+                if self.winfo_exists():
+                    self.after(0, _finish)
+            except Exception:
+                pass
 
         threading.Thread(target=_download_worker, daemon=True).start()
 

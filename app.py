@@ -416,23 +416,42 @@ class App(ctk.CTk):
                 pass
 
         def status_cb(msg):
-            self.after(0, lambda: self.set_status(msg))
+            try:
+                if self.winfo_exists():
+                    self.after(0, lambda: self.set_status(msg) if self.winfo_exists() else None)
+            except Exception:
+                pass
 
         def on_success():
-            if close_on_launch:
-                self.after(1200, self.close_application)
-            else:
-                self.after(0, lambda: self.btn_launch.configure(state="normal") if self.btn_launch.winfo_exists() else None)
+            try:
+                if not self.winfo_exists():
+                    return
+                if close_on_launch:
+                    self.after(1200, self.close_application)
+                else:
+                    self.after(0, lambda: self.btn_launch.configure(state="normal") if self.btn_launch.winfo_exists() else None)
+            except Exception:
+                pass
 
         def on_error(err_msg):
             def _ui_err():
-                if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
-                    self.btn_launch.configure(state="normal")
-                if close_on_launch:
-                    self._handle_launch_error(err_msg)
-                else:
-                    self.set_status(f"Error iniciando juego: {err_msg}")
-                    show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
+                try:
+                    if not self.winfo_exists():
+                        return
+                    if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
+                        self.btn_launch.configure(state="normal")
+                    if close_on_launch:
+                        self._handle_launch_error(err_msg)
+                    else:
+                        self.set_status(f"Error iniciando juego: {err_msg}")
+                        show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
+                except Exception:
+                    pass
+            try:
+                if self.winfo_exists():
+                    self.after(0, _ui_err)
+            except Exception:
+                pass
             self.after(0, _ui_err)
 
         self.execution_service.launch(
@@ -685,7 +704,14 @@ class App(ctk.CTk):
                     self.cover_stage.update_game_wallpaper(game)
                 self.set_status(f"Wallpaper de fondo eliminado para '{game_name}'.")
 
-        CoverPickerDialog(
+        if hasattr(self, "_cover_picker_dialog") and self._cover_picker_dialog and self._cover_picker_dialog.winfo_exists():
+            try:
+                self._cover_picker_dialog.lift()
+                self._cover_picker_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        self._cover_picker_dialog = CoverPickerDialog(
             self,
             initial_query=game_name,
             game_name=game_name,
@@ -699,7 +725,14 @@ class App(ctk.CTk):
         )
 
     def open_external_import_dialog(self):
-        ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.games)
+        if hasattr(self, "_external_import_dialog") and self._external_import_dialog and self._external_import_dialog.winfo_exists():
+            try:
+                self._external_import_dialog.lift()
+                self._external_import_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        self._external_import_dialog = ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.games)
 
     def scan_folder_for_games(self):
         folder = browse_folder(parent=self, title="Seleccionar Carpeta de Juegos")
@@ -729,8 +762,19 @@ class App(ctk.CTk):
                     self.set_status("Escaneo finalizado sin juegos encontrados.")
                     return
                 self.set_status(f"¡Se encontraron {len(candidates)} juegos en '{folder_name}'!")
-                ScanResultsDialog(self, folder, candidates, on_import_callback=self.on_games_imported)
-            self.after(0, _apply_scan)
+                if hasattr(self, "_scan_results_dialog") and self._scan_results_dialog and self._scan_results_dialog.winfo_exists():
+                    try:
+                        self._scan_results_dialog.lift()
+                        self._scan_results_dialog.focus_force()
+                    except Exception:
+                        pass
+                    return
+                self._scan_results_dialog = ScanResultsDialog(self, folder, candidates, on_import_callback=self.on_games_imported)
+            try:
+                if self.winfo_exists():
+                    self.after(0, _apply_scan)
+            except Exception:
+                pass
 
         threading.Thread(target=_scan_worker, daemon=True).start()
 
@@ -769,16 +813,30 @@ class App(ctk.CTk):
 
     def _on_global_click(self, event):
         if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
-            bx = self.btn_menu.winfo_rootx()
-            by = self.btn_menu.winfo_rooty()
-            bw = self.btn_menu.winfo_width()
-            bh = self.btn_menu.winfo_height()
-            if not (bx <= event.x_root <= bx + bw and by <= event.y_root <= by + bh):
-                self.glass_menu.destroy()
+            try:
+                bx = self.btn_menu.winfo_rootx()
+                by = self.btn_menu.winfo_rooty()
+                bw = self.btn_menu.winfo_width()
+                bh = self.btn_menu.winfo_height()
+                if not (bx <= event.x_root <= bx + bw and by <= event.y_root <= by + bh):
+                    self.glass_menu.destroy()
+                    self.glass_menu = None
+            except Exception:
+                try:
+                    self.glass_menu.destroy()
+                except Exception:
+                    pass
                 self.glass_menu = None
 
     def open_gamepad_config_dialog(self):
-        GamepadConfigDialog(self, on_save_callback=self.on_gamepad_config_saved)
+        if hasattr(self, "_gamepad_dialog") and self._gamepad_dialog and self._gamepad_dialog.winfo_exists():
+            try:
+                self._gamepad_dialog.lift()
+                self._gamepad_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        self._gamepad_dialog = GamepadConfigDialog(self, on_save_callback=self.on_gamepad_config_saved)
 
     def on_gamepad_config_saved(self, new_cfg):
         self.gamepad_config = new_cfg
@@ -787,10 +845,24 @@ class App(ctk.CTk):
         self.set_status(f"Mando configurado: {dev_label}")
 
     def open_add_dialog(self):
+        if hasattr(self, "_add_dialog") and self._add_dialog and self._add_dialog.winfo_exists():
+            try:
+                self._add_dialog.lift()
+                self._add_dialog.focus_force()
+            except Exception:
+                pass
+            return
         self.monitors = get_monitors()
-        AddEditGameDialog(self, self.monitors, callback=self.on_game_added)
+        self._add_dialog = AddEditGameDialog(self, self.monitors, callback=self.on_game_added)
 
     def open_select_game_dialog(self):
+        if hasattr(self, "_select_dialog") and self._select_dialog and self._select_dialog.winfo_exists():
+            try:
+                self._select_dialog.lift()
+                self._select_dialog.focus_force()
+            except Exception:
+                pass
+            return
         if not self.games:
             show_info(
                 "Editar Juego",
@@ -798,7 +870,7 @@ class App(ctk.CTk):
                 parent=self
             )
             return
-        SelectGameToEditDialog(self, self.games, on_select_callback=self.open_edit_for_game_index)
+        self._select_dialog = SelectGameToEditDialog(self, self.games, on_select_callback=self.open_edit_for_game_index)
 
     def open_edit_for_game_index(self, index: int, return_callback=None):
         if index < 0 or index >= len(self.games):
