@@ -12,23 +12,27 @@ app = App()
 app.withdraw()
 
 print("=================================================================")
-print("TESTING UX STREAMLINING & REDUNDANCY ELIMINATION")
+print("TESTING UX STREAMLINING & ULTRA-CLEAN 3-ITEM DROPDOWN")
 print("=================================================================")
 
-# Test 1: Top Menu Options
-# When app has games, menu should have unified items
+# Test 1: Top Menu Options (in Big Picture mode)
+app.set_full_mode()
 app.toggle_top_menu()
 assert app.glass_menu is not None, "Top menu didn't open"
 menu_texts = [item[1] for item in app.glass_menu.items]
 print("Menu Items:", menu_texts)
 
-# Assertions on menu items
-assert any("Añadir / Importar Juegos" in t for t in menu_texts), "Unified import missing"
-assert any("Editar '" in t for t in menu_texts), "Direct 1-step edit missing"
-assert any("Cambiar Carátula / Wallpaper" in t for t in menu_texts), "Unified art editor missing"
-assert not any("Cambiar Wallpaper de Fondo" in t for t in menu_texts), "Redundant separate wallpaper entry still present"
-assert any("Administrar Todos los Juegos" in t for t in menu_texts), "Full library management missing"
-print("PASS: Top Menu streamlined to unified, 1-step direct actions")
+# Must have exactly 3 items:
+expected = [
+    "Importar Juegos...",
+    "Administrar Todos los Juegos...",
+    "Configurar Mando..."
+]
+assert len(menu_texts) == 3, f"Expected 3 items, got {len(menu_texts)}: {menu_texts}"
+for exp in expected:
+    assert any(exp in t for t in menu_texts), f"Expected '{exp}' in menu, found: {menu_texts}"
+
+print("PASS: Top Menu simplified to exactly the 3 master entry points!")
 app.glass_menu.destroy()
 app.glass_menu = None
 

@@ -39,6 +39,13 @@ class TestTaskbarAndModalFix(unittest.TestCase):
         self.assertEqual(len(self.root._modal_stack), 0)
 
     def test_02_floating_glass_menu_toggle_and_taskbar_hidden(self):
+        import time
+        self.root.update()
+        time.sleep(0.12)
+        self.root.update()
+        # Ensure Big Picture mode since menu is only allowed in Big Picture
+        self.root.set_full_mode()
+        self.root.update()
         # Open menu
         self.root.toggle_top_menu()
         m = self.root.glass_menu

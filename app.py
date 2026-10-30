@@ -296,7 +296,7 @@ class App(ctk.CTk):
         self.bind("<Home>", lambda e: self.cover_stage.select_index(0))
         self.bind("<End>", lambda e: self.cover_stage.select_index(len(self.games) - 1))
         self.bind("<Delete>", lambda e: self.delete_current_game())
-        self.bind("<Button-1>", self._on_global_click, add="+")
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
         self.bind("<F11>", lambda e: self.toggle_size_mode())
         self.bind("<Tab>", lambda e: self.toggle_size_mode())
         self.bind("<Escape>", lambda e: self.set_mini_mode() if not self.is_mini_mode else None)
@@ -723,6 +723,7 @@ class App(ctk.CTk):
         )
 
     def open_external_import_dialog(self):
+        self.close_active_menu()
         if hasattr(self, "_external_import_dialog") and self._external_import_dialog and self._external_import_dialog.winfo_exists():
             try:
                 self._external_import_dialog.lift()
@@ -788,11 +789,8 @@ class App(ctk.CTk):
         self.update_ui_details(target_idx)
         self.set_status(f"Se añadieron {len(new_games)} juego(s) a la biblioteca.")
 
-    def toggle_top_menu(self):
-        # El menú de opciones solo está disponible en Modo Big Picture (Pantalla Completa)
-        if getattr(self, "is_mini_mode", False):
-            return
-
+    def close_active_menu(self):
+        """Cierra y destruye inmediatamente el menú contextual flotante si está abierto."""
         if hasattr(self, "glass_menu") and self.glass_menu:
             try:
                 if self.glass_menu.winfo_exists():
@@ -800,43 +798,55 @@ class App(ctk.CTk):
             except Exception:
                 pass
             self.glass_menu = None
+
+    def toggle_top_menu(self):
+        # El menú de opciones solo está disponible en Modo Big Picture (Pantalla Completa)
+        if getattr(self, "is_mini_mode", False):
             return
 
-        cur_game = self.games[self.selected_index] if (self.games and 0 <= self.selected_index < len(self.games)) else None
-        cur_name = cur_game.get("name", "Juego") if cur_game else ""
-        if len(cur_name) > 20:
-            cur_name = cur_name[:17] + "..."
+        if hasattr(self, "glass_menu") and self.glass_menu:
+            self.close_active_menu()
+            return
 
         items = [
-            ("🚀", "Añadir / Importar Juegos...", self.open_external_import_dialog),
-            ("＋", "Añadir Juego Manual (.exe)...", self.open_add_dialog),
+            ("🚀", "Importar Juegos...", self.open_external_import_dialog),
+            ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),
+            ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog),
         ]
-        if cur_game:
-            items.append(("✏️", f"Editar '{cur_name}'...", lambda: self.open_edit_for_game_index(self.selected_index)))
-            items.append(("🎨", "Cambiar Carátula / Wallpaper...", lambda: self.open_cover_picker_for_selected_game(initial_mode="cover")))
-
-        items.append(("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog))
-        items.append(("🎮", "Configurar Mando...", self.open_gamepad_config_dialog))
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
 
     def _on_global_click(self, event):
         if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
             try:
-                bx = self.btn_menu.winfo_rootx()
-                by = self.btn_menu.winfo_rooty()
-                bw = self.btn_menu.winfo_width()
-                bh = self.btn_menu.winfo_height()
-                if not (bx <= event.x_root <= bx + bw and by <= event.y_root <= by + bh):
-                    self.glass_menu.destroy()
-                    self.glass_menu = None
+                mx = self.glass_menu.winfo_rootx()
+                my = self.glass_menu.winfo_rooty()
+                mw = self.glass_menu.winfo_width()
+                mh = self.glass_menu.winfo_height()
+                if (mx <= event.x_root <= mx + mw and my <= event.y_root <= my + mh):
+                    return
+
+                if hasattr(self, "btn_menu") and self.btn_menu and self.btn_menu.winfo_exists():
+                    bx = self.btn_menu.winfo_rootx()
+                    by = self.btn_menu.winfo_rooty()
+                    bw = self.btn_menu.winfo_width()
+                    bh = self.btn_menu.winfo_height()
+                    if (bx <= event.x_root <= bx + bw and by <= event.y_root <= by + bh):
+                        return
+
+                stage = getattr(self, "cover_stage", None)
+                if stage is not None and getattr(stage, "hud_hitboxes", None) and stage.winfo_exists():
+                    sx = stage.winfo_rootx()
+                    sy = stage.winfo_rooty()
+                    for (hx1, hy1, hx2, hy2, hact) in stage.hud_hitboxes:
+                        if hact == "menu" and (sx + hx1 <= event.x_root <= sx + hx2 and sy + hy1 <= event.y_root <= sy + hy2):
+                            return
+
+                self.close_active_menu()
             except Exception:
-                try:
-                    self.glass_menu.destroy()
-                except Exception:
-                    pass
-                self.glass_menu = None
+                self.close_active_menu()
 
     def open_gamepad_config_dialog(self):
+        self.close_active_menu()
         if hasattr(self, "_gamepad_dialog") and self._gamepad_dialog and self._gamepad_dialog.winfo_exists():
             try:
                 self._gamepad_dialog.lift()
@@ -853,6 +863,7 @@ class App(ctk.CTk):
         self.set_status(f"Mando configurado: {dev_label}")
 
     def open_add_dialog(self):
+        self.close_active_menu()
         if hasattr(self, "_add_dialog") and self._add_dialog and self._add_dialog.winfo_exists():
             try:
                 self._add_dialog.lift()
@@ -864,6 +875,7 @@ class App(ctk.CTk):
         self._add_dialog = AddEditGameDialog(self, self.monitors, callback=self.on_game_added)
 
     def open_select_game_dialog(self):
+        self.close_active_menu()
         if hasattr(self, "_select_dialog") and self._select_dialog and self._select_dialog.winfo_exists():
             try:
                 self._select_dialog.lift()
@@ -936,6 +948,7 @@ class App(ctk.CTk):
         self.set_status(f"Monitores detectados: {len(self.monitors)}")
 
     def open_exit_dialog(self):
+        self.close_active_menu()
         if hasattr(self, "exit_dialog") and self.exit_dialog and self.exit_dialog.winfo_exists():
             try:
                 bring_to_front_absolute(self.exit_dialog)

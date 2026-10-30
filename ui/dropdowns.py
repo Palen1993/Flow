@@ -26,9 +26,6 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
-        self.after(25, lambda: bring_to_front_absolute(self))
         self.anchor_widget = anchor_widget
         self.values = values
         self.current_value = current_value
@@ -41,6 +38,10 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             self.wm_attributes("-transparentcolor", COLOR_TRANS_KEY)
         except Exception:
             self.configure(fg_color=COLOR_BG_DROPDOWN)
+            
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.after(25, lambda: (hide_from_taskbar(self), bring_to_front_absolute(self)))
             
         parent.update_idletasks()
         anchor_widget.update_idletasks()
@@ -205,7 +206,10 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
 
     def _check_focus_out(self):
         try:
-            if self.winfo_exists() and not self.focus_displayof():
+            if not self.winfo_exists():
+                return
+            focused = self.focus_get()
+            if focused is None or not str(focused).startswith(str(self)):
                 self.destroy()
         except Exception:
             pass
@@ -348,9 +352,6 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
-        self.after(25, lambda: bring_to_front_absolute(self))
         self.items = items
         self.item_buttons = []
         self.selected_index = 0
@@ -360,6 +361,10 @@ class FloatingGlassMenu(ctk.CTkToplevel):
             self.wm_attributes("-transparentcolor", COLOR_TRANS_KEY)
         except Exception:
             self.configure(fg_color="#0b0f17")
+            
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.after(25, lambda: (hide_from_taskbar(self), bring_to_front_absolute(self)))
         
         parent.update_idletasks()
         mw = 355
@@ -499,7 +504,10 @@ class FloatingGlassMenu(ctk.CTkToplevel):
 
     def _check_focus_out(self):
         try:
-            if self.winfo_exists() and not self.focus_displayof():
+            if not self.winfo_exists():
+                return
+            focused = self.focus_get()
+            if focused is None or not str(focused).startswith(str(self)):
                 self.destroy()
         except Exception:
             pass

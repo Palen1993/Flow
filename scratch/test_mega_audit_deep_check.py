@@ -57,6 +57,13 @@ class TestMegaAuditDeepCheck(unittest.TestCase):
         )
 
     def test_01_all_13_modals_have_taskbar_protection(self):
+        import time
+        self.root.update()
+        time.sleep(0.12)
+        self.root.update()
+        self.root.set_full_mode()
+        self.root.update()
+
         # 1. FloatingGlassMenu
         self.root.toggle_top_menu()
         m = self.root.glass_menu

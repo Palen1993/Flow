@@ -187,7 +187,8 @@ def bring_to_front_absolute(window):
 def hide_from_taskbar(window):
     """
     Oculta completamente una ventana emergente o menú flotante de la barra de tareas
-    y del selector Alt+Tab de Windows aplicando el estilo WS_EX_TOOLWINDOW y asegurando HWND_TOPMOST.
+    y del selector Alt+Tab de Windows vinculándola como ventana poseída (GWLP_HWNDPARENT)
+    y aplicando el estilo WS_EX_TOOLWINDOW y HWND_TOPMOST.
     """
     import sys
     import ctypes
@@ -197,6 +198,18 @@ def hide_from_taskbar(window):
         if not window or not window.winfo_exists():
             return
         hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
+
+        # Enlazar HWND propietario a la ventana principal para que Windows no lo liste en Alt+Tab
+        master = getattr(window, "master", None) or getattr(window, "parent", None)
+        if master and hasattr(master, "winfo_id"):
+            try:
+                parent_hwnd = ctypes.windll.user32.GetParent(master.winfo_id()) or master.winfo_id()
+                if parent_hwnd:
+                    GWLP_HWNDPARENT = -8
+                    ctypes.windll.user32.SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, parent_hwnd)
+            except Exception:
+                pass
+
         GWL_EXSTYLE = -20
         WS_EX_TOOLWINDOW = 0x00000080
         WS_EX_APPWINDOW = 0x00040000
