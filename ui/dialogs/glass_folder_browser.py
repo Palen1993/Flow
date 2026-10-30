@@ -85,7 +85,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         lbl_t.pack(side="left")
 
         btn_native = ctk.CTkButton(
-            header, text="Explorador Windows 🗁", width=140, height=26,
+            header, text="Explorador Windows 🗁 ", width=155, height=26,
+            image=get_button_icon_ctk("y", self.family, size=16), compound="right",
             corner_radius=13, font=font_button(10), fg_color="#1e2434",
             hover_color="#2a3348", text_color=COLOR_TEXT_MUTED,
             command=self._use_native_picker
@@ -396,19 +397,18 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             self._activate_selected_item()
             return True
         if inputs.get("b", False) and not prev_inputs.get("b", False):
-            parent = os.path.dirname(self.current_path)
-            if parent and parent != self.current_path:
-                self._go_up_directory()
-            else:
-                self._on_cancel()
+            self._on_cancel()
+            return True
+        if (inputs.get("lb", False) and not prev_inputs.get("lb", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+            self._go_up_directory()
             return True
         if (inputs.get("x", False) and not prev_inputs.get("x", False)) or \
            (inputs.get("start", False) and not prev_inputs.get("start", False)):
             self._confirm_selection()
             return True
-        if (inputs.get("y", False) and not prev_inputs.get("y", False)) or \
-           (inputs.get("back", False) and not prev_inputs.get("back", False)):
-            self._on_cancel()
+        if inputs.get("y", False) and not prev_inputs.get("y", False):
+            self._use_native_picker()
             return True
         return True
 

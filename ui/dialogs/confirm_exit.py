@@ -15,6 +15,7 @@ class ConfirmExitDialog(BaseGlassDialog):
     def __init__(self, parent, on_confirm=None):
         super().__init__(parent, title="¿Cerrar Lanzador?", width=420, height=220, corner_radius=22)
         self.on_confirm = on_confirm
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         self._focused_btn = 1  # 0 = Cancelar, 1 = Cerrar
         
         self.create_widgets()
@@ -39,7 +40,7 @@ class ConfirmExitDialog(BaseGlassDialog):
         btn_frame.place(relx=0.5, rely=0.68, anchor="center")
         
         self.btn_cancel = ctk.CTkButton(
-            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
+            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=138, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER,
             border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
@@ -49,7 +50,7 @@ class ConfirmExitDialog(BaseGlassDialog):
         self.btn_cancel.pack(side="left", padx=8)
         
         self.btn_exit = ctk.CTkButton(
-            btn_frame, text="Cerrar ", image=get_button_icon_ctk("a", size=20), compound="right",
+            btn_frame, text="Cerrar ", image=get_button_icon_ctk("a", self.family, size=20), compound="right",
             width=138, height=38,
             fg_color=COLOR_BTN_DANGER_BG, hover_color=COLOR_BTN_DANGER_HOVER,
             border_color=COLOR_BTN_DANGER_BORDER, border_width=1.2,

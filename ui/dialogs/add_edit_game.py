@@ -56,7 +56,9 @@ class AddEditGameDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar, bring_to_front_absolute(self)
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.current_cover_path = game_data.get("cover", "") if game_data else ""
         self.current_wallpaper_path = game_data.get("wallpaper", "") if game_data else ""
@@ -183,7 +185,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_cover.pack(pady=(8, 4))
 
         self.btn_online = ctk.CTkButton(
-            left_frame, text="🌐 Buscar Online HD ", image=get_button_icon_ctk("x", size=18), compound="right",
+            left_frame, text="🌐 Buscar Online HD ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
             width=165, height=30,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.0,
             corner_radius=15, text_color=COLOR_TEXT_WHITE, font=font_button(12),
@@ -221,7 +223,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.path_entry.grid(row=1, column=1, padx=(0, 12), pady=8, sticky="ew")
         
         self.btn_browse_exe = ctk.CTkButton(
-            right_frame, text="Explorar .exe...", width=125, height=30,
+            right_frame, text="Explorar .exe... ", image=get_button_icon_ctk("y", self.family, size=16), compound="right",
+            width=135, height=30,
             fg_color="#222838", hover_color="#2d354a", border_color="#343f55", border_width=1.0,
             corner_radius=15, text_color=COLOR_TEXT_BRIGHT, font=font_body(12),
             command=self.browse_exe
@@ -284,7 +287,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_delete = None
         if self.game_data and self.delete_callback:
             self.btn_delete = ctk.CTkButton(
-                btn_frame, text="🗑  Eliminar Juego ", image=get_button_icon_ctk("a", size=18), compound="right",
+                btn_frame, text="🗑  Eliminar Juego ", image=get_button_icon_ctk("a", self.family, size=18), compound="right",
                 width=160, height=38,
                 fg_color=COLOR_BTN_DANGER_BG, hover_color=COLOR_BTN_DANGER_HOVER, border_color=COLOR_BTN_DANGER_BORDER, border_width=1.2,
                 corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(12),
@@ -293,7 +296,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
             self.btn_delete.pack(side="left")
 
         self.btn_cancel = ctk.CTkButton(
-            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
+            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=125, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER, border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
             corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
@@ -302,7 +305,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_cancel.pack(side="right", padx=(10, 0))
         
         self.btn_save = ctk.CTkButton(
-            btn_frame, text="Guardar ", image=get_button_icon_ctk("start", size=20), compound="right",
+            btn_frame, text="Guardar ", image=get_button_icon_ctk("start", self.family, size=20), compound="right",
             width=135, height=38,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(12),
@@ -469,7 +472,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
                 widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if inputs.get("b", False) and not prev_inputs.get("b", False):
+        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self._cleanup_temp_preview()
             self.destroy()
             return True
@@ -478,6 +482,9 @@ class AddEditGameDialog(ctk.CTkToplevel):
             return True
         if inputs.get("x", False) and not prev_inputs.get("x", False):
             self.download_online_hd_cover()
+            return True
+        if inputs.get("y", False) and not prev_inputs.get("y", False):
+            self.browse_exe()
             return True
 
         controls = getattr(self, "_nav_controls", [])

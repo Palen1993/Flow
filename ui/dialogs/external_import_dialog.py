@@ -35,6 +35,7 @@ class ExternalImportDialog(BaseGlassDialog):
             for g in (existing_games or [])
             if g.get("path")
         }
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         self.candidates: List[Dict[str, Any]] = []
         self.items_vars = []
         self._row_frames = []
@@ -85,7 +86,7 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_select_all = ctk.CTkButton(
             top_line,
             text="Todos ",
-            image=get_button_icon_ctk("x", size=18),
+            image=get_button_icon_ctk("x", self.family, size=18),
             compound="right",
             width=100,
             height=30,
@@ -102,7 +103,7 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_roms = ctk.CTkButton(
             top_line,
             text="ROMs ",
-            image=get_button_icon_ctk("y", size=18),
+            image=get_button_icon_ctk("y", self.family, size=18),
             compound="right",
             width=105,
             height=30,
@@ -159,7 +160,7 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_import = ctk.CTkButton(
             bottom_bar,
             text="Importar Seleccionados ",
-            image=get_button_icon_ctk("start", size=20),
+            image=get_button_icon_ctk("start", self.family, size=20),
             compound="right",
             width=210,
             height=38,
@@ -175,7 +176,7 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_cancel = ctk.CTkButton(
             bottom_bar,
             text="Cancelar ",
-            image=get_button_icon_ctk("b", size=18),
+            image=get_button_icon_ctk("b", self.family, size=18),
             compound="right",
             width=115,
             height=38,
@@ -380,8 +381,9 @@ class ExternalImportDialog(BaseGlassDialog):
             self.import_selected()
             return True
 
-        # B: salir
-        if inputs.get("b", False) and not prev.get("b", False):
+        # B o Back: salir
+        if (inputs.get("b", False) and not prev.get("b", False)) or \
+           (inputs.get("back", False) and not prev.get("back", False)):
             self.close()
             return True
 

@@ -156,6 +156,24 @@ class ControllerInfoDialog(BaseGlassDialog):
         for key in ("<Return>", "<space>", "<Escape>", "<a>", "<A>", "<b>", "<B>"):
             self.bind(key, lambda e: self.close())
 
+    def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
+        if (inputs.get("a", False) and not prev_inputs.get("a", False)) or \
+           (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("start", False) and not prev_inputs.get("start", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+            self.close()
+            return True
+        return False
+
+    def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
+        if (inputs.get("a", False) and not prev_inputs.get("a", False)) or \
+           (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("start", False) and not prev_inputs.get("start", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+            self.close()
+            return True
+        return False
+
     # ------------------------------------------------------------------
     def _refresh_info(self):
         try:

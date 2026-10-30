@@ -116,7 +116,9 @@ class CoverPickerDialog(ctk.CTkToplevel):
 
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar, bring_to_front_absolute(self)
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.family = getattr(parent, "_current_controller_family", "xbox")
 
         # Estado interno de candidatos y caché de imágenes
         self.all_candidates: List[Dict[str, Any]] = []
@@ -342,7 +344,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
         self.btn_search = ctk.CTkButton(
             search_bar,
             text="🔍 Buscar ",
-            image=get_button_icon_ctk("x", size=18),
+            image=get_button_icon_ctk("x", self.family, size=18),
             compound="right",
             font=("Segoe UI Semibold", 12),
             fg_color="#007aff",
@@ -569,7 +571,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
         self.btn_cancel = ctk.CTkButton(
             footer_frame,
             text="Cancelar ",
-            image=get_button_icon_ctk("b", size=20),
+            image=get_button_icon_ctk("b", self.family, size=20),
             compound="right",
             font=("Segoe UI Semibold", 12),
             fg_color="#1c212d",
@@ -587,7 +589,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
         self.btn_confirm = ctk.CTkButton(
             footer_frame,
             text="✓ Aplicar Esta Carátula ",
-            image=get_button_icon_ctk("a", size=20),
+            image=get_button_icon_ctk("a", self.family, size=20),
             compound="right",
             font=("Segoe UI Semibold", 12),
             fg_color="#007aff",
@@ -1464,7 +1466,8 @@ class CoverPickerDialog(ctk.CTkToplevel):
         prompt_on_screen_keyboard(self, title="Buscar Carátula o Wallpaper", initial_text=self.entry_search.get(), on_confirm=_on_confirm)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if inputs.get("b", False) and not prev_inputs.get("b", False):
+        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self.destroy()
             return True
 

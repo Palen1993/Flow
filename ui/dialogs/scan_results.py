@@ -48,7 +48,9 @@ class ScanResultsDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar, bring_to_front_absolute(self)
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.items_vars = []  # Lista de tuplas: (checkbox_var, name_entry, candidate_data)
         self._row_frames = []
@@ -137,7 +139,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
             w.bind("<B1-Motion>", self._on_drag)
         
         btn_sel_all = ctk.CTkButton(
-            top_row, text="Marcar todos ", image=get_button_icon_ctk("x", size=18), compound="right",
+            top_row, text="Marcar todos ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
             width=125, height=30,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
             corner_radius=15, text_color=COLOR_TEXT_WHITE,
@@ -146,7 +148,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         btn_sel_all.pack(side="right", padx=(6, 0))
         
         btn_desel_all = ctk.CTkButton(
-            top_row, text="Desmarcar ", image=get_button_icon_ctk("y", size=18), compound="right",
+            top_row, text="Desmarcar ", image=get_button_icon_ctk("y", self.family, size=18), compound="right",
             width=115, height=30,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=15, text_color=COLOR_TEXT_MUTED,
@@ -258,7 +260,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         self.lbl_selected.pack(side="left", padx=4, pady=8)
         
         self.btn_import = ctk.CTkButton(
-            bottom_frame, text="＋  Añadir a la Biblioteca ", image=get_button_icon_ctk("start", size=20), compound="right",
+            bottom_frame, text="＋  Añadir a la Biblioteca ", image=get_button_icon_ctk("start", self.family, size=20), compound="right",
             height=38,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
             corner_radius=19, text_color=COLOR_TEXT_WHITE,
@@ -268,7 +270,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         self.btn_import.pack(side="right", padx=(8, 0), pady=8)
         
         btn_cancel = ctk.CTkButton(
-            bottom_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
+            bottom_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=125, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_MUTED, font=font_button(12),
@@ -339,7 +341,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
         self.destroy()
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if inputs.get("b", False) and not prev_inputs.get("b", False):
+        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self.destroy()
             return True
         if inputs.get("start", False) and not prev_inputs.get("start", False):

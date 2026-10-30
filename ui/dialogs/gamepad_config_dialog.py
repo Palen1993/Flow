@@ -50,7 +50,9 @@ class GamepadConfigDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar, bring_to_front_absolute(self)
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.is_monitoring = True
         self.drag_x = 0
@@ -352,7 +354,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         footer.grid(row=2, column=0, sticky="ew", padx=16, pady=(4, 14))
         
         self.btn_save = ctk.CTkButton(
-            footer, text="Guardar Configuración ", image=get_button_icon_ctk("start", size=20), compound="right",
+            footer, text="Guardar Configuración ", image=get_button_icon_ctk("start", self.family, size=20), compound="right",
             width=210, height=38,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(13),
@@ -361,7 +363,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self.btn_save.pack(side="right", padx=(8, 0), pady=4)
 
         self.btn_cancel = ctk.CTkButton(
-            footer, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
+            footer, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=128, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER, border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
             corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
@@ -452,7 +454,8 @@ class GamepadConfigDialog(ctk.CTkToplevel):
                 scroll_to_widget(self.scroll, scroll_target, force_edge=force_edge)
 
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
-        if inputs.get("b", False) and not prev_inputs.get("b", False):
+        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self.destroy()
             return True
         if (inputs.get("start", False) and not prev_inputs.get("start", False)) or \

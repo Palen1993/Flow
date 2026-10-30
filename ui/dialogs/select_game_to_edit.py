@@ -49,7 +49,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar, bring_to_front_absolute(self)
+        hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.family = getattr(parent, "_current_controller_family", "xbox")
         
         # Opciones de monitores disponibles
         self.monitors = getattr(self.master, "monitors", None) or get_monitors()
@@ -317,7 +319,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         footer.grid(row=4, column=0, sticky="ew", padx=16, pady=(4, 14))
         
         btn_close = ctk.CTkButton(
-            footer, text="Cerrar ", image=get_button_icon_ctk("b", size=20), compound="right",
+            footer, text="Cerrar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=128, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
             border_color=COLOR_GLASS_BORDER, border_width=1.2,
@@ -327,7 +329,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         btn_close.pack(side="right", padx=4, pady=4)
 
         btn_search = ctk.CTkButton(
-            footer, text="Buscar ", image=get_button_icon_ctk("y", size=20), compound="right",
+            footer, text="Buscar ", image=get_button_icon_ctk("y", self.family, size=20), compound="right",
             width=128, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
             border_color=COLOR_GLASS_BORDER, border_width=1.2,
@@ -409,8 +411,13 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         prompt_on_screen_keyboard(self, title="Filtrar Juegos", initial_text=self.search_var.get(), on_confirm=_on_confirm)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if inputs.get("b", False) and not prev_inputs.get("b", False):
+        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self.destroy()
+            return True
+        if (inputs.get("start", False) and not prev_inputs.get("start", False)) or \
+           (inputs.get("a", False) and not prev_inputs.get("a", False)):
+            self._activate_selected_row()
             return True
         if inputs.get("y", False) and not prev_inputs.get("y", False):
             self._open_search_keyboard()
@@ -499,7 +506,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         
         # Botón Editar (Píldora iOS azul con el botón real A / Cruz)
         btn_edit = ctk.CTkButton(
-            card, text="Editar ", image=get_button_icon_ctk("a", size=18), compound="right",
+            card, text="Editar ", image=get_button_icon_ctk("a", self.family, size=18), compound="right",
             width=102, height=32,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
             corner_radius=16, text_color=COLOR_TEXT_WHITE,
@@ -534,7 +541,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         lbl_mon = ctk.CTkLabel(
             card,
             text=f"🖥 Mon {cur_mon} ",
-            image=get_button_icon_ctk("y", size=16),
+            image=get_button_icon_ctk("y", self.family, size=16),
             compound="right",
             font=font_button(11),
             fg_color="#1f2637",

@@ -70,11 +70,23 @@ class GamepadNavigationService:
             # 2. Prioridad absoluta: Enrutamiento al modal o menú desplegable en la cima de la pila
             top_modal = self.app._get_topmost_active_modal()
             if top_modal is not None:
+                handled = False
                 if hasattr(top_modal, "handle_gamepad_input") and callable(top_modal.handle_gamepad_input):
-                    top_modal.handle_gamepad_input(inputs, prev)
-                elif inputs.get("b", False) and not prev.get("b", False):
                     try:
-                        top_modal.destroy()
+                        handled = bool(top_modal.handle_gamepad_input(inputs, prev))
+                    except Exception as ex:
+                        logger.error(f"Error procesando gamepad en modal: {ex}", exc_info=True)
+                
+                # Red de seguridad universal: Si el modal no consumió B o Back, cancelarlo/cerrarlo
+                if not handled and ((inputs.get("b", False) and not prev.get("b", False)) or 
+                                    (inputs.get("back", False) and not prev.get("back", False))):
+                    try:
+                        if hasattr(top_modal, "on_cancel") and callable(top_modal.on_cancel):
+                            top_modal.on_cancel()
+                        elif hasattr(top_modal, "close") and callable(top_modal.close):
+                            top_modal.close()
+                        elif hasattr(top_modal, "destroy") and callable(top_modal.destroy):
+                            top_modal.destroy()
                     except Exception:
                         pass
                 self._prev_buttons = inputs

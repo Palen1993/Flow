@@ -561,18 +561,14 @@ class App(ctk.CTk):
             top = self._modal_stack[-1]
             try:
                 if top.winfo_exists():
-                    state = getattr(top, "state", lambda: "normal")()
-                    if state not in ("withdrawn", "iconic"):
-                        return top
+                    return top
             except Exception:
                 pass
             self._modal_stack.pop()
 
         if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
             try:
-                state = getattr(self.glass_menu, "state", lambda: "normal")()
-                if state not in ("withdrawn", "iconic"):
-                    return self.glass_menu
+                return self.glass_menu
             except Exception:
                 pass
         return None
