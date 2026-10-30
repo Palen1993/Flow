@@ -1,0 +1,63 @@
+[
+    {
+        "name": "Assassins Creed Black Flag Resynced",
+        "path": "D:\\Juegos\\Assassins Creed Black Flag Resynced\\ACBlackFlag.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Assassins Creed Black Flag Resynced.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Assassins Creed Black Flag Resynced_wallpaper.png",
+        "wallpaper_opacity": 0.28,
+        "wallpaper_blur": 0.0
+    },
+    {
+        "name": "Black Myth Wukong",
+        "path": "D:\\Juegos\\Black Myth Wukong\\b1\\Binaries\\Win64\\b1-Win64-Shipping.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Black Myth Wukong.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Black Myth Wukong_wallpaper.png",
+        "wallpaper_opacity": 0.75,
+        "wallpaper_blur": 0.0
+    },
+    {
+        "name": "LEGO Batman Legacy of the Dark Knight",
+        "path": "D:\\Juegos\\LEGO Batman Legacy of the Dark Knight\\LEGOBatmanLotDK\\Binaries\\Win64\\LEGOBatmanLotDK-Win64-Shipping.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\LEGO Batman Legacy of the Dark Knight.png",
+        "launch_args": "",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\LEGO Batman Legacy of the Dark Knight_wallpaper.png",
+        "wallpaper_opacity": 0.75,
+        "wallpaper_blur": 0.0
+    },
+    {
+        "name": "LEGO Harry Potter 2024 Collection",
+        "path": "D:\\Juegos\\LEGO Harry Potter 2024 Collection\\Years 5-7\\harry2.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\LEGO Harry Potter 2024 Collection.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\LEGO Harry Potter 2024 Collection_wallpaper.png",
+        "wallpaper_opacity": 0.75,
+        "wallpaper_blur": 0.0
+    },
+    {
+        "name": "Metal Gear Solid Snake Eater 2025",
+        "path": "D:\\Juegos\\Metal Gear Solid Snake Eater 2025\\MGSDelta\\Binaries\\Win64\\MGSDelta-Win64-Shipping.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Metal Gear Solid Snake Eater 2025.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Metal Gear Solid Snake Eater 2025_wallpaper.png",
+        "wallpaper_opacity": 0.75,
+        "wallpaper_blur": 0.0
+    },
+    {
+        "name": "Split Fiction",
+        "path": "D:\\Juegos\\Split Fiction\\Split\\Binaries\\Win64\\SplitFiction.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Split Fiction.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Split Fiction_wallpaper.png",
+        "wallpaper_opacity": 0.75,
+        "wallpaper_blur": 0.0
+    }
+]

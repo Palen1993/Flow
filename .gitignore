@@ -1,0 +1,38 @@
+# ====================================================================
+# Git Ignore Configuration for GameFlow Launcher
+# ====================================================================
+
+# Python & Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+*.py[cod]
+*$py.class
+__pycache__/
+
+# Runtime Caches & Dynamic Assets
+.cache/
+.launch_timestamp
+*.log
+*.tmp
+*.bak
+.perm_test*
+
+# PyInstaller / Distribution
+dist/
+build/
+*.spec
+
+# IDE & OS Metadata
+.vscode/
+.idea/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# User Scratch Temporary Outputs
+scratch/*.tmp
+scratch/*.bak
