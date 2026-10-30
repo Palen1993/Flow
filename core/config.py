@@ -288,3 +288,28 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
         if updated:
             return save_games_data(games, merge_existing_playtime=False)
         return False
+
+def update_game_fields_atomic(game_path_or_name: str, updates: Dict[str, Any]) -> bool:
+    """
+    Actualiza atómicamente campos específicos de un juego (ej: playtime, last_played, configuración)
+    adquiriendo el mutex inter-proceso, recargando el disco, aplicando el parche y guardando.
+    Previene condiciones de carrera entre la interfaz gráfica principal y el proceso centinela.
+    """
+    with config_lock():
+        games = load_games_data()
+        target_norm = os.path.normcase(os.path.normpath(game_path_or_name)) if game_path_or_name else ""
+        target_name = game_path_or_name.strip().lower() if game_path_or_name else ""
+
+        found = False
+        for g in games:
+            gp = g.get("path")
+            norm_p = os.path.normcase(os.path.normpath(gp)) if gp else ""
+            gn = g.get("name", "").strip().lower()
+            if (target_norm and norm_p == target_norm) or (target_name and gn == target_name):
+                g.update(updates)
+                found = True
+                break
+
+        if found:
+            return save_games_data(games, merge_existing_playtime=False)
+        return False

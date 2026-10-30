@@ -29,6 +29,20 @@ IMAGE_REQ_HEADERS = {
 
 _CANDIDATES_CACHE: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 
+MAX_IMAGE_DOWNLOAD_BYTES = 15 * 1024 * 1024  # 15 MB máximo de seguridad
+
+def _safe_read_response(resp, max_bytes: int = MAX_IMAGE_DOWNLOAD_BYTES, chunk_size: int = 64 * 1024) -> bytes:
+    """Lee el cuerpo de la respuesta en streaming limitando el tamaño máximo contra bombas de descompresión."""
+    data = bytearray()
+    while True:
+        chunk = resp.read(chunk_size)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > max_bytes:
+            raise ValueError(f"La imagen excede el límite de tamaño seguro ({max_bytes // (1024 * 1024)} MB)")
+    return bytes(data)
+
 def search_google_web_covers(raw_query: str, max_results: int = 18) -> List[Dict[str, Any]]:
     """
     Busca carátulas en una única petición ultrarrápida (~400ms) priorizando formato cuadrado (1:1)
@@ -253,7 +267,7 @@ def download_and_save_cover(
             req = urllib.request.Request(u, headers=IMAGE_REQ_HEADERS)
             with urllib.request.urlopen(req, timeout=t_out) as resp:
                 if resp.status == 200:
-                    raw_bytes = resp.read()
+                    raw_bytes = _safe_read_response(resp)
                     if len(raw_bytes) > 1024:
                         with Image.open(io.BytesIO(raw_bytes)) as raw_im:
                             converted = adapt_cover_to_square(
@@ -285,7 +299,7 @@ def fetch_image_from_url(url: str, fallback_url: Optional[str] = None, timeout: 
             req = urllib.request.Request(u, headers=IMAGE_REQ_HEADERS)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 if resp.status == 200:
-                    raw_bytes = resp.read()
+                    raw_bytes = _safe_read_response(resp)
                     if len(raw_bytes) > 800:
                         with Image.open(io.BytesIO(raw_bytes)) as im:
                             return im.convert("RGBA").copy()
@@ -518,7 +532,7 @@ def download_and_save_wallpaper(
             req = urllib.request.Request(u, headers=IMAGE_REQ_HEADERS)
             with urllib.request.urlopen(req, timeout=t_out) as resp:
                 if resp.status == 200:
-                    raw_bytes = resp.read()
+                    raw_bytes = _safe_read_response(resp)
                     if len(raw_bytes) > 1024:
                         with Image.open(io.BytesIO(raw_bytes)) as raw_im:
                             converted = adapt_wallpaper_to_widescreen(

@@ -190,7 +190,8 @@ try:
         "ui/dialogs/add_edit_game.py", "ui/dialogs/confirm_exit.py",
         "ui/dialogs/cover_picker_dialog.py", "ui/dialogs/gamepad_config_dialog.py",
         "ui/dialogs/scan_results.py", "ui/dialogs/select_game_to_edit.py",
-        "ui/dialogs/on_screen_keyboard.py", "ui/modal_manager.py", "core/logger.py"
+        "ui/dialogs/on_screen_keyboard.py", "ui/modal_manager.py", "core/logger.py",
+        "core/library_service.py", "core/execution_service.py", "ui/window_manager.py", "ui/gamepad_service.py"
     ]
     for rel_path in files_to_check:
         full_p = os.path.join(BASE_DIR, rel_path)
