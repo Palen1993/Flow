@@ -33,8 +33,8 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         self.on_select = on_select_callback
         self._initial_target_idx = initial_index if 0 <= initial_index < len(self.games) else 0
         
-        self.dialog_width = 720
-        self.dialog_height = 600
+        self.dialog_width = 920
+        self.dialog_height = 640
         self.title("⚙ Seleccionar Juego para Editar")
         self.geometry(f"{self.dialog_width}x{self.dialog_height}")
         self.resizable(False, False)
@@ -267,7 +267,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         )
         self.chk_all_priority.pack(side="left", padx=(14, 4), pady=8)
         ctk.CTkLabel(
-            tools_card, text="", image=get_button_icon_ctk("lb", size=18)
+            tools_card, text="", image=get_button_icon_ctk("lb", self.family, size=18)
         ).pack(side="left", padx=(0, 8), pady=8)
         
         # Selector global de monitor
@@ -289,7 +289,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             values=self.monitor_options,
             placeholder="Asignar monitor a todos...",
             command=self._on_change_all_monitors,
-            width=270,
+            width=310,
             height=32,
             item_icon="🖥  "
         )
@@ -459,66 +459,60 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             # Alternar monitor asignado al juego seleccionado
             if 0 <= self._selected_row_idx < len(rows) and self.monitors:
                 _, orig_idx = rows[self._selected_row_idx]
-                cur_m = self.games[orig_idx].get("monitor", 0)
-                mon_ids = [m["id"] for m in self.monitors]
-                next_i = (mon_ids.index(cur_m) + 1) % len(mon_ids) if cur_m in mon_ids else 0
-                self.games[orig_idx]["monitor"] = mon_ids[next_i]
-                self._save_changes()
-                saved_row = self._selected_row_idx
-                self.refresh_list()
-                self._highlight_row(min(saved_row, len(self._card_rows) - 1))
+                self._on_cycle_single_monitor(orig_idx)
             return True
         return False
+
+    def _on_cycle_single_monitor(self, orig_idx: int):
+        """Alterna el monitor asignado para un juego específico y actualiza la lista."""
+        if 0 <= orig_idx < len(self.games) and self.monitors:
+            cur_m = self.games[orig_idx].get("monitor", 0)
+            mon_ids = [m["id"] for m in self.monitors]
+            next_i = (mon_ids.index(cur_m) + 1) % len(mon_ids) if cur_m in mon_ids else 0
+            self.games[orig_idx]["monitor"] = mon_ids[next_i]
+            self._save_changes()
+            saved_row = self._selected_row_idx
+            self.refresh_list()
+            self._highlight_row(min(saved_row, len(self._card_rows) - 1))
+            try:
+                from core.feedback import feedback_click
+                feedback_click()
+            except Exception:
+                pass
 
     def _create_game_card(self, orig_idx: int, game: Dict[str, Any]):
         card = ctk.CTkFrame(self.scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card.pack(fill="x", pady=4, padx=2)
         
-        # Miniatura de carátula
+        # Miniatura de carátula (extremo izquierdo)
         thumb_img = self.thumb_refs.get(orig_idx)
         if thumb_img is None:
             cover_path = resolve_game_cover(game)
             try:
                 with Image.open(cover_path) as raw_im:
-                    scaled = raw_im.copy().resize((46, 46), Image.Resampling.LANCZOS)
-                thumb_img = ctk.CTkImage(light_image=scaled, dark_image=scaled, size=(46, 46))
+                    scaled = raw_im.copy().resize((48, 48), Image.Resampling.LANCZOS)
+                thumb_img = ctk.CTkImage(light_image=scaled, dark_image=scaled, size=(48, 48))
             except Exception:
-                proc = create_procedural_album(game.get("name", "Juego"), size=46)
-                thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(46, 46))
+                proc = create_procedural_album(game.get("name", "Juego"), size=48)
+                thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(48, 48))
             self.thumb_refs[orig_idx] = thumb_img
             
-        lbl_thumb = ctk.CTkLabel(card, image=thumb_img, text="", width=46, height=46)
-        lbl_thumb.pack(side="left", padx=(10, 12), pady=8)
+        lbl_thumb = ctk.CTkLabel(card, image=thumb_img, text="", width=48, height=48)
+        lbl_thumb.pack(side="left", padx=(12, 14), pady=8)
         
-        # Información de texto
-        info_box = ctk.CTkFrame(card, fg_color="transparent")
-        info_box.pack(side="left", fill="both", expand=True, pady=6)
-        
-        lbl_name = ctk.CTkLabel(
-            info_box, text=game.get("name", "Juego"),
-            font=font_button(14),
-            text_color=COLOR_TEXT_MAIN, anchor="w"
-        )
-        lbl_name.pack(fill="x")
-        
-        path_text = game.get("path", "")
-        if len(path_text) > 55:
-            path_text = path_text[:26] + "..." + path_text[-26:]
-        lbl_p = ctk.CTkLabel(info_box, text=path_text, font=font_body(11), text_color="#64748b", anchor="w")
-        lbl_p.pack(fill="x")
-        
-        # Botón Editar (Píldora iOS azul con el botón real A / Cruz)
+        # Controles de la derecha (empaquetados primero con ancho garantizado)
+        # 1. Botón Editar (Píldora iOS azul con el botón real A / Cruz)
         btn_edit = ctk.CTkButton(
             card, text="Editar ", image=get_button_icon_ctk("a", self.family, size=18), compound="right",
-            width=102, height=32,
+            width=108, height=32,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
             corner_radius=16, text_color=COLOR_TEXT_WHITE,
             font=font_button(12),
             command=lambda i=orig_idx: self._select_game(i)
         )
-        btn_edit.pack(side="right", padx=(8, 12), pady=8)
+        btn_edit.pack(side="right", padx=(8, 14), pady=8)
 
-        # Checkbox individual de prioridad alta
+        # 2. Checkbox individual de prioridad alta
         is_hp = game.get("high_priority", True)
         hp_var = ctk.BooleanVar(value=is_hp)
         chk_hp = ctk.CTkCheckBox(
@@ -537,26 +531,49 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             corner_radius=4,
             command=lambda i=orig_idx, v=hp_var: self._on_toggle_single_priority(i, v.get())
         )
-        chk_hp.pack(side="right", padx=(6, 10), pady=8)
+        chk_hp.pack(side="right", padx=(8, 12), pady=8)
 
-        # Badge indicador del monitor asignado (Píldora cristal sutil + botón real Y / △)
+        # 3. Badge indicador interactivo del monitor asignado (Píldora cristal + botón real Y / △)
         cur_mon = game.get("monitor", 0)
+        mon_icon = get_button_icon_ctk("y", self.family, size=16)
         lbl_mon = ctk.CTkLabel(
             card,
-            text=f"🖥 Mon {cur_mon} ",
-            image=get_button_icon_ctk("y", self.family, size=16),
+            text=f"🖥  Mon {cur_mon} ",
+            image=mon_icon,
             compound="right",
             font=font_button(11),
-            fg_color="#1f2637",
+            fg_color="#1e2538",
             text_color="#93c5fd",
-            corner_radius=10,
-            padx=8,
-            pady=3
+            corner_radius=12,
+            width=112,
+            height=32,
+            padx=10,
+            pady=2
         )
-        lbl_mon.pack(side="right", padx=(4, 6))
+        lbl_mon._img_ref = mon_icon
+        lbl_mon.pack(side="right", padx=(8, 12), pady=8)
+        lbl_mon.bind("<Button-1>", lambda e, i=orig_idx: self._on_cycle_single_monitor(i))
+        lbl_mon.configure(cursor="hand2")
+
+        # Centro: Información de texto (ocupa todo el espacio restante disponible sin apretar nada)
+        info_box = ctk.CTkFrame(card, fg_color="transparent")
+        info_box.pack(side="left", fill="both", expand=True, padx=(0, 12), pady=6)
         
-        # Clic en toda la tarjeta también abre el editor
-        for w in (card, lbl_thumb, info_box, lbl_name, lbl_p, lbl_mon):
+        lbl_name = ctk.CTkLabel(
+            info_box, text=game.get("name", "Juego"),
+            font=font_button(14),
+            text_color=COLOR_TEXT_MAIN, anchor="w"
+        )
+        lbl_name.pack(fill="x")
+        
+        path_text = game.get("path", "")
+        if len(path_text) > 75:
+            path_text = path_text[:35] + "..." + path_text[-35:]
+        lbl_p = ctk.CTkLabel(info_box, text=path_text, font=font_body(11), text_color="#64748b", anchor="w")
+        lbl_p.pack(fill="x")
+        
+        # Clic en la tarjeta o su texto abre el editor individual
+        for w in (card, lbl_thumb, info_box, lbl_name, lbl_p):
             w.bind("<Button-1>", lambda e, i=orig_idx: self._select_game(i))
             w.configure(cursor="hand2")
         if hasattr(self, "_card_rows"):

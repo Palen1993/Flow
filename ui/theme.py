@@ -197,6 +197,10 @@ def hide_from_taskbar(window):
     try:
         if not window or not window.winfo_exists():
             return
+        try:
+            window.update_idletasks()
+        except Exception:
+            pass
         hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
 
         # Enlazar HWND propietario a la ventana principal para que Windows no lo liste en Alt+Tab
@@ -205,8 +209,14 @@ def hide_from_taskbar(window):
             try:
                 parent_hwnd = ctypes.windll.user32.GetParent(master.winfo_id()) or master.winfo_id()
                 if parent_hwnd:
+                    from ctypes import wintypes
                     GWLP_HWNDPARENT = -8
-                    ctypes.windll.user32.SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, parent_hwnd)
+                    if hasattr(ctypes.windll.user32, "SetWindowLongPtrW"):
+                        ctypes.windll.user32.SetWindowLongPtrW.restype = wintypes.HWND
+                        ctypes.windll.user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.HWND]
+                        ctypes.windll.user32.SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, parent_hwnd)
+                    else:
+                        ctypes.windll.user32.SetWindowLongW(hwnd, GWLP_HWNDPARENT, parent_hwnd)
             except Exception:
                 pass
 
@@ -221,7 +231,8 @@ def hide_from_taskbar(window):
         SWP_NOMOVE = 0x0002
         SWP_NOSIZE = 0x0001
         SWP_SHOWWINDOW = 0x0040
-        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+        SWP_FRAMECHANGED = 0x0020
+        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED)
     except Exception:
         pass
 

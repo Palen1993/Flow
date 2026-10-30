@@ -64,10 +64,21 @@
         "name": "Viewfinder",
         "path": "D:\\Juegos\\Epic Games\\ViewfinderXGGk9\\Viewfinder.exe",
         "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Viewfinder.png",
-        "monitor": 0,
+        "monitor": 2,
         "high_priority": true,
         "platform": "Epic Games",
         "platform_id": "17979201bdd845f0ab53d1d62d841dbf",
         "already_added": false
+    },
+    {
+        "name": "Hellraiser",
+        "path": "D:\\Juegos\\Clive Barkers Hellraiser Revival\\Hellraiser.exe",
+        "monitor": 2,
+        "high_priority": true,
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Hellraiser.png",
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Hellraiser_wallpaper.png",
+        "wallpaper_opacity": 0.85,
+        "wallpaper_blur": 0.0,
+        "launch_args": ""
     }
 ]
