@@ -13,8 +13,10 @@ from ui.dialogs.controller_info_dialog import ControllerInfoDialog
 from ui.dialogs.glass_message_box import GlassMessageBox, show_info, show_warning, show_error, ask_yes_no
 from ui.dialogs.glass_folder_browser import GlassFolderBrowserDialog, browse_folder, browse_file
 from ui.dialogs.on_screen_keyboard import OnScreenKeyboardDialog, prompt_on_screen_keyboard
+from ui.dialogs.external_import_dialog import ExternalImportDialog
 
 __all__ = [
+    "ExternalImportDialog",
     "BaseGlassDialog",
     "register_modal_stack",
     "unregister_modal_stack",

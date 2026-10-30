@@ -190,7 +190,7 @@ try:
         "ui/dialogs/add_edit_game.py", "ui/dialogs/confirm_exit.py",
         "ui/dialogs/cover_picker_dialog.py", "ui/dialogs/gamepad_config_dialog.py",
         "ui/dialogs/scan_results.py", "ui/dialogs/select_game_to_edit.py",
-        "ui/dialogs/on_screen_keyboard.py", "ui/modal_manager.py", "core/logger.py",
+        "ui/dialogs/on_screen_keyboard.py", "ui/dialogs/external_import_dialog.py", "ui/dialogs/base_dialog.py", "core/external_launchers.py", "ui/modal_manager.py", "core/logger.py",
         "core/library_service.py", "core/execution_service.py", "ui/window_manager.py", "ui/gamepad_service.py"
     ]
     for rel_path in files_to_check:
@@ -205,13 +205,13 @@ try:
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
-        OnScreenKeyboardDialog
+        OnScreenKeyboardDialog, ExternalImportDialog
     )
     for dlg_cls in (
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
-        OnScreenKeyboardDialog,
+        OnScreenKeyboardDialog, ExternalImportDialog,
         FloatingGlassDropdown, FloatingGlassMenu
     ):
         assert hasattr(dlg_cls, "handle_gamepad_input"), f"{dlg_cls.__name__} no implementa handle_gamepad_input"
@@ -251,6 +251,9 @@ try:
     print(f"  ✓ Motor de Wallpaper 16:9 Big Picture verificado de borde a borde (y=0..720, sin barras grises ni línea inferior, con Opacidad + Borrosidad)")
     print(f"  ✓ Etiqueta completa de monitor verificada: {mon_txt}")
     print(f"  ✓ HUD superior derecho validado para Xbox ({strip_xb.size[0]}x{strip_xb.size[1]}px) y PlayStation ({strip_ps.size[0]}x{strip_ps.size[1]}px) | Activo: {fam.upper()}")
+    from core.external_launchers import get_all_external_games
+    ext_g = get_all_external_games()
+    print(f"  ✓ Detección de Lanzadores Externos (Steam, Epic, GOG): {len(ext_g)} juego(s) detectado(s).")
     print(f"  ✓ {len(files_to_check)} archivos compilados sin errores sintácticos.")
     print("  ✓ Todos los 8 componentes modales y desplegables implementan navegación por mando y auto-scroll.")
 except Exception as e:

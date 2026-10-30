@@ -31,9 +31,9 @@ GENERIC_SUBDIRS = {
 def clean_game_name(raw_name: str) -> str:
     """Limpia nombres de carpetas eliminando tags de versión, repack, corchetes, etc."""
     name = raw_name
-    # 1. Eliminar contenido entre corchetes o paréntesis típicos de scene/repack
+    # 1. Eliminar contenido entre corchetes o paréntesis típicos de scene/repack/ROMs
     name = re.sub(r'\[.*?\]', '', name)
-    name = re.sub(r'\(.*?(repack|gog|v\d|multi|edition|build|fitgirl|dodi|codex).*?\)', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\(.*?\)', '', name)
     
     # 2. Eliminar palabras clave comunes de la scene
     scene_words = [

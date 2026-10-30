@@ -46,6 +46,7 @@ from ui.dropdowns import FloatingGlassMenu
 from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
+    ExternalImportDialog,
     show_info, show_error, ask_yes_no, browse_folder
 )
 from gamepad_manager import (
@@ -692,6 +693,9 @@ class App(ctk.CTk):
             current_wallpaper_path=game.get("wallpaper", "")
         )
 
+    def open_external_import_dialog(self):
+        ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.games)
+
     def scan_folder_for_games(self):
         folder = browse_folder(parent=self, title="Seleccionar Carpeta de Juegos")
         if not folder:
@@ -746,6 +750,7 @@ class App(ctk.CTk):
         items = [
             ("＋", "Agregar Juego", self.open_add_dialog),
             ("📁", "Escanear Carpeta", self.scan_folder_for_games),
+            ("🚀", "Importar de Steam / Epic / GOG...", self.open_external_import_dialog),
             ("⚙", "Editar Juegos...", self.open_select_game_dialog),
             ("🎨", "Cambiar Carátula del Juego...", lambda: self.open_cover_picker_for_selected_game(initial_mode="cover")),
             ("🖼", "Cambiar Wallpaper de Fondo (16:9)...", lambda: self.open_cover_picker_for_selected_game(initial_mode="wallpaper")),

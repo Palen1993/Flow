@@ -176,6 +176,10 @@ class BaseGlassDialog(ctk.CTkToplevel):
         y = event.y_root - self._drag_y
         self.geometry(f"+{x}+{y}")
 
+    def close(self):
+        """Cierra y destruye limpiamente el diálogo modal."""
+        self.destroy()
+
     def on_cancel(self):
         """Acción por defecto al presionar Escape o botón B del mando."""
         self.destroy()
