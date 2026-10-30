@@ -1,9 +1,14 @@
 import os
 import threading
+import queue
 from typing import List, Dict, Any, Optional
+import tkinter as tk
+from PIL import Image, ImageTk
 import customtkinter as ctk
 
 from ui.dialogs.base_dialog import BaseGlassDialog
+from core.coverflow_engine import create_procedural_album
+from core.scanner import scan_directory_for_games, get_detected_games_folders
 from ui.controller_hud import get_button_icon_ctk
 from core.external_launchers import get_all_external_games, scan_emulator_roms, EMULATOR_PROFILES
 from core.cover_downloader import download_and_save_cover, download_and_save_wallpaper
@@ -30,15 +35,17 @@ class ExternalImportDialog(BaseGlassDialog):
 
     def __init__(self, parent, on_import_callback=None, existing_games: Optional[List[Dict[str, Any]]] = None):
         self.on_import = on_import_callback
+        self.existing_games = existing_games or []
         self.existing_paths = {
             os.path.normcase(os.path.abspath(g["path"]))
-            for g in (existing_games or [])
+            for g in self.existing_games
             if g.get("path")
         }
         self.family = getattr(parent, "_current_controller_family", "xbox")
         self.candidates: List[Dict[str, Any]] = []
         self.items_vars = []
         self._row_frames = []
+        self.thumb_refs = []
         self._focused_row_idx = 0
 
         super().__init__(
@@ -49,8 +56,10 @@ class ExternalImportDialog(BaseGlassDialog):
             corner_radius=22
         )
 
+        self._action_queue = queue.Queue()
         self._build_ui()
         self._bind_keys()
+        self._poll_action_queue()
         self._start_scan_thread()
 
     def _build_ui(self):
@@ -230,14 +239,70 @@ class ExternalImportDialog(BaseGlassDialog):
         self.bind("<Return>", lambda e: self.import_selected())
         self.bind("<space>", lambda e: self._toggle_focused_row())
 
+    def _poll_action_queue(self):
+        try:
+            while not self._action_queue.empty():
+                action, args = self._action_queue.get_nowait()
+                if action == "populate":
+                    self._populate_candidates(args)
+                elif action == "folder_scanned":
+                    found, folder_name = args
+                    if found:
+                        for fg in found:
+                            fg["platform"] = f"📁 {folder_name}"
+                        self.candidates.extend(found)
+                        self._populate_candidates(self.candidates)
+                        self.lbl_summary.configure(text=f"¡Se añadieron {len(found)} juego(s) de '{folder_name}' a la lista!")
+                    else:
+                        self.lbl_summary.configure(text=f"No se encontraron nuevos ejecutables de juegos en '{folder_name}'.")
+                elif action == "finish_import":
+                    try:
+                        if self.on_import:
+                            self.on_import(args)
+                    finally:
+                        self.close()
+        except Exception as e:
+            logger.debug(f"Error procesando action_queue: {e}")
+
+        if self.winfo_exists():
+            self.after(50, self._poll_action_queue)
+
     def _start_scan_thread(self):
         def _worker():
-            games = get_all_external_games(existing_paths=self.existing_paths)
+            candidates: List[Dict[str, Any]] = []
+            seen_paths = set()
+
+            # 1. Escanear carpetas de PC detectadas automáticamente (ej: D:\Juegos)
+            detected_folders = get_detected_games_folders(self.existing_games)
+            for folder in detected_folders:
+                try:
+                    folder_games = scan_directory_for_games(folder, existing_paths=self.existing_paths)
+                    folder_name = os.path.basename(os.path.abspath(folder)) or folder
+                    for fg in folder_games:
+                        p = fg.get("path")
+                        norm_p = os.path.normcase(os.path.abspath(p)) if p else ""
+                        if norm_p and norm_p not in seen_paths:
+                            seen_paths.add(norm_p)
+                            fg["platform"] = f"📁 {folder_name}"
+                            candidates.append(fg)
+                except Exception as e:
+                    logger.warning(f"Error escaneando carpeta {folder}: {e}")
+
+            # 2. Escanear clientes externos (Steam, Epic Games Store, GOG Galaxy)
             try:
-                if self.winfo_exists():
-                    self.after(0, lambda: self._populate_candidates(games) if self.winfo_exists() else None)
-            except Exception:
-                pass
+                external_games = get_all_external_games(existing_paths=self.existing_paths)
+                for eg in external_games:
+                    p = eg.get("path")
+                    norm_p = os.path.normcase(os.path.abspath(p)) if p else ""
+                    if norm_p and norm_p not in seen_paths:
+                        seen_paths.add(norm_p)
+                        candidates.append(eg)
+                    elif not norm_p:
+                        candidates.append(eg)
+            except Exception as e:
+                logger.warning(f"Error escaneando plataformas externas: {e}")
+
+            self._action_queue.put(("populate", candidates))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -245,6 +310,7 @@ class ExternalImportDialog(BaseGlassDialog):
         self.candidates = games
         self.items_vars.clear()
         self._row_frames.clear()
+        self.thumb_refs.clear()
 
         # Limpiar widgets previos en el scroll_frame
         for w in self.scroll_frame.winfo_children():
@@ -256,13 +322,13 @@ class ExternalImportDialog(BaseGlassDialog):
         if not games:
             lbl_empty = ctk.CTkLabel(
                 self.scroll_frame,
-                text="No se encontraron juegos instalados en Steam, Epic ni GOG.\n"
-                     "Puedes escanear carpetas de ROMs con el botón 'ROMs (Y)' arriba.",
+                text="No se encontraron juegos en carpetas locales ni clientes externos.\n"
+                     "Puedes seleccionar una carpeta con '📁 Carpeta PC' o ROMs con 'ROMs'.",
                 font=font_body(13),
                 text_color=COLOR_TEXT_DIM
             )
             lbl_empty.pack(pady=40)
-            self.lbl_summary.configure(text="0 juegos encontrados en clientes de juego externos.")
+            self.lbl_summary.configure(text="0 juegos encontrados.")
             return
 
         # Resumen por plataforma
@@ -273,6 +339,7 @@ class ExternalImportDialog(BaseGlassDialog):
         summary_parts = [f"{p}: {cnt}" for p, cnt in counts.items()]
         self.lbl_summary.configure(text="  ·  ".join(summary_parts))
 
+        thumb_size = 36
         for idx, g in enumerate(games):
             row = ctk.CTkFrame(
                 self.scroll_frame,
@@ -282,9 +349,9 @@ class ExternalImportDialog(BaseGlassDialog):
                 border_color="#242e42"
             )
             row.pack(fill="x", padx=4, pady=3)
-            row.grid_columnconfigure(2, weight=1)
+            row.grid_columnconfigure(3, weight=1)
 
-            # Checkbox variable
+            # Col 0: Checkbox variable (marcado por defecto solo si es NUEVO)
             is_new = not g.get("already_added", False)
             chk_var = ctk.BooleanVar(value=is_new)
             chk = ctk.CTkCheckBox(
@@ -300,11 +367,37 @@ class ExternalImportDialog(BaseGlassDialog):
                 border_color="#455470",
                 command=self._update_selected_count
             )
-            chk.grid(row=0, column=0, padx=(10, 6), pady=8)
+            chk.grid(row=0, column=0, padx=(10, 6), pady=6)
 
-            # Badge de plataforma
+            # Col 1: Miniatura de carátula
+            cov_path = g.get("cover", "")
+            if cov_path and os.path.isfile(cov_path):
+                try:
+                    with Image.open(cov_path) as im_raw:
+                        raw_im = im_raw.copy().convert("RGBA").resize((thumb_size, thumb_size), Image.Resampling.BILINEAR)
+                except Exception:
+                    raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
+            else:
+                raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
+
+            photo_im = ImageTk.PhotoImage(raw_im)
+            self.thumb_refs.append(photo_im)
+            lbl_thumb = tk.Label(row, image=photo_im, bg=row.cget("fg_color"), width=thumb_size, height=thumb_size)
+            lbl_thumb.grid(row=0, column=1, padx=(0, 8), pady=6)
+
+            # Col 2: Badge de plataforma
             platform = g.get("platform", "App")
-            plat_color = "#0078f2" if "Steam" in platform else ("#2b2b2b" if "Epic" in platform else "#6a1b9a")
+            if "Steam" in platform:
+                plat_color = "#0078f2"
+            elif "Epic" in platform:
+                plat_color = "#1f2937"
+            elif "GOG" in platform:
+                plat_color = "#6a1b9a"
+            elif "ROM" in platform:
+                plat_color = "#7c3aed"
+            else:
+                plat_color = "#0284c7"
+
             badge = ctk.CTkLabel(
                 row,
                 text=f" {platform} ",
@@ -313,9 +406,9 @@ class ExternalImportDialog(BaseGlassDialog):
                 fg_color=plat_color,
                 corner_radius=6
             )
-            badge.grid(row=0, column=1, padx=(0, 10), pady=8)
+            badge.grid(row=0, column=2, padx=(0, 8), pady=6)
 
-            # Campo de nombre editable
+            # Col 3: Campo de nombre editable
             name_entry = ctk.CTkEntry(
                 row,
                 font=("Segoe UI Semibold", 12),
@@ -326,9 +419,9 @@ class ExternalImportDialog(BaseGlassDialog):
                 text_color=COLOR_TEXT_MAIN
             )
             name_entry.insert(0, g.get("name", "Juego"))
-            name_entry.grid(row=0, column=2, sticky="ew", padx=4, pady=8)
+            name_entry.grid(row=0, column=3, sticky="ew", padx=4, pady=6)
 
-            # Estado (Nuevo vs Ya añadido)
+            # Col 4: Estado (NUEVO vs YA EN BIBLIOTECA)
             if is_new:
                 st_lbl = ctk.CTkLabel(
                     row,
@@ -339,11 +432,11 @@ class ExternalImportDialog(BaseGlassDialog):
             else:
                 st_lbl = ctk.CTkLabel(
                     row,
-                    text="YA AÑADIDO",
-                    font=("Segoe UI", 10),
-                    text_color=COLOR_TEXT_DIM
+                    text="✓ EN BIBLIOTECA",
+                    font=("Segoe UI", 10, "bold"),
+                    text_color="#94a3b8"
                 )
-            st_lbl.grid(row=0, column=3, padx=12, pady=8)
+            st_lbl.grid(row=0, column=4, padx=(8, 12), pady=6)
 
             self.items_vars.append((chk_var, name_entry, g))
             self._row_frames.append(row)
@@ -359,10 +452,12 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_import.configure(state="normal" if sel > 0 else "disabled")
 
     def _toggle_select_all(self):
-        any_unchecked = any(not chk_var.get() for chk_var, _, _ in self.items_vars)
-        target = True if any_unchecked else False
-        for chk_var, _, _ in self.items_vars:
-            chk_var.set(target)
+        new_vars = [chk_var for chk_var, _, orig in self.items_vars if not orig.get("already_added", False)]
+        if not new_vars:
+            new_vars = [chk_var for chk_var, _, _ in self.items_vars]
+        any_unchecked = any(not v.get() for v in new_vars)
+        for v in new_vars:
+            v.set(any_unchecked)
         self._update_selected_count()
 
     def _step_row(self, delta: int):
@@ -437,16 +532,7 @@ class ExternalImportDialog(BaseGlassDialog):
             existing = {os.path.normcase(os.path.abspath(g["path"])) for g in self.candidates if g.get("path")}
             existing.update(self.existing_paths)
             found = scan_directory_for_games(folder, existing_paths=existing)
-            def _apply():
-                if not self.winfo_exists():
-                    return
-                if found:
-                    self.candidates.extend(found)
-                    self._populate_candidates(self.candidates)
-                    self.lbl_summary.configure(text=f"¡Se añadieron {len(found)} juego(s) de '{folder_name}' a la lista!")
-                else:
-                    self.lbl_summary.configure(text=f"No se encontraron nuevos ejecutables de juegos en '{folder_name}'.")
-            self.after(0, _apply)
+            self._action_queue.put(("folder_scanned", (found, folder_name)))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -514,20 +600,6 @@ class ExternalImportDialog(BaseGlassDialog):
                     if download_and_save_wallpaper(wp_url, target_wp):
                         g["wallpaper"] = target_wp
 
-            def _finish_import():
-                try:
-                    if self.on_import:
-                        self.on_import(selected_games)
-                finally:
-                    try:
-                        self.close()
-                    except Exception:
-                        pass
-
-            try:
-                if self.winfo_exists():
-                    self.after(0, _finish_import)
-            except Exception:
-                pass
+            self._action_queue.put(("finish_import", selected_games))
 
         threading.Thread(target=_download_artwork_worker, daemon=True).start()

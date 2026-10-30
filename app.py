@@ -9,6 +9,7 @@ except Exception:
 import os
 import time
 import threading
+import queue
 import ctypes
 from typing import List, Dict, Any, Optional
 import customtkinter as ctk
@@ -746,9 +747,15 @@ class App(ctk.CTk):
             for g in self.games if g.get("path")
         }
 
+        scan_q = queue.Queue()
+
         def _scan_worker():
             candidates = scan_directory_for_games(folder, existing_paths=existing_paths)
-            def _apply_scan():
+            scan_q.put(candidates)
+
+        def _poll_scan():
+            try:
+                candidates = scan_q.get_nowait()
                 if not self.winfo_exists():
                     return
                 if not candidates:
@@ -769,25 +776,46 @@ class App(ctk.CTk):
                         pass
                     return
                 self._scan_results_dialog = ScanResultsDialog(self, folder, candidates, on_import_callback=self.on_games_imported)
-            try:
+                return
+            except queue.Empty:
                 if self.winfo_exists():
-                    self.after(0, _apply_scan)
-            except Exception:
-                pass
+                    self.after(50, _poll_scan)
 
+        self.after(50, _poll_scan)
         threading.Thread(target=_scan_worker, daemon=True).start()
 
     def on_games_imported(self, new_games: List[Dict[str, Any]]):
         if not new_games:
             return
         initial_count = len(self.games)
-        self.games.extend(new_games)
-        self.save_games()
+        existing_map = {
+            os.path.normcase(os.path.abspath(g["path"])): idx
+            for idx, g in enumerate(self.games) if g.get("path")
+        }
+        added_count = 0
+        updated_count = 0
+        for ng in new_games:
+            norm_p = os.path.normcase(os.path.abspath(ng.get("path", ""))) if ng.get("path") else ""
+            if norm_p and norm_p in existing_map:
+                idx = existing_map[norm_p]
+                self.games[idx].update({k: v for k, v in ng.items() if v is not None and k != "already_added"})
+                updated_count += 1
+            else:
+                self.games.append(ng)
+                if norm_p:
+                    existing_map[norm_p] = len(self.games) - 1
+                added_count += 1
 
+        self.save_games()
         target_idx = initial_count if initial_count < len(self.games) else 0
         self.cover_stage.set_games(self.games, target_index=target_idx)
         self.update_ui_details(target_idx)
-        self.set_status(f"Se añadieron {len(new_games)} juego(s) a la biblioteca.")
+        msg_parts = []
+        if added_count > 0:
+            msg_parts.append(f"{added_count} juego(s) añadido(s)")
+        if updated_count > 0:
+            msg_parts.append(f"{updated_count} actualizado(s)")
+        self.set_status(f"Biblioteca: {', '.join(msg_parts) if msg_parts else 'Sin cambios'}.")
 
     def close_active_menu(self):
         """Cierra y destruye inmediatamente el menú contextual flotante si está abierto."""

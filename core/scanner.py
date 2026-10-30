@@ -70,7 +70,7 @@ def score_candidate_exe(exe_path: str, base_dir: str, folder_name: str) -> float
         return -9999.0
         
     for bad in ['unins', 'uninstall', 'vcredist', 'dxsetup', 'crash', 'reporter', 
-                'anti-cheat', 'anticheat', 'handler', 'prereq', 'patch', 'cleanup', 'eac_']:
+                'anti-cheat', 'anticheat', 'handler', 'prereq', 'patch', 'cleanup', 'eac_', 'bootstrapper', 'eosbootstrapper', 'redist']:
         if bad in name_lower:
             return -9999.0
 
@@ -236,6 +236,9 @@ def scan_directory_for_games(root_dir: str, existing_paths: Optional[set] = None
                 if norm_path not in added_exe_paths:
                     added_exe_paths.add(norm_path)
                     game_name = clean_game_name(sub)
+                    if game_name.lower() in ("epic games", "steam", "gog", "games", "juegos"):
+                        exe_base = os.path.splitext(os.path.basename(best_exe))[0]
+                        game_name = clean_game_name(exe_base)
                     fake_game = {"name": game_name, "path": best_exe}
                     cover_path = resolve_game_cover(fake_game, root_dir=sub_path, force_rescan=False)
                     is_already_added = norm_path in existing_paths
@@ -274,3 +277,40 @@ def scan_directory_for_games(root_dir: str, existing_paths: Optional[set] = None
                     })
 
     return results
+
+def get_detected_games_folders(existing_games: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    r"""
+    Identifica de forma automática e inteligente las carpetas principales de juegos del usuario:
+    1. Carpetas deducidas de los juegos ya registrados en games.json (ej: D:\Juegos)
+    2. Rutas estándar en discos locales (D:\Juegos, C:\Juegos, D:\Games, etc.)
+    3. Rutas personalizadas guardadas previamente.
+    """
+    folders: List[str] = []
+    seen: set = set()
+
+    # 1. Analizar juegos existentes en la biblioteca
+    for g in (existing_games or []):
+        p = g.get("path")
+        if p and os.path.isabs(p):
+            norm_p = os.path.normpath(p)
+            parts = norm_p.split(os.sep)
+            if len(parts) >= 3:
+                cand_folder = os.path.join(parts[0] + os.sep, parts[1])
+                cand_norm = os.path.normcase(os.path.abspath(cand_folder))
+                if os.path.isdir(cand_folder) and cand_norm not in seen:
+                    cand_lower = cand_norm.lower()
+                    if "program files" not in cand_lower and "windows" not in cand_lower and "appdata" not in cand_lower:
+                        seen.add(cand_norm)
+                        folders.append(cand_folder)
+
+    # 2. Rutas comunes en unidades de almacenamiento locales
+    for drive_letter in ["D", "C", "E", "F", "G"]:
+        for name in ["Juegos", "Games"]:
+            cand = f"{drive_letter}:\\{name}"
+            cand_norm = os.path.normcase(os.path.abspath(cand))
+            if os.path.isdir(cand) and cand_norm not in seen:
+                seen.add(cand_norm)
+                folders.append(cand)
+
+    return folders
+
