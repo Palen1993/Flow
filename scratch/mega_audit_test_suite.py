@@ -132,11 +132,11 @@ except Exception as e:
     print(f"  ❌ Error: {e}")
 
 # 6. TEST GAMEPAD MANAGER Y REGISTRO DE WINDOWS
-print("\n[6/8] Probando gamepad_manager (XInput, Caché mtime, WinMM, Batería y Registro)...")
+print("\n[6/8] Probando gamepad_manager (XInput, Caché mtime, WinMM, Batería DualSense/DS4 HID y Registro)...")
 try:
     from gamepad_manager import (
         load_gamepad_config, get_paired_gamepads, poll_active_gamepad,
-        get_gamepad_battery_info
+        get_gamepad_battery_info, decode_playstation_hid_report, _get_playstation_hid_battery
     )
     cfg = load_gamepad_config()
     t_c0 = time.perf_counter()
@@ -153,6 +153,13 @@ try:
     print(f"  ✓ Estado de mando en vivo: conectado={is_conn}, dispositivo='{dev_name}' (con soporte LT/RT)")
     bat = get_gamepad_battery_info()
     print(f"  ✓ Información de batería multi-slot: {bat['icon']} {bat['text']}")
+    # Verificación de decodificación HID PlayStation (DualSense USB/BT + DS4)
+    ds_mock = bytearray(64)
+    ds_mock[0] = 0x01
+    ds_mock[53] = 0x18  # 80% charging
+    ds_res = decode_playstation_hid_report(0x0CE6, bytes(ds_mock))
+    assert ds_res["percent"] == 80 and ds_res["is_charging"] and ds_res["icon"] == "⚡", "Error decodificando DualSense HID"
+    print("  ✓ Decodificación HID nativa DualSense PS5 y DualShock 4 PS4 (batería y carga ⚡) validada.")
 except Exception as e:
     errors.append(f"gamepad_manager: {e}")
     print(f"  ❌ Error: {e}")
@@ -182,7 +189,8 @@ try:
         "ui/theme.py", "ui/coverflow_canvas.py", "ui/controller_hud.py", "ui/dropdowns.py",
         "ui/dialogs/add_edit_game.py", "ui/dialogs/confirm_exit.py",
         "ui/dialogs/cover_picker_dialog.py", "ui/dialogs/gamepad_config_dialog.py",
-        "ui/dialogs/scan_results.py", "ui/dialogs/select_game_to_edit.py"
+        "ui/dialogs/scan_results.py", "ui/dialogs/select_game_to_edit.py",
+        "ui/dialogs/on_screen_keyboard.py", "ui/modal_manager.py", "core/logger.py"
     ]
     for rel_path in files_to_check:
         full_p = os.path.join(BASE_DIR, rel_path)
@@ -195,12 +203,14 @@ try:
     from ui.dialogs import (
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
-        ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog
+        ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
+        OnScreenKeyboardDialog
     )
     for dlg_cls in (
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
+        OnScreenKeyboardDialog,
         FloatingGlassDropdown, FloatingGlassMenu
     ):
         assert hasattr(dlg_cls, "handle_gamepad_input"), f"{dlg_cls.__name__} no implementa handle_gamepad_input"

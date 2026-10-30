@@ -64,8 +64,14 @@ class _ControllerRow(ctk.CTkFrame):
 
         lvl = info.get("level", "")
         pct = int(info.get("percent", 0) or 0)
+        is_charging = info.get("is_charging", False)
         if lvl == "directinput":
             col, pct_txt, state, val = COLOR_CYAN_ACCENT, "OK", "Conectado · batería no disponible (DirectInput)", 1.0
+        elif is_charging:
+            if pct >= 100 or lvl == "full":
+                col, pct_txt, state, val = COLOR_STATUS_SUCCESS, "100%", "Batería completamente cargada (⚡)", 1.0
+            else:
+                col, pct_txt, state, val = COLOR_CYAN_ACCENT, f"{pct}%", f"Cargando batería (⚡) · {pct}%", max(0.0, min(1.0, pct / 100.0))
         elif info.get("is_wired"):
             col, pct_txt, state, val = COLOR_CYAN_ACCENT, "USB", "Conectado por cable USB", 1.0
         elif lvl == "unknown":
