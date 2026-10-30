@@ -30,7 +30,13 @@ from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
-    COLOR_BG_DARK, COLOR_TEXT_MAIN, COLOR_TEXT_MUTED, font_button, font_title
+    COLOR_BG_DARK, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY,
+    COLOR_GLASS_BORDER,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
+    COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
+    font_button, font_title, font_body
 )
 
 _GLOBAL_THUMB_CACHE: Dict[str, Image.Image] = {}
@@ -103,7 +109,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
         except Exception:
             pass
 
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
 
         # Estado interno de candidatos y caché de imágenes
@@ -235,8 +241,8 @@ class CoverPickerDialog(ctk.CTkToplevel):
         self.card = ctk.CTkFrame(
             self,
             corner_radius=20,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5
         )
         self.card.pack(fill="both", expand=True, padx=2, pady=2)
@@ -251,7 +257,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             header_frame,
             text="🎨  Selector de Carátula y Wallpaper (Google • Steam • GOG)",
             font=("Segoe UI Semibold", 15),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         self.lbl_title.pack(side="left", padx=16, pady=8)
 
@@ -263,7 +269,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             corner_radius=16,
             fg_color="#222838",
             hover_color="#ff2d55",
-            text_color="#ffffff",
+            text_color=COLOR_TEXT_WHITE,
             font=("Segoe UI", 13, "bold"),
             command=self.destroy
         )
@@ -282,7 +288,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             font=("Segoe UI Semibold", 11),
             fg_color="#007aff",
             hover_color="#0062cc",
-            text_color="#ffffff",
+            text_color=COLOR_TEXT_WHITE,
             command=lambda: self._switch_asset_mode("cover")
         )
         self.btn_mode_cover.pack(side="left", padx=(3, 2), pady=3)
@@ -298,7 +304,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             font=("Segoe UI Semibold", 11),
             fg_color="transparent",
             hover_color="#1e2638",
-            text_color="#94a3b8",
+            text_color=COLOR_TEXT_MUTED,
             command=lambda: self._switch_asset_mode("wallpaper")
         )
         self.btn_mode_wallpaper.pack(side="left", padx=(2, 3), pady=3)
@@ -310,7 +316,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
         # -------------------------------------------------------------
         # 2. Barra de Búsqueda
         # -------------------------------------------------------------
-        search_bar = ctk.CTkFrame(self.card, fg_color="#181d28", corner_radius=14, border_width=1.2, border_color="#2b3345")
+        search_bar = ctk.CTkFrame(self.card, fg_color="#181d28", corner_radius=14, border_width=1.2, border_color=COLOR_GLASS_BORDER)
         search_bar.pack(fill="x", padx=16, pady=(0, 8))
 
         self.entry_search = ctk.CTkEntry(
@@ -319,7 +325,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             font=("Segoe UI", 13),
             fg_color="#0f1218",
             border_color="#242a3a",
-            text_color="#f8fafc",
+            text_color=COLOR_TEXT_MAIN,
             corner_radius=10,
             height=36
         )
@@ -338,7 +344,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             border_color="#3894ff",
             border_width=1.0,
             corner_radius=14,
-            text_color="#ffffff",
+            text_color=COLOR_TEXT_WHITE,
             height=36,
             width=120,
             command=self._start_search
@@ -349,7 +355,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.card,
             text="Consultando Google, Steam y GOG...",
             font=("Segoe UI", 11),
-            text_color="#94a3b8"
+            text_color=COLOR_TEXT_MUTED
         )
         self.lbl_status.pack(anchor="w", padx=20, pady=(0, 6))
 
@@ -416,7 +422,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.preview_panel,
             text="👁  Vista Previa en Cover Flow",
             font=("Segoe UI Semibold", 13),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         self.lbl_prev_hdr.pack(pady=(10, 1))
 
@@ -424,7 +430,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.preview_panel,
             text="Arrastra la imagen o usa los botones para encuadrar",
             font=("Segoe UI", 10),
-            text_color="#94a3b8"
+            text_color=COLOR_TEXT_MUTED
         )
         self.lbl_prev_sub.pack(pady=(0, 4))
 
@@ -446,7 +452,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.preview_panel,
             text="Selecciona una carátula para previsualizar",
             font=("Segoe UI Semibold", 10),
-            text_color="#38bdf8",
+            text_color=COLOR_CYAN_ACCENT,
             wraplength=275,
             justify="center"
         )
@@ -459,7 +465,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             image=get_button_icon_ctk("y", size=18),
             compound="right",
             font=("Segoe UI Semibold", 10),
-            text_color="#cbd5e1"
+            text_color=COLOR_TEXT_MUTED_LIGHT
         )
         self.lbl_fit_title.pack(pady=(2, 3))
 
@@ -488,7 +494,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 font=("Segoe UI Semibold", 10),
                 fg_color="#007aff" if p_idx == 0 else "#1a202c",
                 hover_color="#0062cc",
-                text_color="#ffffff" if p_idx == 0 else "#cbd5e1",
+                text_color=COLOR_TEXT_WHITE if p_idx == 0 else "#cbd5e1",
                 command=lambda idx=p_idx: self._set_fit_preset(idx)
             )
             b.grid(row=0, column=col_idx, padx=3, pady=2, sticky="ew")
@@ -502,7 +508,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.slider_frame,
             text="Ajuste fino de encuadre (LB / RB):",
             font=("Segoe UI", 9),
-            text_color="#94a3b8"
+            text_color=COLOR_TEXT_MUTED
         )
         self.lbl_sl.pack(anchor="w")
 
@@ -529,7 +535,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.blur_slider_frame,
             text="Borrosidad / Desenfoque (LT / RT): 1.5 (Suave)",
             font=("Segoe UI", 9),
-            text_color="#94a3b8"
+            text_color=COLOR_TEXT_MUTED
         )
         self.lbl_blur_sl.pack(anchor="w")
 
@@ -564,7 +570,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             hover_color="#283040",
             border_color="#333c50",
             border_width=1.0,
-            text_color="#cbd5e1",
+            text_color=COLOR_TEXT_MUTED_LIGHT,
             height=38,
             corner_radius=19,
             width=128,
@@ -582,7 +588,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             hover_color="#0062cc",
             border_color="#3894ff",
             border_width=1.2,
-            text_color="#ffffff",
+            text_color=COLOR_TEXT_WHITE,
             height=38,
             corner_radius=19,
             width=235,
@@ -606,8 +612,8 @@ class CoverPickerDialog(ctk.CTkToplevel):
         """Actualiza pestañas, etiquetas, presets y deslizadores según estemos en Carátula o Wallpaper 16:9."""
         is_wp = (self.asset_mode == "wallpaper")
         if is_wp:
-            self.btn_mode_cover.configure(fg_color="transparent", text_color="#94a3b8")
-            self.btn_mode_wallpaper.configure(fg_color="#007aff", text_color="#ffffff")
+            self.btn_mode_cover.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED)
+            self.btn_mode_wallpaper.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
             self.lbl_prev_hdr.configure(text="👁  Vista Previa en Big Picture")
             self.lbl_prev_sub.configure(text="Fondo 16:9 a pantalla completa (sin barras)")
             self.lbl_fit_title.configure(text="Ajustes rápidos de Fondo ")
@@ -624,14 +630,14 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 b.configure(
                     text=lbl_t,
                     fg_color="#ff3b30" if (i == 4 and is_active) else ("#007aff" if is_active else "#1a202c"),
-                    text_color="#ffffff" if is_active else ("#fca5a5" if i == 4 else "#cbd5e1")
+                    text_color=COLOR_TEXT_WHITE if is_active else ("#fca5a5" if i == 4 else "#cbd5e1")
                 )
             norm_slider = self._opacity_to_slider(self.wp_opacity)
             self.offset_slider.set(norm_slider)
             self.blur_slider.set(max(0.0, min(1.0, self.wp_blur / 12.0)))
         else:
-            self.btn_mode_cover.configure(fg_color="#007aff", text_color="#ffffff")
-            self.btn_mode_wallpaper.configure(fg_color="transparent", text_color="#94a3b8")
+            self.btn_mode_cover.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
+            self.btn_mode_wallpaper.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED)
             self.lbl_prev_hdr.configure(text="👁  Vista Previa en Cover Flow")
             self.lbl_prev_sub.configure(text="Arrastra la imagen o usa los botones para encuadrar")
             self.lbl_fit_title.configure(text="Modo de adaptación al cuadro ")
@@ -645,7 +651,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 b.configure(
                     text=lbl_t,
                     fg_color="#007aff" if is_active else "#1a202c",
-                    text_color="#ffffff" if is_active else "#cbd5e1"
+                    text_color=COLOR_TEXT_WHITE if is_active else "#cbd5e1"
                 )
             self.offset_slider.set(self.crop_offset if self.crop_offset is not None else 0.35)
 
@@ -960,7 +966,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 is_act = (i == preset_idx)
                 b.configure(
                     fg_color="#007aff" if is_act else "#1a202c",
-                    text_color="#ffffff" if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
+                    text_color=COLOR_TEXT_WHITE if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
                 )
             cur_pil = self.raw_pil_by_idx.get(self.selected_card_idx) or self.current_wallpaper_pil
             self._update_live_preview(cur_pil)
@@ -982,9 +988,9 @@ class CoverPickerDialog(ctk.CTkToplevel):
 
         for i, b in enumerate(self._fit_buttons):
             if i == preset_idx:
-                b.configure(fg_color="#007aff", text_color="#ffffff")
+                b.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
             else:
-                b.configure(fg_color="#1a202c", text_color="#cbd5e1")
+                b.configure(fg_color="#1a202c", text_color=COLOR_TEXT_MUTED_LIGHT)
 
         cur_pil = self.raw_pil_by_idx.get(self.selected_card_idx)
         self._update_live_preview(cur_pil)
@@ -1035,7 +1041,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             is_act = (i == self._wp_preset_idx)
             b.configure(
                 fg_color="#007aff" if is_act else "#1a202c",
-                text_color="#ffffff" if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
+                text_color=COLOR_TEXT_WHITE if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
             )
 
     def _on_preview_drag_start(self, event):
@@ -1079,7 +1085,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 w, h = orig_sz if orig_sz else preview_src.size
                 self.lbl_prev_info.configure(
                     text=f"Wallpaper 16:9 ({w}×{h} px)\nOpacidad: {pct}%  •  Borrosidad: {self.wp_blur:.1f} ({blur_tag})",
-                    text_color="#38bdf8"
+                    text_color=COLOR_CYAN_ACCENT
                 )
                 mini_bg = compose_big_picture_wallpaper_bg(
                     preview_src,
@@ -1092,7 +1098,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             else:
                 self.lbl_prev_info.configure(
                     text=f"Selecciona un wallpaper 16:9 a la izquierda\nOpacidad: {pct}%  •  Borrosidad: {self.wp_blur:.1f}",
-                    text_color="#94a3b8"
+                    text_color=COLOR_TEXT_MUTED
                 )
                 mini_bg = Image.new("RGBA", (mini_w, mini_h), (15, 18, 24, 255))
 
@@ -1132,7 +1138,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             base_im = create_procedural_album(self.game_name or "Juego", size=box_size)
             self.lbl_prev_info.configure(
                 text="Selecciona cualquier carátula de la izquierda para ver cómo queda en la caja.",
-                text_color="#94a3b8"
+                text_color=COLOR_TEXT_MUTED
             )
         else:
             orig_sz = None
@@ -1143,7 +1149,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
             pct = int(round((self.crop_offset if self.crop_offset is not None else self.offset_slider.get()) * 100))
             self.lbl_prev_info.configure(
                 text=f"Original: {w}×{h} px → Caja 1:1\nModo: {mode_label} (Encuadre {pct}%)",
-                text_color="#38bdf8"
+                text_color=COLOR_CYAN_ACCENT
             )
             base_im = pil_img
 
@@ -1182,12 +1188,12 @@ class CoverPickerDialog(ctk.CTkToplevel):
         if is_wp:
             self.lbl_status.configure(
                 text=f"🌐 Buscando wallpapers apaisados (16:9 HD) para '{query}'...",
-                text_color="#38bdf8"
+                text_color=COLOR_CYAN_ACCENT
             )
         else:
             self.lbl_status.configure(
                 text=f"🌐 Buscando carátulas en Google, Steam y GOG para '{query}'...",
-                text_color="#38bdf8"
+                text_color=COLOR_CYAN_ACCENT
             )
 
         if self._thumb_executor:
@@ -1399,13 +1405,13 @@ class CoverPickerDialog(ctk.CTkToplevel):
             self.btn_confirm.configure(state="normal", text="✓ Aplicar Wallpaper 16:9 ")
             self.lbl_status.configure(
                 text=f"Wallpaper seleccionado: '{chosen.get('name')}'. Ajusta Opacidad (LB/RB) y Borrosidad (LT/RT) a la derecha.",
-                text_color="#38bdf8"
+                text_color=COLOR_CYAN_ACCENT
             )
         else:
             self.btn_confirm.configure(state="normal", text="✓ Aplicar Esta Carátula ")
             self.lbl_status.configure(
                 text=f"Previsualizando: '{chosen.get('name')}'. Usa los botones 'Auto / Completo / Arriba / Centro / Abajo' a la derecha para encuadrarla.",
-                text_color="#38bdf8"
+                text_color=COLOR_CYAN_ACCENT
             )
 
     def _select_card_by_index(self, idx: int, auto_confirm: bool = False):

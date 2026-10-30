@@ -32,9 +32,12 @@ from core.cover_resolver import resolve_game_cover
 from core.scanner import scan_directory_for_games
 
 from ui.theme import (
-    COLOR_BG_DARK, COLOR_BG_CANVAS, COLOR_TRANS_KEY,
+    COLOR_BG_DARK, COLOR_BG_CANVAS, COLOR_BG_CARD, COLOR_TRANS_KEY,
+    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER,
     COLOR_CYAN_ACCENT, COLOR_CYAN_GLOW,
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING, COLOR_STATUS_DANGER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
     font_title, font_button, font_body
 )
 from ui.coverflow_canvas import CoverFlowCanvas
@@ -204,11 +207,11 @@ class App(ctk.CTk):
             width=58,
             height=36,
             corner_radius=18,
-            fg_color="#141722",
-            hover_color="#242a3a",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            hover_color=COLOR_GLASS_HOVER,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.2,
-            text_color="#f8fafc",
+            text_color=COLOR_TEXT_MAIN,
             font=("Segoe UI", 15, "bold"),
             command=self.toggle_top_menu
         )
@@ -220,11 +223,11 @@ class App(ctk.CTk):
             width=78,
             height=36,
             corner_radius=18,
-            fg_color="#141722",
-            hover_color="#242a3a",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            hover_color=COLOR_GLASS_HOVER,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.2,
-            text_color="#38bdf8",
+            text_color=COLOR_CYAN_ACCENT,
             font=font_button(12),
             command=self._show_battery_info
         )
@@ -259,14 +262,14 @@ class App(ctk.CTk):
         self.lbl_game_title = ctk.CTkLabel(
             bottom_panel, text="",
             font=font_title(26),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         self.lbl_game_title.grid(row=0, column=0, pady=(0, 2))
 
         self.lbl_status = ctk.CTkLabel(
             bottom_panel, text="",
             font=font_body(12),
-            text_color="#64748b"
+            text_color=COLOR_TEXT_DIM
         )
         self.lbl_status.grid(row=1, column=0, pady=(0, 10))
         self._status_reset_job = None
@@ -282,7 +285,7 @@ class App(ctk.CTk):
             border_color=COLOR_IOS_BLUE_BORDER,
             border_width=1.2,
             corner_radius=24,
-            text_color="#ffffff",
+            text_color=COLOR_TEXT_WHITE,
             command=self.launch_current_game
         )
         self.btn_launch.grid(row=2, column=0, pady=(0, 4))
@@ -442,7 +445,7 @@ class App(ctk.CTk):
         if n == 0 or index >= n:
             self.lbl_game_title.configure(text="")
             if hasattr(self, "lbl_status") and self.lbl_status:
-                self.lbl_status.configure(text="Añade o escanea tu carpeta de juegos desde el menú ⚙", text_color="#64748b")
+                self.lbl_status.configure(text="Añade o escanea tu carpeta de juegos desde el menú ⚙", text_color=COLOR_TEXT_DIM)
             self.btn_launch.configure(state="disabled")
             if hasattr(self, "cover_stage") and self.cover_stage:
                 self.cover_stage.ui_title = ""
@@ -457,7 +460,7 @@ class App(ctk.CTk):
         sub_str = self._get_game_subtitle(game)
         self.lbl_game_title.configure(text=title_str)
         if hasattr(self, "lbl_status") and self.lbl_status and not getattr(self, "_status_reset_job", None):
-            self.lbl_status.configure(text=sub_str, text_color="#94a3b8")
+            self.lbl_status.configure(text=sub_str, text_color=COLOR_TEXT_MUTED)
         self.btn_launch.configure(state="normal")
         if hasattr(self, "cover_stage") and self.cover_stage:
             self.cover_stage.ui_title = title_str
@@ -550,7 +553,7 @@ class App(ctk.CTk):
                     except Exception:
                         pass
                     self._status_reset_job = None
-                self.lbl_status.configure(text=msg, text_color="#38bdf8")
+                self.lbl_status.configure(text=msg, text_color=COLOR_CYAN_ACCENT)
                 if hasattr(self, "cover_stage") and self.cover_stage:
                     self.cover_stage.ui_status = msg
                     self.cover_stage.ui_status_color = (56, 189, 248)
@@ -560,7 +563,7 @@ class App(ctk.CTk):
                     self._status_reset_job = None
                     if 0 <= self.selected_index < len(self.games):
                         sub_s = self._get_game_subtitle(self.games[self.selected_index])
-                        self.lbl_status.configure(text=sub_s, text_color="#64748b")
+                        self.lbl_status.configure(text=sub_s, text_color=COLOR_TEXT_DIM)
                         if hasattr(self, "cover_stage") and self.cover_stage:
                             self.cover_stage.ui_status = sub_s
                             self.cover_stage.ui_status_color = (203, 213, 225)
@@ -640,20 +643,20 @@ class App(ctk.CTk):
                 txt = f"{info['icon']} {info['text']}"
                 lvl = info.get("level", "")
                 if lvl == "empty":
-                    t_color = "#ff2d55"   # Rojo crítico iOS (<15%)
+                    t_color = COLOR_STATUS_DANGER   # Rojo crítico iOS (<15%)
                     rgb_col = (255, 45, 85)
                 elif lvl == "low":
-                    t_color = "#ff9500"   # Ámbar advertencia iOS (<35%)
+                    t_color = COLOR_STATUS_WARNING   # Ámbar advertencia iOS (<35%)
                     rgb_col = (255, 149, 0)
                 elif info.get("is_wired") or lvl == "directinput":
-                    t_color = "#007aff"   # Azul USB/DirectInput iOS
+                    t_color = COLOR_IOS_BLUE   # Azul USB/DirectInput iOS
                     rgb_col = (56, 189, 248)
                 else:
-                    t_color = "#34c759"   # Verde iOS (>70%)
+                    t_color = COLOR_STATUS_SUCCESS   # Verde iOS (>70%)
                     rgb_col = (52, 199, 89)
             else:
                 txt = "🎮 Mando"
-                t_color = "#64748b"
+                t_color = COLOR_TEXT_DIM
                 rgb_col = (100, 116, 139)
 
             # Mando secundario (solo lectura): mostrar su batería junto a la del principal

@@ -8,8 +8,14 @@ from core.coverflow_engine import create_procedural_album
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_CYAN_ACCENT,
-    COLOR_CYAN_GLOW, font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
+    COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
+    COLOR_CYAN_ACCENT, COLOR_CYAN_GLOW,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
+    COLOR_BTN_SECONDARY_BG,
+    COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region
 )
 
 class ScanResultsDialog(ctk.CTkToplevel):
@@ -35,7 +41,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         except Exception:
             pass
             
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
         
         self.items_vars = []  # Lista de tuplas: (checkbox_var, name_entry, candidate_data)
@@ -96,8 +102,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(
             self,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5,
             corner_radius=22
         )
@@ -116,7 +122,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         lbl_title = ctk.CTkLabel(
             top_row, text="📁  Juegos Detectados en Carpeta",
             font=font_button(18), 
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         lbl_title.pack(side="left")
         
@@ -127,8 +133,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
         btn_sel_all = ctk.CTkButton(
             top_row, text="Marcar todos ", image=get_button_icon_ctk("x", size=18), compound="right",
             width=125, height=30,
-            fg_color="#007aff", hover_color="#0062cc",
-            corner_radius=15, text_color="#ffffff",
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
+            corner_radius=15, text_color=COLOR_TEXT_WHITE,
             font=font_button(11), command=lambda: self.select_all(True)
         )
         btn_sel_all.pack(side="right", padx=(6, 0))
@@ -136,8 +142,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
         btn_desel_all = ctk.CTkButton(
             top_row, text="Desmarcar ", image=get_button_icon_ctk("y", size=18), compound="right",
             width=115, height=30,
-            fg_color="#1c212d", hover_color="#262d3d", border_color="#2b3345", border_width=1.2,
-            corner_radius=15, text_color="#94a3b8",
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            corner_radius=15, text_color=COLOR_TEXT_MUTED,
             font=font_button(11), command=lambda: self.select_all(False)
         )
         btn_desel_all.pack(side="right")
@@ -149,7 +155,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
             
         lbl_path = ctk.CTkLabel(
             header_frame, text=f"Carpeta: {folder_display}",
-            font=font_body(12), text_color="#64748b", anchor="w"
+            font=font_body(12), text_color=COLOR_TEXT_DIM, anchor="w"
         )
         lbl_path.pack(fill="x", padx=0, pady=(0, 6))
         
@@ -161,7 +167,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
         
         thumb_size = 48
         for cand in self.candidates:
-            row_frame = ctk.CTkFrame(scroll_frame, fg_color="#181d28", corner_radius=14, border_color="#242c3d", border_width=1.0)
+            row_frame = ctk.CTkFrame(scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
             row_frame.pack(fill="x", pady=4, padx=2)
             self._row_frames.append(row_frame)
             
@@ -190,7 +196,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
             photo_im = ImageTk.PhotoImage(raw_im)
             self.thumb_refs.append(photo_im)
             
-            lbl_thumb = tk.Label(row_frame, image=photo_im, bg="#181d28", width=thumb_size, height=thumb_size)
+            lbl_thumb = tk.Label(row_frame, image=photo_im, bg=COLOR_BG_CARD_SECONDARY, width=thumb_size, height=thumb_size)
             lbl_thumb.pack(side="left", padx=(0, 12))
             
             # Centro: Nombre editable y ruta del ejecutable
@@ -200,8 +206,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
             name_entry = ctk.CTkEntry(
                 info_frame, height=32, corner_radius=16,
                 font=font_button(13),
-                fg_color="#0f1218", border_color="#2b3345", border_width=1.2,
-                text_color="#f8fafc"
+                fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_BORDER, border_width=1.2,
+                text_color=COLOR_TEXT_MAIN
             )
             name_entry.insert(0, cand["name"])
             name_entry.pack(fill="x", pady=(2, 2))
@@ -211,7 +217,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
                 exe_disp = "..." + exe_disp[-62:]
             lbl_exe = ctk.CTkLabel(
                 info_frame, text=f"Ejecutable: {exe_disp}",
-                font=font_body(11), text_color="#64748b", anchor="w"
+                font=font_body(11), text_color=COLOR_TEXT_DIM, anchor="w"
             )
             lbl_exe.pack(fill="x")
             
@@ -220,7 +226,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
                 lbl_badge = ctk.CTkLabel(
                     row_frame, text="En biblioteca",
                     font=font_button(11),
-                    fg_color="#2d2215", text_color="#f59e0b",
+                    fg_color="#2d2215", text_color=COLOR_STATUS_WARNING,
                     corner_radius=10, padx=8, pady=3
                 )
                 lbl_badge.pack(side="right", padx=12)
@@ -228,7 +234,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
                 lbl_badge = ctk.CTkLabel(
                     row_frame, text="Nuevo",
                     font=font_button(11),
-                    fg_color="#142c1f", text_color="#34c759",
+                    fg_color="#142c1f", text_color=COLOR_STATUS_SUCCESS,
                     corner_radius=10, padx=8, pady=3
                 )
                 lbl_badge.pack(side="right", padx=12)
@@ -241,15 +247,15 @@ class ScanResultsDialog(ctk.CTkToplevel):
         
         self.lbl_selected = ctk.CTkLabel(
             bottom_frame, text="",
-            font=font_button(12), text_color="#94a3b8"
+            font=font_button(12), text_color=COLOR_TEXT_MUTED
         )
         self.lbl_selected.pack(side="left", padx=4, pady=8)
         
         self.btn_import = ctk.CTkButton(
             bottom_frame, text="＋  Añadir a la Biblioteca ", image=get_button_icon_ctk("start", size=20), compound="right",
             height=38,
-            fg_color="#007aff", hover_color="#0062cc",
-            corner_radius=19, text_color="#ffffff",
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE,
             font=font_button(13),
             command=self.import_selected
         )
@@ -258,8 +264,8 @@ class ScanResultsDialog(ctk.CTkToplevel):
         btn_cancel = ctk.CTkButton(
             bottom_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
             width=125, height=38,
-            fg_color="#1c212d", hover_color="#262d3d", border_color="#2b3345", border_width=1.2,
-            corner_radius=19, text_color="#94a3b8", font=font_button(12),
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED, font=font_button(12),
             command=self.destroy
         )
         btn_cancel.pack(side="right", pady=8)
@@ -286,11 +292,11 @@ class ScanResultsDialog(ctk.CTkToplevel):
         for i, rf in enumerate(self._row_frames):
             if rf.winfo_exists():
                 if i == idx:
-                    rf.configure(border_color="#007aff", border_width=2.0, fg_color="#1d2536")
+                    rf.configure(border_color=COLOR_IOS_BLUE, border_width=2.0, fg_color="#1d2536")
                     edge = "top" if i == 0 else ("bottom" if i == len(self._row_frames) - 1 else None)
                     scroll_to_widget(self.scroll_frame, rf, force_edge=edge)
                 else:
-                    rf.configure(border_color="#242c3d", border_width=1.0, fg_color="#181d28")
+                    rf.configure(border_color=COLOR_BORDER_CARD, border_width=1.0, fg_color=COLOR_BG_CARD_SECONDARY)
 
     def select_all(self, val: bool):
         for var, _, _ in self.items_vars:

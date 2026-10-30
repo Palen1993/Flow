@@ -11,8 +11,13 @@ from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_CYAN_ACCENT,
-    COLOR_CYAN_BORDER, font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
+    COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
+    COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
+    COLOR_BTN_SECONDARY_BG,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region
 )
 
 class SelectGameToEditDialog(ctk.CTkToplevel):
@@ -37,7 +42,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         except Exception:
             pass
             
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
         
         # Opciones de monitores disponibles
@@ -186,8 +191,8 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(
             self,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5,
             corner_radius=22
         )
@@ -206,13 +211,13 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         lbl_title = ctk.CTkLabel(
             top_row, text="⚙  Editar Juegos",
             font=font_button(18), 
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         lbl_title.pack(side="left")
         
         self.lbl_count = ctk.CTkLabel(
             top_row, text=f"{len(self.games)} juegos",
-            font=font_body(12), text_color="#007aff"
+            font=font_body(12), text_color=COLOR_IOS_BLUE
         )
         self.lbl_count.pack(side="right")
         
@@ -222,16 +227,16 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         
         lbl_sub = ctk.CTkLabel(
             header_frame, text="Ajusta la configuración global o selecciona un juego para modificar sus detalles individuales:",
-            font=font_body(12), text_color="#64748b", anchor="w"
+            font=font_body(12), text_color=COLOR_TEXT_DIM, anchor="w"
         )
         lbl_sub.pack(fill="x", padx=4, pady=(0, 6))
         
         # 2. Barra de Herramientas Globales (Prioridad masiva + Monitor masivo)
         tools_card = ctk.CTkFrame(
             self.main_card,
-            fg_color="#181d28",
+            fg_color=COLOR_BG_CARD_SECONDARY,
             corner_radius=16,
-            border_color="#242c3d",
+            border_color=COLOR_BORDER_CARD,
             border_width=1.0
         )
         tools_card.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 6))
@@ -244,9 +249,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             variable=self.all_priority_var,
             command=self._on_toggle_all_priority,
             font=font_button(12),
-            text_color="#f1f5f9",
-            fg_color="#007aff",
-            hover_color="#0062cc",
+            text_color=COLOR_TEXT_BRIGHT,
+            fg_color=COLOR_IOS_BLUE,
+            hover_color=COLOR_IOS_BLUE_HOVER,
             border_color="#3a455c",
             border_width=1.5,
             corner_radius=6
@@ -266,7 +271,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             image=get_button_icon_ctk("rb", size=18),
             compound="right",
             font=font_button(12),
-            text_color="#94a3b8"
+            text_color=COLOR_TEXT_MUTED
         )
         lbl_mon.pack(side="left", padx=(0, 8))
         
@@ -290,8 +295,8 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             search_frame, textvariable=self.search_var,
             placeholder_text="🔍  Filtrar juegos por nombre o ejecutable...",
             height=38, corner_radius=19,
-            fg_color="#0f1218", border_color="#2b3345", border_width=1.2,
-            text_color="#f8fafc", placeholder_text_color="#64748b",
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            text_color=COLOR_TEXT_MAIN, placeholder_text_color=COLOR_TEXT_DIM,
             font=font_body(13)
         )
         search_entry.grid(row=0, column=0, sticky="ew")
@@ -308,9 +313,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         btn_close = ctk.CTkButton(
             footer, text="Cerrar ", image=get_button_icon_ctk("b", size=20), compound="right",
             width=128, height=38,
-            fg_color="#1c212d", hover_color="#262d3d",
-            border_color="#2b3345", border_width=1.2,
-            corner_radius=19, text_color="#94a3b8",
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
+            border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED,
             font=font_button(12), command=self.destroy
         )
         btn_close.pack(side="right", padx=4, pady=4)
@@ -374,11 +379,11 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         for i, (card, _) in enumerate(rows):
             if card.winfo_exists():
                 if i == row_idx:
-                    card.configure(border_color="#007aff", border_width=2.0, fg_color="#1d2536")
+                    card.configure(border_color=COLOR_IOS_BLUE, border_width=2.0, fg_color="#1d2536")
                     edge = "top" if i == 0 else ("bottom" if i == len(rows) - 1 else None)
                     scroll_to_widget(self.scroll_frame, card, force_edge=edge)
                 else:
-                    card.configure(border_color="#242c3d", border_width=1.0, fg_color="#181d28")
+                    card.configure(border_color=COLOR_BORDER_CARD, border_width=1.0, fg_color=COLOR_BG_CARD_SECONDARY)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
         if inputs.get("b", False) and not prev_inputs.get("b", False):
@@ -430,7 +435,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         return False
 
     def _create_game_card(self, orig_idx: int, game: Dict[str, Any]):
-        card = ctk.CTkFrame(self.scroll_frame, fg_color="#181d28", corner_radius=14, border_color="#242c3d", border_width=1.0)
+        card = ctk.CTkFrame(self.scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card.pack(fill="x", pady=4, padx=2)
         
         # Miniatura de carátula
@@ -456,7 +461,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         lbl_name = ctk.CTkLabel(
             info_box, text=game.get("name", "Juego"),
             font=font_button(14),
-            text_color="#f8fafc", anchor="w"
+            text_color=COLOR_TEXT_MAIN, anchor="w"
         )
         lbl_name.pack(fill="x")
         
@@ -470,8 +475,8 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         btn_edit = ctk.CTkButton(
             card, text="Editar ", image=get_button_icon_ctk("a", size=18), compound="right",
             width=102, height=32,
-            fg_color="#007aff", hover_color="#0062cc",
-            corner_radius=16, text_color="#ffffff",
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
+            corner_radius=16, text_color=COLOR_TEXT_WHITE,
             font=font_button(12),
             command=lambda i=orig_idx: self._select_game(i)
         )
@@ -485,7 +490,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             text="Prioridad",
             variable=hp_var,
             font=font_button(11),
-            text_color="#94a3b8",
+            text_color=COLOR_TEXT_MUTED,
             width=18,
             checkbox_width=18,
             checkbox_height=18,

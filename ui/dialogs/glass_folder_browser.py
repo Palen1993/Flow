@@ -7,7 +7,13 @@ from typing import Optional, List
 
 from ui.theme import (
     font_button, font_body, scroll_to_widget,
-    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER
+    COLOR_BG_CARD, COLOR_BG_DARK, COLOR_GLASS_BORDER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_LIGHT, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT,
+    COLOR_TEXT_MUTED, COLOR_TEXT_MUTED_LIGHT,
+    COLOR_CYAN_ACCENT,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
+    COLOR_STATUS_DANGER, COLOR_BG_INPUT_ACTIVE
 )
 from ui.controller_hud import get_button_icon_ctk
 from gamepad_manager import get_connected_controller_family
@@ -60,7 +66,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
     def _build_ui(self, title: str):
         self.card = ctk.CTkFrame(
             self, width=self.W - 20, height=self.H - 20, corner_radius=22,
-            fg_color="#141722", border_color="#2b3345", border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
         self.card.pack_propagate(False)
@@ -74,14 +80,14 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         icon_hdr = "📁" if self.select_mode == "folder" else "🎮"
         lbl_t = ctk.CTkLabel(
             header, text=f"{icon_hdr}  {title}",
-            font=("Segoe UI Semibold", 15), text_color="#f8fafc"
+            font=("Segoe UI Semibold", 15), text_color=COLOR_TEXT_MAIN
         )
         lbl_t.pack(side="left")
 
         btn_native = ctk.CTkButton(
             header, text="Explorador Windows 🗁", width=140, height=26,
             corner_radius=13, font=font_button(10), fg_color="#1e2434",
-            hover_color="#2a3348", text_color="#94a3b8",
+            hover_color="#2a3348", text_color=COLOR_TEXT_MUTED,
             command=self._use_native_picker
         )
         btn_native.pack(side="right")
@@ -102,20 +108,20 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             d_btn = ctk.CTkButton(
                 drive_bar, text=f"💾 {d}", width=64, height=26,
                 corner_radius=10, font=font_button(10), fg_color="#1b212f",
-                hover_color="#007aff", text_color="#e2e8f0",
+                hover_color="#007aff", text_color=COLOR_TEXT_LIGHT,
                 command=lambda p=d: self._change_directory(p)
             )
             d_btn.pack(side="left", padx=4, pady=4)
 
         self.lbl_path = ctk.CTkLabel(
             self.card, text=self.current_path, font=font_body(11),
-            text_color="#38bdf8", anchor="w"
+            text_color=COLOR_CYAN_ACCENT, anchor="w"
         )
         self.lbl_path.pack(fill="x", padx=20, pady=(0, 4))
 
         # 3. Lista desplazable de elementos
         self.scroll_frame = ctk.CTkScrollableFrame(
-            self.card, fg_color="#0f1218", corner_radius=14,
+            self.card, fg_color=COLOR_BG_DARK, corner_radius=14,
             border_width=1, border_color="#202533"
         )
         self.scroll_frame.pack(fill="both", expand=True, padx=18, pady=(0, 10))
@@ -127,8 +133,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         btn_cancel = ctk.CTkButton(
             footer, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=18),
             compound="right", width=110, height=36, corner_radius=18,
-            font=font_button(12), fg_color="#1c212d", hover_color="#283040",
-            border_color="#333c50", border_width=1.0, text_color="#cbd5e1",
+            font=font_button(12), fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER,
+            border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0, text_color=COLOR_TEXT_MUTED_LIGHT,
             command=self._on_cancel
         )
         btn_cancel.pack(side="left")
@@ -139,7 +145,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             image=get_button_icon_ctk("x", self.family, size=18), compound="right",
             height=36, corner_radius=18, font=font_button(12),
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
-            border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2, text_color="#ffffff",
+            border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2, text_color=COLOR_TEXT_WHITE,
             command=self._confirm_selection
         )
         self.btn_confirm_selection.pack(side="right")
@@ -148,7 +154,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             footer, text="Abrir / Entrar ", image=get_button_icon_ctk("a", self.family, size=18),
             compound="right", width=130, height=36, corner_radius=18,
             font=font_button(12), fg_color="#222838", hover_color="#2b3448",
-            border_color="#38435d", border_width=1.0, text_color="#f1f5f9",
+            border_color="#38435d", border_width=1.0, text_color=COLOR_TEXT_BRIGHT,
             command=self._activate_selected_item
         )
         self.btn_open.pack(side="right", padx=8)
@@ -200,7 +206,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             btn_up = ctk.CTkButton(
                 self.scroll_frame, text="  📁  ..  (Subir nivel) ",
                 anchor="w", height=34, corner_radius=10, font=font_button(11),
-                fg_color="#181e2b", hover_color="#242c3d", text_color="#38bdf8",
+                fg_color="#181e2b", hover_color="#242c3d", text_color=COLOR_CYAN_ACCENT,
                 command=self._go_up_directory
             )
             btn_up.pack(fill="x", padx=4, pady=2)
@@ -225,14 +231,14 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         except PermissionError:
             lbl_err = ctk.CTkLabel(
                 self.scroll_frame, text="⚠️ Acceso denegado por permisos de Windows",
-                font=font_body(11), text_color="#ff2d55"
+                font=font_body(11), text_color=COLOR_STATUS_DANGER
             )
             lbl_err.pack(pady=20)
             return
         except Exception as e:
             lbl_err = ctk.CTkLabel(
                 self.scroll_frame, text=f"Error: {e}",
-                font=font_body(11), text_color="#ff2d55"
+                font=font_body(11), text_color=COLOR_STATUS_DANGER
             )
             lbl_err.pack(pady=20)
             return
@@ -255,7 +261,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                 font=font_body(11),
                 fg_color="transparent",
                 hover_color="#222838",
-                text_color="#e2e8f0",
+                text_color=COLOR_TEXT_LIGHT,
                 command=lambda p=full_p: self._change_directory(p)
             )
             btn.pack(fill="x", padx=4, pady=1)
@@ -297,10 +303,10 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         for i, b in enumerate(self._item_buttons):
             if i == self._selected_index:
                 b.configure(
-                    fg_color="#242c3d",
-                    border_color="#38bdf8",
+                    fg_color=COLOR_BG_INPUT_ACTIVE,
+                    border_color=COLOR_CYAN_ACCENT,
                     border_width=1.2,
-                    text_color="#ffffff"
+                    text_color=COLOR_TEXT_WHITE
                 )
                 if scroll:
                     scroll_to_widget(self.scroll_frame, b)

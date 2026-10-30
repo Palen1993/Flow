@@ -15,11 +15,14 @@ COLOR_TRANS_KEY = "#000001"
 # -------------------------------------------------------------
 COLOR_BG_DARK = "#0f1218"           # Fondo principal profundo y sedoso
 COLOR_BG_CANVAS = "#0f1218"         # Fondo continuo del canvas Cover Flow
-COLOR_BG_CARD = "#141722"           # Tarjeta de vidrio ahumado principal
-COLOR_BG_CARD_SECONDARY = "#181d28" # Superficie interna secundaria
+COLOR_BG_CARD = "#141722"           # Tarjeta de vidrio ahumado principal / diálogos
+COLOR_BG_CARD_SECONDARY = "#181d28" # Superficie interna secundaria (cabeceras/listas)
 COLOR_BG_CARD_TERTIARY = "#1d2331"  # Superficie interna elevada
 COLOR_BG_DROPDOWN = "#131620"       # Fondo de menús flotantes estilo isla
 COLOR_BG_PILL = "#1a1f2b"           # Cápsula de control redondeada
+COLOR_BG_INPUT = "#181d28"          # Fondo de campos de entrada y cajas de texto
+COLOR_BG_INPUT_ACTIVE = "#242c3d"   # Fondo de campo con foco o cursor activo
+COLOR_BG_ITEM_HOVER = "#242a3a"     # Fondo de elemento resaltado o hover
 
 # -------------------------------------------------------------
 # Bordes y Biseles Especulares (Liquid Glass Highlights)
@@ -30,6 +33,9 @@ COLOR_GLASS_FILL = "#171b26"         # Relleno de vidrio translúcido
 COLOR_GLASS_HOVER = "#242a3a"        # Hover luminoso suave sobre vidrio
 COLOR_BORDER_DEFAULT = "#222836"
 COLOR_BORDER_CARD = "#2a3142"
+COLOR_BORDER_INPUT = "#2b3345"
+COLOR_BORDER_INPUT_FOCUS = "#38bdf8"
+COLOR_BORDER_FOCUS = "#343f55"       # Borde de botón/elemento con foco de mando
 
 # -------------------------------------------------------------
 # Acentos Vibrantes iOS (Iconic Pills)
@@ -40,19 +46,33 @@ COLOR_IOS_BLUE_HOVER = "#0062cc"
 COLOR_IOS_BLUE_BORDER = "#3894ff"
 COLOR_IOS_BLUE_GLOW = "#60a5fa"
 
-# Rojo Carmesí iOS (Pill Button "Delete")
+# Rojo Carmesí iOS (Pill Button "Delete", Cancelar, Batería Baja)
 COLOR_IOS_RED = "#ff2d55"
 COLOR_IOS_RED_HOVER = "#e02245"
 COLOR_IOS_RED_BORDER = "#ff6384"
 
-# Verde Interruptor iOS (Toggle / Online / Verified)
+# Verde Interruptor iOS (Toggle / Online / Verified / Batería Llena)
 COLOR_IOS_GREEN = "#34c759"
 COLOR_IOS_GREEN_HOVER = "#2db14f"
+
+# Ámbar / Naranja iOS (Avisos, Batería Media)
+COLOR_IOS_ORANGE = "#ff9500"
+COLOR_IOS_ORANGE_HOVER = "#e08500"
 
 # Cian & Resplandor Suave
 COLOR_CYAN_ACCENT = "#38bdf8"
 COLOR_CYAN_BORDER = "#007aff"
 COLOR_CYAN_GLOW = "#60a5fa"
+COLOR_CYAN_BRIGHT = "#00e5ff"
+
+# Estados de la Aplicación
+COLOR_STATUS_SUCCESS = COLOR_IOS_GREEN
+COLOR_STATUS_SUCCESS_HOVER = COLOR_IOS_GREEN_HOVER
+COLOR_STATUS_WARNING = COLOR_IOS_ORANGE
+COLOR_STATUS_WARNING_HOVER = COLOR_IOS_ORANGE_HOVER
+COLOR_STATUS_DANGER = COLOR_IOS_RED
+COLOR_STATUS_DANGER_HOVER = COLOR_IOS_RED_HOVER
+COLOR_STATUS_DANGER_BORDER = COLOR_IOS_RED_BORDER
 
 # -------------------------------------------------------------
 # Botones Primarios, Secundarios y de Peligro
@@ -72,12 +92,42 @@ COLOR_BTN_DANGER_BORDER = COLOR_IOS_RED_BORDER
 # -------------------------------------------------------------
 # Tipografía y Textos iOS
 # -------------------------------------------------------------
-COLOR_TEXT_MAIN = "#f8fafc"
-COLOR_TEXT_LIGHT = "#e2e8f0"
-COLOR_TEXT_MUTED = "#94a3b8"
-COLOR_TEXT_DIM = "#64748b"
+COLOR_TEXT_WHITE = "#ffffff"        # Blanco puro
+COLOR_TEXT_MAIN = "#f8fafc"         # Texto principal 95% blanco
+COLOR_TEXT_BRIGHT = "#f1f5f9"       # Texto destacado
+COLOR_TEXT_LIGHT = "#e2e8f0"        # Texto secundario claro
+COLOR_TEXT_MUTED_LIGHT = "#cbd5e1"  # Texto secundario medio
+COLOR_TEXT_MUTED = "#94a3b8"        # Texto atenuado/descripciones
+COLOR_TEXT_DIM = "#64748b"          # Texto terciario/apagado
+COLOR_TEXT_EXTRA_DIM = "#475569"    # Placeholder o deshabilitado
 COLOR_TEXT_CYAN = "#38bdf8"
 COLOR_TEXT_BLUE = "#007aff"
+COLOR_TEXT_GREEN = "#34c759"
+COLOR_TEXT_RED = "#ff2d55"
+COLOR_TEXT_ORANGE = "#ff9500"
+
+THEME_TOKENS = {
+    "bg_dark": COLOR_BG_DARK,
+    "bg_canvas": COLOR_BG_CANVAS,
+    "bg_card": COLOR_BG_CARD,
+    "bg_card_secondary": COLOR_BG_CARD_SECONDARY,
+    "bg_dropdown": COLOR_BG_DROPDOWN,
+    "bg_input": COLOR_BG_INPUT,
+    "bg_input_active": COLOR_BG_INPUT_ACTIVE,
+    "glass_border": COLOR_GLASS_BORDER,
+    "glass_border_light": COLOR_GLASS_BORDER_LIGHT,
+    "border_focus": COLOR_BORDER_FOCUS,
+    "primary": COLOR_IOS_BLUE,
+    "primary_hover": COLOR_IOS_BLUE_HOVER,
+    "cyan_accent": COLOR_CYAN_ACCENT,
+    "status_success": COLOR_STATUS_SUCCESS,
+    "status_warning": COLOR_STATUS_WARNING,
+    "status_danger": COLOR_STATUS_DANGER,
+    "text_white": COLOR_TEXT_WHITE,
+    "text_main": COLOR_TEXT_MAIN,
+    "text_muted": COLOR_TEXT_MUTED,
+    "text_dim": COLOR_TEXT_DIM
+}
 
 FONT_FAMILY = "Segoe UI"
 FONT_HEADING = "Segoe UI Semibold"

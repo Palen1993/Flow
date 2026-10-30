@@ -4,8 +4,12 @@ from typing import Optional
 
 from ui.theme import (
     font_button, font_body,
+    COLOR_BG_CARD, COLOR_GLASS_BORDER, COLOR_TEXT_MAIN, COLOR_TEXT_WHITE,
+    COLOR_TEXT_MUTED_LIGHT, COLOR_CYAN_ACCENT,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
-    COLOR_IOS_RED, COLOR_IOS_RED_HOVER, COLOR_IOS_RED_BORDER
+    COLOR_IOS_RED, COLOR_IOS_RED_HOVER, COLOR_IOS_RED_BORDER,
+    COLOR_STATUS_WARNING, COLOR_STATUS_DANGER
 )
 from ui.controller_hud import get_button_icon_ctk
 from gamepad_manager import get_connected_controller_family
@@ -57,7 +61,7 @@ class GlassMessageBox(BaseGlassDialog):
     def _build_ui(self, w: int, h: int, title: str, message: str, confirm_text: str, cancel_text: str):
         self.card = ctk.CTkFrame(
             self, width=w - 24, height=h - 24, corner_radius=22,
-            fg_color="#141722", border_color="#2b3345", border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
         self.card.pack_propagate(False)
@@ -68,12 +72,12 @@ class GlassMessageBox(BaseGlassDialog):
         header_frame.pack(fill="x", padx=20, pady=(16, 6))
 
         icon_map = {
-            "info": ("💡", "#38bdf8"),
-            "warning": ("⚠️", "#fbbf24"),
-            "error": ("❌", "#ff2d55"),
-            "confirm": ("🗑️" if self.is_destructive else "❓", "#ff2d55" if self.is_destructive else "#38bdf8")
+            "info": ("💡", COLOR_CYAN_ACCENT),
+            "warning": ("⚠️", COLOR_STATUS_WARNING),
+            "error": ("❌", COLOR_STATUS_DANGER),
+            "confirm": ("🗑️" if self.is_destructive else "❓", COLOR_STATUS_DANGER if self.is_destructive else COLOR_CYAN_ACCENT)
         }
-        ic_char, ic_col = icon_map.get(self.kind, ("💡", "#38bdf8"))
+        ic_char, ic_col = icon_map.get(self.kind, ("💡", COLOR_CYAN_ACCENT))
 
         self.lbl_icon = ctk.CTkLabel(
             header_frame, text=ic_char, font=("Segoe UI Emoji", 20), text_color=ic_col
@@ -81,7 +85,7 @@ class GlassMessageBox(BaseGlassDialog):
         self.lbl_icon.pack(side="left", padx=(0, 10))
 
         self.lbl_title = ctk.CTkLabel(
-            header_frame, text=title, font=("Segoe UI Semibold", 16), text_color="#f8fafc"
+            header_frame, text=title, font=("Segoe UI Semibold", 16), text_color=COLOR_TEXT_MAIN
         )
         self.lbl_title.pack(side="left")
 
@@ -91,7 +95,7 @@ class GlassMessageBox(BaseGlassDialog):
 
         self.lbl_msg = ctk.CTkLabel(
             msg_frame, text=message, font=font_body(12),
-            text_color="#cbd5e1", wraplength=w - 70, justify="left", anchor="nw"
+            text_color=COLOR_TEXT_MUTED_LIGHT, wraplength=w - 70, justify="left", anchor="nw"
         )
         self.lbl_msg.pack(fill="both", expand=True)
 
@@ -111,11 +115,11 @@ class GlassMessageBox(BaseGlassDialog):
                 height=38,
                 corner_radius=19,
                 font=font_button(12),
-                fg_color="#1c212d",
-                hover_color="#283040",
-                border_color="#38bdf8" if self._focused_btn == 0 else "#333c50",
+                fg_color=COLOR_BTN_SECONDARY_BG,
+                hover_color=COLOR_BTN_SECONDARY_HOVER,
+                border_color=COLOR_CYAN_ACCENT if self._focused_btn == 0 else COLOR_BTN_SECONDARY_BORDER,
                 border_width=2.0 if self._focused_btn == 0 else 1.0,
-                text_color="#cbd5e1",
+                text_color=COLOR_TEXT_MUTED_LIGHT,
                 command=self._on_cancel
             )
             self.btn_cancel.grid(row=0, column=0, padx=6, sticky="ew")
@@ -135,9 +139,9 @@ class GlassMessageBox(BaseGlassDialog):
                 font=font_button(12),
                 fg_color=conf_bg,
                 hover_color=conf_hov,
-                border_color="#ffffff" if self._focused_btn == 1 else conf_bor,
+                border_color=COLOR_TEXT_WHITE if self._focused_btn == 1 else conf_bor,
                 border_width=2.0 if self._focused_btn == 1 else 1.2,
-                text_color="#ffffff",
+                text_color=COLOR_TEXT_WHITE,
                 command=self._on_confirm
             )
             self.btn_confirm.grid(row=0, column=1, padx=6, sticky="ew")
@@ -158,9 +162,9 @@ class GlassMessageBox(BaseGlassDialog):
                 font=font_button(13),
                 fg_color=btn_col,
                 hover_color=btn_hov,
-                border_color="#ffffff",
+                border_color=COLOR_TEXT_WHITE,
                 border_width=2.0,
-                text_color="#ffffff",
+                text_color=COLOR_TEXT_WHITE,
                 command=self._on_confirm
             )
             self.btn_ok.pack(side="right")
@@ -203,12 +207,12 @@ class GlassMessageBox(BaseGlassDialog):
         self._focused_btn = idx
         if hasattr(self, "btn_cancel") and hasattr(self, "btn_confirm"):
             self.btn_cancel.configure(
-                border_color="#38bdf8" if idx == 0 else "#333c50",
+                border_color=COLOR_CYAN_ACCENT if idx == 0 else COLOR_BTN_SECONDARY_BORDER,
                 border_width=2.0 if idx == 0 else 1.0
             )
             conf_bor = COLOR_IOS_RED_BORDER if self.is_destructive else COLOR_IOS_BLUE_BORDER
             self.btn_confirm.configure(
-                border_color="#ffffff" if idx == 1 else conf_bor,
+                border_color=COLOR_TEXT_WHITE if idx == 1 else conf_bor,
                 border_width=2.0 if idx == 1 else 1.2
             )
 

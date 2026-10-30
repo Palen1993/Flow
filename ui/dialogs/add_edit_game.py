@@ -13,8 +13,14 @@ from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_CYAN_ACCENT,
-    COLOR_CYAN_BORDER, COLOR_CYAN_GLOW, font_button, font_body, apply_rounded_window_region
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
+    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
+    COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER, COLOR_CYAN_GLOW,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
+    COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED_LIGHT,
+    font_button, font_body, apply_rounded_window_region
 )
 
 class AddEditGameDialog(ctk.CTkToplevel):
@@ -42,7 +48,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         except Exception:
             pass
             
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
         
         self.current_cover_path = game_data.get("cover", "") if game_data else ""
@@ -122,8 +128,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
         # Tarjeta principal iOS Liquid Glass con curvatura y bisel sutil
         self.main_card = ctk.CTkFrame(
             self,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5,
             corner_radius=22
         )
@@ -138,7 +144,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
             header_bar,
             text=title_text,
             font=font_button(17),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         lbl_title.pack(side="left")
         
@@ -153,10 +159,10 @@ class AddEditGameDialog(ctk.CTkToplevel):
         content_frame.grid_rowconfigure(0, weight=1)
         
         # Panel izquierdo: Previsualización de carátula
-        left_frame = ctk.CTkFrame(content_frame, fg_color="#181d28", border_color="#242c3d", border_width=1.0, corner_radius=16)
+        left_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
         left_frame.grid(row=0, column=0, padx=(0, 10), pady=8, sticky="nsew")
         
-        ctk.CTkLabel(left_frame, text="Carátula", font=font_button(14), text_color="#f1f5f9").pack(pady=(12, 6))
+        ctk.CTkLabel(left_frame, text="Carátula", font=font_button(14), text_color=COLOR_TEXT_BRIGHT).pack(pady=(12, 6))
         
         self.cover_canvas = tk.Canvas(left_frame, width=180, height=220, bg="#0d0f14", highlightthickness=0)
         self.cover_canvas.pack(pady=5)
@@ -164,7 +170,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_cover = ctk.CTkButton(
             left_frame, text="Cambiar carátula...", width=155, height=30,
             fg_color="#222838", hover_color="#2d354a", border_color="#343f55", border_width=1.0,
-            corner_radius=15, text_color="#f1f5f9", font=font_button(12),
+            corner_radius=15, text_color=COLOR_TEXT_BRIGHT, font=font_button(12),
             command=self.browse_cover
         )
         self.btn_cover.pack(pady=(8, 4))
@@ -172,8 +178,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_online = ctk.CTkButton(
             left_frame, text="🌐 Buscar Online HD ", image=get_button_icon_ctk("x", size=18), compound="right",
             width=165, height=30,
-            fg_color="#007aff", hover_color="#0062cc", border_color="#3894ff", border_width=1.0,
-            corner_radius=15, text_color="#ffffff", font=font_button(12),
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.0,
+            corner_radius=15, text_color=COLOR_TEXT_WHITE, font=font_button(12),
             command=self.download_online_hd_cover
         )
         self.btn_online.pack(pady=4)
@@ -181,13 +187,13 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_autodetect = ctk.CTkButton(
             left_frame, text="Autodetectar (.exe)", width=155, height=30,
             fg_color="#1b202c", hover_color="#252d3d", border_color="#2c3649", border_width=1.0,
-            corner_radius=15, text_color="#cbd5e1", font=font_body(12),
+            corner_radius=15, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
             command=self.autodetect_cover
         )
         self.btn_autodetect.pack(pady=4)
 
         # Panel derecho: Configuración del juego
-        right_frame = ctk.CTkFrame(content_frame, fg_color="#181d28", border_color="#242c3d", border_width=1.0, corner_radius=16)
+        right_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
         right_frame.grid(row=0, column=1, padx=(6, 0), pady=8, sticky="nsew")
         right_frame.grid_columnconfigure(1, weight=1)
         
@@ -195,7 +201,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         ctk.CTkLabel(right_frame, text="Nombre:").grid(row=0, column=0, padx=12, pady=(15, 8), sticky="w")
         self.name_entry = ctk.CTkEntry(
             right_frame, placeholder_text="Ej. Assassin's Creed",
-            fg_color="#0f1218", border_color="#242a3a", corner_radius=12, text_color="#f8fafc"
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
         )
         self.name_entry.grid(row=0, column=1, padx=(0, 12), pady=(15, 8), sticky="ew")
         
@@ -203,14 +209,14 @@ class AddEditGameDialog(ctk.CTkToplevel):
         ctk.CTkLabel(right_frame, text="Ejecutable:").grid(row=1, column=0, padx=12, pady=8, sticky="w")
         self.path_entry = ctk.CTkEntry(
             right_frame, placeholder_text="C:/Juegos/.../game.exe",
-            fg_color="#0f1218", border_color="#242a3a", corner_radius=12, text_color="#f8fafc"
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
         )
         self.path_entry.grid(row=1, column=1, padx=(0, 12), pady=8, sticky="ew")
         
         self.btn_browse_exe = ctk.CTkButton(
             right_frame, text="Explorar .exe...", width=125, height=30,
             fg_color="#222838", hover_color="#2d354a", border_color="#343f55", border_width=1.0,
-            corner_radius=15, text_color="#f1f5f9", font=font_body(12),
+            corner_radius=15, text_color=COLOR_TEXT_BRIGHT, font=font_body(12),
             command=self.browse_exe
         )
         self.btn_browse_exe.grid(row=2, column=1, padx=(0, 12), pady=(0, 8), sticky="e")
@@ -219,7 +225,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
         ctk.CTkLabel(right_frame, text="Argumentos:").grid(row=3, column=0, padx=12, pady=6, sticky="w")
         self.args_entry = ctk.CTkEntry(
             right_frame, placeholder_text="Opcional: ej. -dx11 -skipintro",
-            fg_color="#0f1218", border_color="#242a3a", corner_radius=12, text_color="#f8fafc"
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
         )
         self.args_entry.grid(row=3, column=1, padx=(0, 12), pady=6, sticky="ew")
         
@@ -273,8 +279,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
             self.btn_delete = ctk.CTkButton(
                 btn_frame, text="🗑  Eliminar Juego ", image=get_button_icon_ctk("a", size=18), compound="right",
                 width=160, height=38,
-                fg_color="#ff2d55", hover_color="#e02245", border_color="#ff6384", border_width=1.2,
-                corner_radius=19, text_color="#ffffff", font=font_button(12),
+                fg_color=COLOR_BTN_DANGER_BG, hover_color=COLOR_BTN_DANGER_HOVER, border_color=COLOR_BTN_DANGER_BORDER, border_width=1.2,
+                corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(12),
                 command=self.confirm_delete
             )
             self.btn_delete.pack(side="left")
@@ -282,8 +288,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_cancel = ctk.CTkButton(
             btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
             width=125, height=38,
-            fg_color="#1c212d", hover_color="#283040", border_color="#333c50", border_width=1.0,
-            corner_radius=19, text_color="#cbd5e1", font=font_body(12),
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER, border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
             command=self.destroy
         )
         self.btn_cancel.pack(side="right", padx=(10, 0))
@@ -291,8 +297,8 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.btn_save = ctk.CTkButton(
             btn_frame, text="Guardar ", image=get_button_icon_ctk("start", size=20), compound="right",
             width=135, height=38,
-            fg_color="#007aff", hover_color="#0062cc", border_color="#3894ff", border_width=1.2,
-            corner_radius=19, text_color="#ffffff", font=font_button(12),
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(12),
             command=self.save
         )
         self.btn_save.pack(side="right")
@@ -453,7 +459,7 @@ class AddEditGameDialog(ctk.CTkToplevel):
                     except Exception:
                         pass
             elif kind == "check":
-                widget.configure(text_color="#38bdf8" if is_foc else "#f8fafc")
+                widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
         if inputs.get("b", False) and not prev_inputs.get("b", False):

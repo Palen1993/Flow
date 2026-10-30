@@ -1,6 +1,14 @@
 import customtkinter as ctk
 
-from ui.theme import font_button
+from ui.theme import (
+    font_button,
+    COLOR_BG_CARD, COLOR_GLASS_BORDER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_LIGHT, COLOR_TEXT_WHITE,
+    COLOR_TEXT_MUTED, COLOR_TEXT_DIM, COLOR_TEXT_EXTRA_DIM,
+    COLOR_CYAN_ACCENT,
+    COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING, COLOR_STATUS_DANGER,
+    COLOR_BTN_PRIMARY_BG, COLOR_BTN_PRIMARY_HOVER
+)
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
 
@@ -14,37 +22,37 @@ class _ControllerRow(ctk.CTkFrame):
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=14, pady=(8, 0))
         self.lbl_role = ctk.CTkLabel(top, text=role_text, anchor="w",
-                                     font=("Segoe UI Semibold", 11), text_color="#38bdf8")
+                                     font=("Segoe UI Semibold", 11), text_color=COLOR_CYAN_ACCENT)
         self.lbl_role.pack(side="left")
-        self.lbl_dot = ctk.CTkLabel(top, text="●", font=("Segoe UI", 12), text_color="#475569")
+        self.lbl_dot = ctk.CTkLabel(top, text="●", font=("Segoe UI", 12), text_color=COLOR_TEXT_EXTRA_DIM)
         self.lbl_dot.pack(side="right")
 
         self.lbl_device = ctk.CTkLabel(self, text="", anchor="w",
-                                       font=("Segoe UI", 11), text_color="#94a3b8")
+                                       font=("Segoe UI", 11), text_color=COLOR_TEXT_MUTED)
         self.lbl_device.pack(fill="x", padx=14)
 
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="x", padx=14, pady=(2, 10))
         self.lbl_percent = ctk.CTkLabel(body, text="--", width=70, anchor="w",
-                                        font=("Segoe UI Semibold", 20), text_color="#64748b")
+                                        font=("Segoe UI Semibold", 20), text_color=COLOR_TEXT_DIM)
         self.lbl_percent.pack(side="left")
         right = ctk.CTkFrame(body, fg_color="transparent")
         right.pack(side="left", fill="x", expand=True, padx=(6, 0))
         self.lbl_state = ctk.CTkLabel(right, text="", anchor="w",
-                                      font=("Segoe UI Semibold", 11), text_color="#e2e8f0")
+                                      font=("Segoe UI Semibold", 11), text_color=COLOR_TEXT_LIGHT)
         self.lbl_state.pack(fill="x")
         self.bar = ctk.CTkProgressBar(right, height=9, corner_radius=5,
-                                      fg_color="#1e2636", progress_color="#475569")
+                                      fg_color="#1e2636", progress_color=COLOR_TEXT_EXTRA_DIM)
         self.bar.pack(fill="x", pady=(3, 0))
         self.bar.set(0)
 
     def update_info(self, info):
         if not info or not info.get("connected"):
             self.lbl_device.configure(text=(info or {}).get("device_name") or "Ningún mando detectado")
-            self.lbl_dot.configure(text_color="#ff2d55")
-            self.lbl_percent.configure(text="--", text_color="#64748b")
+            self.lbl_dot.configure(text_color=COLOR_STATUS_DANGER)
+            self.lbl_percent.configure(text="--", text_color=COLOR_TEXT_DIM)
             self.lbl_state.configure(text="Desconectado")
-            self.bar.configure(progress_color="#475569")
+            self.bar.configure(progress_color=COLOR_TEXT_EXTRA_DIM)
             self.bar.set(0)
             return
 
@@ -52,25 +60,25 @@ class _ControllerRow(ctk.CTkFrame):
         if not dev or dev.lower() in ("ninguno", "none", "--"):
             dev = "Mando PlayStation" if info.get("family") == "playstation" else "Mando Xbox / XInput"
         self.lbl_device.configure(text=dev)
-        self.lbl_dot.configure(text_color="#34c759")
+        self.lbl_dot.configure(text_color=COLOR_STATUS_SUCCESS)
 
         lvl = info.get("level", "")
         pct = int(info.get("percent", 0) or 0)
         if lvl == "directinput":
-            col, pct_txt, state, val = "#38bdf8", "OK", "Conectado · batería no disponible (DirectInput)", 1.0
+            col, pct_txt, state, val = COLOR_CYAN_ACCENT, "OK", "Conectado · batería no disponible (DirectInput)", 1.0
         elif info.get("is_wired"):
-            col, pct_txt, state, val = "#38bdf8", "USB", "Conectado por cable USB", 1.0
+            col, pct_txt, state, val = COLOR_CYAN_ACCENT, "USB", "Conectado por cable USB", 1.0
         elif lvl == "unknown":
-            col, pct_txt, state, val = "#38bdf8", "OK", "Conectado · batería desconocida", 1.0
+            col, pct_txt, state, val = COLOR_CYAN_ACCENT, "OK", "Conectado · batería desconocida", 1.0
         else:
             if lvl == "empty":
-                col, state = "#ff2d55", "Batería crítica · conecta el cable"
+                col, state = COLOR_STATUS_DANGER, "Batería crítica · conecta el cable"
             elif lvl == "low":
-                col, state = "#ff9500", "Batería baja"
+                col, state = COLOR_STATUS_WARNING, "Batería baja"
             elif lvl == "medium":
-                col, state = "#34c759", "Batería media · inalámbrico"
+                col, state = COLOR_STATUS_SUCCESS, "Batería media · inalámbrico"
             else:
-                col, state = "#34c759", "Batería llena · inalámbrico"
+                col, state = COLOR_STATUS_SUCCESS, "Batería llena · inalámbrico"
             pct_txt = f"{pct}%"
             val = max(0.0, min(1.0, pct / 100.0))
 
@@ -104,19 +112,19 @@ class ControllerInfoDialog(BaseGlassDialog):
     def _build_ui(self):
         self.card = ctk.CTkFrame(
             self, width=self.W - 24, height=self.H - 24, corner_radius=22,
-            fg_color="#141722", border_color="#2b3345", border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
         self.card.pack_propagate(False)
 
         self.lbl_title = ctk.CTkLabel(
             self.card, text="Estado de los Mandos",
-            font=("Segoe UI Semibold", 17), text_color="#f8fafc"
+            font=("Segoe UI Semibold", 17), text_color=COLOR_TEXT_MAIN
         )
         self.lbl_title.pack(pady=(16, 0))
         self.lbl_sub = ctk.CTkLabel(
             self.card, text="Solo el mando principal maneja el lanzador",
-            font=("Segoe UI", 11), text_color="#64748b"
+            font=("Segoe UI", 11), text_color=COLOR_TEXT_DIM
         )
         self.lbl_sub.pack(pady=(0, 8))
 
@@ -128,9 +136,9 @@ class ControllerInfoDialog(BaseGlassDialog):
         self.btn_ok = ctk.CTkButton(
             self.card, text="Aceptar ", image=get_button_icon_ctk("a", self.family, size=20),
             compound="right", width=150, height=38,
-            fg_color="#007aff", hover_color="#0062cc",
-            border_color="#ffffff", border_width=2.0,
-            corner_radius=19, text_color="#ffffff", font=font_button(13),
+            fg_color=COLOR_BTN_PRIMARY_BG, hover_color=COLOR_BTN_PRIMARY_HOVER,
+            border_color=COLOR_TEXT_WHITE, border_width=2.0,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(13),
             command=self.close
         )
         self.btn_ok.pack(pady=(4, 0))

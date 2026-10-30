@@ -9,8 +9,15 @@ from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_CYAN_ACCENT,
-    COLOR_CYAN_GLOW, font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY,
+    COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
+    COLOR_CYAN_ACCENT, COLOR_CYAN_GLOW,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_STATUS_SUCCESS, COLOR_STATUS_DANGER,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
+    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
+    COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region
 )
 
 class GamepadConfigDialog(ctk.CTkToplevel):
@@ -36,7 +43,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         except Exception:
             pass
             
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
         
         self.is_monitoring = True
@@ -108,8 +115,8 @@ class GamepadConfigDialog(ctk.CTkToplevel):
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(
             self,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5,
             corner_radius=22
         )
@@ -128,7 +135,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         lbl_title = ctk.CTkLabel(
             top_row, text="🎮  Configurar Mando",
             font=font_button(18), 
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         lbl_title.pack(side="left")
         
@@ -138,7 +145,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         
         lbl_sub = ctk.CTkLabel(
             header_frame, text="Sincroniza tu mando para que cuando se encienda se lance la app y puedas controlarla desde el sofá:",
-            font=font_body(12), text_color="#64748b", anchor="w"
+            font=font_body(12), text_color=COLOR_TEXT_DIM, anchor="w"
         )
         lbl_sub.pack(fill="x", padx=4, pady=(0, 6))
         
@@ -149,14 +156,14 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self.scroll = scroll
         
         # Tarjeta 1: Selección de Mando
-        card_dev = ctk.CTkFrame(scroll, fg_color="#181d28", corner_radius=16, border_color="#242c3d", border_width=1.0)
+        card_dev = ctk.CTkFrame(scroll, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=16, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card_dev.pack(fill="x", pady=6)
         self.card_dev = card_dev
         
         ctk.CTkLabel(
             card_dev, text="Mando asignado para encendido y control:",
             font=font_button(14),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         ).pack(anchor="w", padx=16, pady=(12, 6))
         
         device_labels = [d["name"] for d in self.paired_devices]
@@ -177,7 +184,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
             hover_color="#2d354a",
             border_color="#343f55",
             border_width=1.0,
-            text_color="#f1f5f9",
+            text_color=COLOR_TEXT_BRIGHT,
             font=font_button(13),
             item_icon="🎮  "
         )
@@ -187,23 +194,23 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self.lbl_live_status = ctk.CTkLabel(
             card_dev, text="⚪ Verificando estado del mando...",
             font=font_button(12),
-            text_color="#94a3b8", anchor="w"
+            text_color=COLOR_TEXT_MUTED, anchor="w"
         )
         self.lbl_live_status.pack(fill="x", padx=16, pady=(0, 12))
         
         # Tarjeta 2: Automatización
-        card_switches = ctk.CTkFrame(scroll, fg_color="#181d28", corner_radius=16, border_color="#242c3d", border_width=1.0)
+        card_switches = ctk.CTkFrame(scroll, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=16, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card_switches.pack(fill="x", pady=6)
         
         ctk.CTkLabel(
             card_switches, text="Opciones de Automatización:",
             font=font_button(14),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         ).pack(anchor="w", padx=16, pady=(12, 8))
         
         self.sw_auto_launch = ctk.CTkSwitch(
             card_switches, text="Abrir o traer al frente la aplicación al conectar/encender el mando",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("auto_launch_on_connect", True):
             self.sw_auto_launch.select()
@@ -213,7 +220,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         
         self.sw_mini_mode = ctk.CTkSwitch(
             card_switches, text="Iniciar en Modo Pequeño (Flotante y Transparente) al conectar el mando",
-            font=font_body(13), progress_color="#34c759",
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS,
             command=self._on_toggle_mini_mode
         )
         if self.cfg.get("start_in_mini_mode", True):
@@ -224,7 +231,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_fullscreen = ctk.CTkSwitch(
             card_switches, text="Activar pantalla completa automáticamente al conectar el mando (Modo Consola)",
-            font=font_body(13), progress_color="#34c759",
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS,
             command=self._on_toggle_fullscreen
         )
         if self.cfg.get("auto_fullscreen", False) and not self.cfg.get("start_in_mini_mode", True):
@@ -235,7 +242,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_nav = ctk.CTkSwitch(
             card_switches, text="Habilitar control de interfaz con mando (Stick, cruceta, botón A para jugar)",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("enable_controller_nav", True):
             self.sw_nav.select()
@@ -245,7 +252,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_xbox_btn = ctk.CTkSwitch(
             card_switches, text="Invocar lanzador con el botón Xbox / Guía (incluso con la app cerrada)",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("launch_on_xbox_button", True):
             self.sw_xbox_btn.select()
@@ -255,7 +262,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_startup = ctk.CTkSwitch(
             card_switches, text="Iniciar detector en segundo plano al arrancar Windows (Watcher)",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("start_with_windows", False) or is_windows_startup_enabled():
             self.sw_startup.select()
@@ -265,7 +272,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_close_on_launch = ctk.CTkSwitch(
             card_switches, text="Cerrar el lanzador automáticamente al iniciar un juego (libera 100% de RAM)",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("close_on_game_launch", True):
             self.sw_close_on_launch.select()
@@ -275,7 +282,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_haptics = ctk.CTkSwitch(
             card_switches, text="Vibración háptica (Rumble) en el mando al pasar carátulas e interactuar",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("enable_haptics", True):
             self.sw_haptics.select()
@@ -285,7 +292,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
 
         self.sw_sound_fx = ctk.CTkSwitch(
             card_switches, text="Efectos acústicos retro 'iPod Click Wheel' al navegar por el carrusel",
-            font=font_body(13), progress_color="#34c759"
+            font=font_body(13), progress_color=COLOR_STATUS_SUCCESS
         )
         if self.cfg.get("enable_sound_fx", True):
             self.sw_sound_fx.select()
@@ -307,7 +314,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self._focused_switch_idx = 0
 
         # Tarjeta 3: Guía rápida de controles
-        card_guide = ctk.CTkFrame(scroll, fg_color="#181d28", corner_radius=16, border_color="#242c3d", border_width=1.0)
+        card_guide = ctk.CTkFrame(scroll, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=16, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card_guide.pack(fill="x", pady=6)
         self.card_guide = card_guide
         
@@ -341,8 +348,8 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self.btn_save = ctk.CTkButton(
             footer, text="Guardar Configuración ", image=get_button_icon_ctk("start", size=20), compound="right",
             width=210, height=38,
-            fg_color="#007aff", hover_color="#0062cc", border_color="#3894ff", border_width=1.2,
-            corner_radius=19, text_color="#ffffff", font=font_button(13),
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(13),
             command=self._save_settings
         )
         self.btn_save.pack(side="right", padx=(8, 0), pady=4)
@@ -350,8 +357,8 @@ class GamepadConfigDialog(ctk.CTkToplevel):
         self.btn_cancel = ctk.CTkButton(
             footer, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
             width=128, height=38,
-            fg_color="#1c212d", hover_color="#283040", border_color="#333c50", border_width=1.0,
-            corner_radius=19, text_color="#cbd5e1", font=font_body(12),
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER, border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
             command=self.destroy
         )
         self.btn_cancel.pack(side="right", pady=4)
@@ -423,16 +430,16 @@ class GamepadConfigDialog(ctk.CTkToplevel):
                 )
                 widget.configure(border_color="#38bdf8" if is_foc else "#343f55", border_width=1.8 if is_foc else 1.0)
             elif kind == "switch":
-                widget.configure(text_color="#38bdf8" if is_foc else "#f8fafc")
+                widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
             elif kind == "guide":
                 self.card_guide.configure(
                     border_color="#007aff" if is_foc else "#242c3d",
                     border_width=2.0 if is_foc else 1.0
                 )
             elif kind == "btn_save":
-                widget.configure(border_color="#38bdf8" if is_foc else "#3894ff", border_width=2.4 if is_foc else 1.2)
+                widget.configure(border_color=COLOR_CYAN_ACCENT if is_foc else COLOR_IOS_BLUE_BORDER, border_width=2.4 if is_foc else 1.2)
             elif kind == "btn_cancel":
-                widget.configure(border_color="#007aff" if is_foc else "#333c50", border_width=2.2 if is_foc else 1.0)
+                widget.configure(border_color=COLOR_IOS_BLUE if is_foc else COLOR_BTN_SECONDARY_BORDER, border_width=2.2 if is_foc else 1.0)
 
             if is_foc and scroll_target is not None and hasattr(self, "scroll"):
                 force_edge = "top" if i == 0 else ("bottom" if kind == "guide" else None)
@@ -519,12 +526,12 @@ class GamepadConfigDialog(ctk.CTkToplevel):
             
             self.lbl_live_status.configure(
                 text=f"🟢 Conectado: {dev_name}{active_btn_text}",
-                text_color="#4ade80"
+                text_color=COLOR_STATUS_SUCCESS
             )
         else:
             self.lbl_live_status.configure(
                 text="🔴 Desconectado (Enciende o conecta tu mando por Bluetooth/USB para probarlo)",
-                text_color="#f87171"
+                text_color=COLOR_STATUS_DANGER
             )
         self.after(150, self._poll_status)
 

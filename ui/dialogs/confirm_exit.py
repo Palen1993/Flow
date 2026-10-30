@@ -1,6 +1,12 @@
 import customtkinter as ctk
 
-from ui.theme import font_button
+from ui.theme import (
+    COLOR_BG_CARD, COLOR_GLASS_BORDER, COLOR_TEXT_MAIN, COLOR_TEXT_WHITE,
+    COLOR_TEXT_MUTED_LIGHT, COLOR_CYAN_ACCENT,
+    COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
+    COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
+    font_button
+)
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
 
@@ -18,14 +24,14 @@ class ConfirmExitDialog(BaseGlassDialog):
     def create_widgets(self):
         self.card = ctk.CTkFrame(
             self, width=390, height=190, corner_radius=22,
-            fg_color="#141722", border_color="#2b3345", border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
         
         self.lbl_title = ctk.CTkLabel(
             self.card, text="¿Cerrar el lanzador?",
             font=("Segoe UI Semibold", 17),
-            text_color="#f8fafc"
+            text_color=COLOR_TEXT_MAIN
         )
         self.lbl_title.place(relx=0.5, rely=0.34, anchor="center")
         
@@ -35,8 +41,9 @@ class ConfirmExitDialog(BaseGlassDialog):
         self.btn_cancel = ctk.CTkButton(
             btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", size=20), compound="right",
             width=138, height=38,
-            fg_color="#1c212d", hover_color="#283040", border_color="#333c50", border_width=1.0,
-            corner_radius=19, text_color="#cbd5e1", font=font_button(13),
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER,
+            border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_button(13),
             command=self.cancel
         )
         self.btn_cancel.pack(side="left", padx=8)
@@ -44,9 +51,9 @@ class ConfirmExitDialog(BaseGlassDialog):
         self.btn_exit = ctk.CTkButton(
             btn_frame, text="Cerrar ", image=get_button_icon_ctk("a", size=20), compound="right",
             width=138, height=38,
-            fg_color="#ff2d55", hover_color="#e02245",
-            border_color="#ff6384", border_width=1.2,
-            corner_radius=19, text_color="#ffffff", font=font_button(13),
+            fg_color=COLOR_BTN_DANGER_BG, hover_color=COLOR_BTN_DANGER_HOVER,
+            border_color=COLOR_BTN_DANGER_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(13),
             command=self.confirm
         )
         self.btn_exit.pack(side="left", padx=8)
@@ -74,12 +81,12 @@ class ConfirmExitDialog(BaseGlassDialog):
     def _update_focus(self):
         if hasattr(self, "btn_cancel") and self.btn_cancel.winfo_exists():
             self.btn_cancel.configure(
-                border_color="#38bdf8" if self._focused_btn == 0 else "#333c50",
+                border_color=COLOR_CYAN_ACCENT if self._focused_btn == 0 else COLOR_BTN_SECONDARY_BORDER,
                 border_width=2.0 if self._focused_btn == 0 else 1.0
             )
         if hasattr(self, "btn_exit") and self.btn_exit.winfo_exists():
             self.btn_exit.configure(
-                border_color="#ffffff" if self._focused_btn == 1 else "#ff6384",
+                border_color=COLOR_TEXT_WHITE if self._focused_btn == 1 else COLOR_BTN_DANGER_BORDER,
                 border_width=2.0 if self._focused_btn == 1 else 1.2
             )
 

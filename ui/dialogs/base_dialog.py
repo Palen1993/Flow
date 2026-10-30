@@ -3,7 +3,7 @@ from typing import Optional, Any
 import tkinter as tk
 import customtkinter as ctk
 
-from ui.theme import apply_rounded_window_region
+from ui.theme import apply_rounded_window_region, COLOR_BG_CARD
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
 class BaseGlassDialog(ctk.CTkToplevel):
@@ -61,7 +61,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
             except Exception:
                 pass
                 
-        self.configure(fg_color="#141722")
+        self.configure(fg_color=COLOR_BG_CARD)
         if parent:
             try:
                 self.transient(parent)

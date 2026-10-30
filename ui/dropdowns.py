@@ -4,8 +4,11 @@ import tkinter as tk
 import customtkinter as ctk
 
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_DROPDOWN, COLOR_CYAN_ACCENT,
-    COLOR_CYAN_BORDER, font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_DROPDOWN, COLOR_BG_ITEM_HOVER,
+    COLOR_GLASS_BORDER,
+    COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
+    COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MAIN,
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region
 )
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
@@ -144,7 +147,7 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                     fg_color="#1a3d66",
                     border_color=COLOR_CYAN_BORDER,
                     border_width=1.4,
-                    text_color="#ffffff"
+                    text_color=COLOR_TEXT_WHITE
                 )
                 if auto_scroll and self._scroll_container:
                     edge = "top" if i == 0 else ("bottom" if i == len(self.item_buttons) - 1 else None)
@@ -374,8 +377,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         
         card = ctk.CTkFrame(
             self,
-            fg_color="#141722",
-            border_color="#2b3345",
+            fg_color=COLOR_BG_CARD,
+            border_color=COLOR_GLASS_BORDER,
             border_width=1.5,
             corner_radius=20
         )
@@ -404,8 +407,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 height=38,
                 corner_radius=12,
                 fg_color="transparent",
-                hover_color="#222838",
-                text_color="#f1f5f9",
+                hover_color=COLOR_BG_ITEM_HOVER,
+                text_color=COLOR_TEXT_BRIGHT,
                 font=font_button(13),
                 command=lambda a=action: on_item(a)
             )
@@ -435,13 +438,13 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                     fg_color="#222838",
                     border_color="#364057",
                     border_width=1.0,
-                    text_color="#ffffff"
+                    text_color=COLOR_TEXT_WHITE
                 )
             else:
                 btn.configure(
                     fg_color="transparent",
                     border_width=0,
-                    text_color="#f1f5f9"
+                    text_color=COLOR_TEXT_BRIGHT
                 )
 
     def _on_hover(self, idx: int):
