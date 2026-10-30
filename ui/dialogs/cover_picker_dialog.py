@@ -36,7 +36,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_title, font_body, hide_from_taskbar
+    font_button, font_title, font_body, hide_from_taskbar, bring_to_front_absolute
 )
 
 _GLOBAL_THUMB_CACHE: Dict[str, Image.Image] = {}
@@ -116,7 +116,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
 
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar(self)
+        hide_from_taskbar, bring_to_front_absolute(self)
 
         # Estado interno de candidatos y caché de imágenes
         self.all_candidates: List[Dict[str, Any]] = []

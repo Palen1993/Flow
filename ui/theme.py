@@ -158,10 +158,36 @@ def apply_rounded_window_region(window, width: int, height: int, radius: int = 2
         pass
 
 
+def bring_to_front_absolute(window):
+    """
+    Garantiza que la ventana modal o menú flotante se sitúe en el primer plano
+    absoluto del escritorio por encima de cualquier ventana fullscreen o topmost.
+    """
+    import sys
+    import ctypes
+    if not window:
+        return
+    try:
+        if not window.winfo_exists():
+            return
+        window.lift()
+        window.focus_force()
+        if sys.platform.startswith("win"):
+            hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
+            HWND_TOPMOST = -1
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_SHOWWINDOW = 0x0040
+            ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
 def hide_from_taskbar(window):
     """
     Oculta completamente una ventana emergente o menú flotante de la barra de tareas
-    y del selector Alt+Tab de Windows aplicando el estilo WS_EX_TOOLWINDOW.
+    y del selector Alt+Tab de Windows aplicando el estilo WS_EX_TOOLWINDOW y asegurando HWND_TOPMOST.
     """
     import sys
     import ctypes
@@ -174,9 +200,15 @@ def hide_from_taskbar(window):
         GWL_EXSTYLE = -20
         WS_EX_TOOLWINDOW = 0x00000080
         WS_EX_APPWINDOW = 0x00040000
+        WS_EX_TOPMOST = 0x00000008
         style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+        style = (style | WS_EX_TOOLWINDOW | WS_EX_TOPMOST) & ~WS_EX_APPWINDOW
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+        HWND_TOPMOST = -1
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_SHOWWINDOW = 0x0040
+        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
     except Exception:
         pass
 

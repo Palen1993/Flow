@@ -8,7 +8,7 @@ from ui.theme import (
     COLOR_GLASS_BORDER,
     COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
     COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MAIN,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
@@ -27,6 +27,8 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         self.attributes("-topmost", True)
         self.transient(parent)
         hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.after(25, lambda: bring_to_front_absolute(self))
         self.anchor_widget = anchor_widget
         self.values = values
         self.current_value = current_value
@@ -347,6 +349,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         self.attributes("-topmost", True)
         self.transient(parent)
         hide_from_taskbar(self)
+        bring_to_front_absolute(self)
+        self.after(25, lambda: bring_to_front_absolute(self))
         self.items = items
         self.item_buttons = []
         self.selected_index = 0

@@ -59,5 +59,15 @@
         "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Split Fiction_wallpaper.png",
         "wallpaper_opacity": 0.75,
         "wallpaper_blur": 0.0
+    },
+    {
+        "name": "Viewfinder",
+        "path": "D:\\Juegos\\Epic Games\\ViewfinderXGGk9\\Viewfinder.exe",
+        "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Viewfinder.png",
+        "monitor": 0,
+        "high_priority": true,
+        "platform": "Epic Games",
+        "platform_id": "17979201bdd845f0ab53d1d62d841dbf",
+        "already_added": false
     }
 ]

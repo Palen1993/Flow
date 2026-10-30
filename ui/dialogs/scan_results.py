@@ -15,7 +15,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG,
     COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 
 class ScanResultsDialog(ctk.CTkToplevel):
@@ -48,7 +48,7 @@ class ScanResultsDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar(self)
+        hide_from_taskbar, bring_to_front_absolute(self)
         
         self.items_vars = []  # Lista de tuplas: (checkbox_var, name_entry, candidate_data)
         self._row_frames = []

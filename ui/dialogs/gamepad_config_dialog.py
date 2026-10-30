@@ -17,7 +17,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 
 class GamepadConfigDialog(ctk.CTkToplevel):
@@ -50,7 +50,7 @@ class GamepadConfigDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar(self)
+        hide_from_taskbar, bring_to_front_absolute(self)
         
         self.is_monitoring = True
         self.drag_x = 0

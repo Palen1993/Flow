@@ -17,7 +17,7 @@ from ui.theme import (
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 
 class SelectGameToEditDialog(ctk.CTkToplevel):
@@ -49,7 +49,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             
         self.configure(fg_color=COLOR_BG_CARD)
         self.transient(parent)
-        hide_from_taskbar(self)
+        hide_from_taskbar, bring_to_front_absolute(self)
         
         # Opciones de monitores disponibles
         self.monitors = getattr(self.master, "monitors", None) or get_monitors()

@@ -112,12 +112,13 @@ class GamepadNavigationService:
                     self.app.cover_stage.next_cover()
                     self._last_move_ts = now
 
-            # Cruceta Arriba: Abrir menú o selector
+            # Cruceta Arriba: En Big Picture abre selector de monitores; en Mini transparente no hace nada
             if inputs.get("up", False) and not prev.get("up", False):
-                if not getattr(self.app, "is_mini_mode", False) and hasattr(self.app, "monitor_dropdown"):
-                    self.app.monitor_dropdown._toggle_dropdown()
-                else:
-                    self.app.toggle_top_menu()
+                if not getattr(self.app, "is_mini_mode", False):
+                    if hasattr(self.app, "monitor_dropdown"):
+                        self.app.monitor_dropdown._toggle_dropdown()
+                    else:
+                        self.app.toggle_top_menu()
 
             # Botón A / Cruz: Iniciar juego
             if inputs.get("a", False) and not prev.get("a", False):
@@ -141,9 +142,10 @@ class GamepadNavigationService:
             if inputs.get("y", False) and not prev.get("y", False):
                 self.app.open_exit_dialog()
 
-            # Botón X / Cuadrado: Menú de opciones
+            # Botón X / Cuadrado: Menú de opciones (Solo disponible en Modo Big Picture)
             if inputs.get("x", False) and not prev.get("x", False):
-                self.app.toggle_top_menu()
+                if not getattr(self.app, "is_mini_mode", False):
+                    self.app.toggle_top_menu()
 
             # LB / RB: Salto de 5 carátulas
             if inputs.get("lb", False) and not prev.get("lb", False):

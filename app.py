@@ -32,6 +32,7 @@ from ui.gamepad_service import GamepadNavigationService
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
 from ui.theme import (
+    bring_to_front_absolute,
     COLOR_BG_DARK, COLOR_BG_CANVAS, COLOR_BG_CARD,
     COLOR_GLASS_BORDER, COLOR_GLASS_HOVER,
     COLOR_CYAN_ACCENT,
@@ -307,7 +308,8 @@ class App(ctk.CTk):
 
     def _on_canvas_hud_action(self, action: str):
         if action == "menu":
-            self.toggle_top_menu()
+            if not getattr(self, "is_mini_mode", False):
+                self.toggle_top_menu()
         elif action == "battery":
             self._show_battery_info()
         elif action == "launch":
@@ -791,6 +793,10 @@ class App(ctk.CTk):
         self.set_status(f"Se añadieron {len(new_games)} juego(s) a la biblioteca.")
 
     def toggle_top_menu(self):
+        # El menú de opciones solo está disponible en Modo Big Picture (Pantalla Completa)
+        if getattr(self, "is_mini_mode", False):
+            return
+
         if hasattr(self, "glass_menu") and self.glass_menu:
             try:
                 if self.glass_menu.winfo_exists():
@@ -930,14 +936,14 @@ class App(ctk.CTk):
     def open_exit_dialog(self):
         if hasattr(self, "exit_dialog") and self.exit_dialog and self.exit_dialog.winfo_exists():
             try:
-                self.exit_dialog.lift()
-                self.exit_dialog.focus_force()
+                bring_to_front_absolute(self.exit_dialog)
             except Exception:
                 pass
             return
         if self.is_minimized:
             self.restore_window()
         self.exit_dialog = ConfirmExitDialog(self, on_confirm=self.close_application)
+        bring_to_front_absolute(self.exit_dialog)
 
     def close_application(self):
         try:
