@@ -8,17 +8,25 @@ from ui.theme import (
     COLOR_GLASS_BORDER,
     COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
     COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MAIN,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region
+    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar
 )
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
 class FloatingGlassDropdown(ctk.CTkToplevel):
     """Menú desplegable flotante translúcido con bordes redondeados y soporte para scroll."""
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
+
     def __init__(self, parent, anchor_widget, values: List[str], current_value: str = "", on_select=None, min_width: int = 280, item_icon: str = ""):
         super().__init__(parent)
+        self.title("GameFlow Selector")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.transient(parent)
+        hide_from_taskbar(self)
         self.anchor_widget = anchor_widget
         self.values = values
         self.current_value = current_value
@@ -204,6 +212,15 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         unregister_modal_stack(self)
         super().destroy()
 
+    def destroy(self):
+        try:
+            unregister_modal_stack(self)
+        except Exception:
+            pass
+        if hasattr(self.master, "glass_menu") and self.master.glass_menu == self:
+            self.master.glass_menu = None
+        super().destroy()
+
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
         if inputs.get("up", False) and not prev_inputs.get("up", False):
             self.select_prev()
@@ -330,10 +347,19 @@ class GlassDropdownButton(ctk.CTkButton):
 
 class FloatingGlassMenu(ctk.CTkToplevel):
     """Menú contextual o de cabecera flotante estilo Glassmorphism con navegación completa por mando y teclado."""
+    def _windows_set_titlebar_color(self, color_mode: str):
+        pass
+
+    def _windows_set_titlebar_icon(self):
+        pass
+
     def __init__(self, parent, anchor_widget, items):
         super().__init__(parent)
+        self.title("GameFlow Menu")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
+        self.transient(parent)
+        hide_from_taskbar(self)
         self.items = items
         self.item_buttons = []
         self.selected_index = 0
@@ -486,6 +512,15 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 self.destroy()
         except Exception:
             pass
+
+    def destroy(self):
+        try:
+            unregister_modal_stack(self)
+        except Exception:
+            pass
+        if hasattr(self.master, "glass_menu") and self.master.glass_menu == self:
+            self.master.glass_menu = None
+        super().destroy()
 
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
         if inputs.get("up", False) and not prev_inputs.get("up", False):

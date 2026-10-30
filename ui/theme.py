@@ -158,6 +158,29 @@ def apply_rounded_window_region(window, width: int, height: int, radius: int = 2
         pass
 
 
+def hide_from_taskbar(window):
+    """
+    Oculta completamente una ventana emergente o menú flotante de la barra de tareas
+    y del selector Alt+Tab de Windows aplicando el estilo WS_EX_TOOLWINDOW.
+    """
+    import sys
+    import ctypes
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        if not window or not window.winfo_exists():
+            return
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
+        GWL_EXSTYLE = -20
+        WS_EX_TOOLWINDOW = 0x00000080
+        WS_EX_APPWINDOW = 0x00040000
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+    except Exception:
+        pass
+
+
 def scroll_to_widget(scroll_frame, target_widget=None, force_edge: str = None):
     """
     Desplaza automáticamente un CTkScrollableFrame para asegurar que target_widget sea visible,

@@ -3,7 +3,7 @@ from typing import Optional, Any
 import tkinter as tk
 import customtkinter as ctk
 
-from ui.theme import apply_rounded_window_region, COLOR_BG_CARD
+from ui.theme import apply_rounded_window_region, hide_from_taskbar, COLOR_BG_CARD
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
 class BaseGlassDialog(ctk.CTkToplevel):
@@ -67,6 +67,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
                 self.transient(parent)
             except Exception:
                 pass
+        hide_from_taskbar(self)
                 
         self._drag_x = 0
         self._drag_y = 0

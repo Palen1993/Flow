@@ -525,10 +525,15 @@ class App(ctk.CTk):
     # Pila de Modales O(1) y Bucle de Mando (Delegación a GamepadNavigationService)
     # -------------------------------------------------------------
     def push_modal(self, modal):
-        register_modal_stack(self._modal_stack, modal)
+        if modal not in self._modal_stack:
+            self._modal_stack.append(modal)
 
     def pop_modal(self, modal):
-        unregister_modal_stack(self._modal_stack, modal)
+        if modal in self._modal_stack:
+            try:
+                self._modal_stack.remove(modal)
+            except ValueError:
+                pass
 
     def _get_topmost_active_modal(self):
         while self._modal_stack:
@@ -742,8 +747,12 @@ class App(ctk.CTk):
         self.set_status(f"Se añadieron {len(new_games)} juego(s) a la biblioteca.")
 
     def toggle_top_menu(self):
-        if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
-            self.glass_menu.destroy()
+        if hasattr(self, "glass_menu") and self.glass_menu:
+            try:
+                if self.glass_menu.winfo_exists():
+                    self.glass_menu.destroy()
+            except Exception:
+                pass
             self.glass_menu = None
             return
 
