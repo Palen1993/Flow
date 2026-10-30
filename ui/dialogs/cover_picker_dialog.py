@@ -354,10 +354,26 @@ class CoverPickerDialog(ctk.CTkToplevel):
             corner_radius=14,
             text_color=COLOR_TEXT_WHITE,
             height=36,
-            width=120,
+            width=115,
             command=self._start_search
         )
-        self.btn_search.pack(side="right", padx=(0, 10), pady=7)
+        self.btn_search.pack(side="right", padx=(4, 10), pady=7)
+
+        self.btn_local = ctk.CTkButton(
+            search_bar,
+            text="📁 Archivo Local ",
+            font=("Segoe UI Semibold", 12),
+            fg_color="#1e2434",
+            hover_color="#2b3448",
+            border_color="#38435d",
+            border_width=1.0,
+            corner_radius=14,
+            text_color="#93c5fd",
+            height=36,
+            width=130,
+            command=self._pick_local_file
+        )
+        self.btn_local.pack(side="right", padx=(0, 4), pady=7)
 
         self.lbl_status = ctk.CTkLabel(
             self.card,
@@ -1183,6 +1199,42 @@ class CoverPickerDialog(ctk.CTkToplevel):
     # =================================================================
     # BÚSQUEDA Y CARGA ASÍNCRONA DE MINIATURAS Y ALTA RESOLUCIÓN
     # =================================================================
+    def _pick_local_file(self):
+        from ui.dialogs.glass_folder_browser import browse_file
+        f = browse_file(
+            parent=self,
+            title="Seleccionar Imagen de Carátula o Wallpaper",
+            file_extensions=[".png", ".jpg", ".jpeg", ".webp", ".ico", ".bmp"]
+        )
+        if not f or not os.path.isfile(f):
+            return
+
+        try:
+            with Image.open(f) as im_raw:
+                pil_loaded = im_raw.copy().convert("RGBA")
+        except Exception:
+            return
+
+        local_cand = {
+            "name": f"[Local] {os.path.basename(f)}",
+            "poster_url": f,
+            "thumb_url": f,
+            "is_local": True
+        }
+        self.raw_pil_by_idx[0] = pil_loaded
+        self.hd_pil_by_idx[0] = pil_loaded
+        if hasattr(self, "_thumb_cache"):
+            self._thumb_cache.clear()
+        self.candidates.insert(0, local_cand)
+        self.filtered_candidates.insert(0, local_cand)
+        self.selected_card_idx = 0
+        self._render_candidate_grid()
+        self._update_preview()
+        self.lbl_status.configure(
+            text=f"📁 Imagen local cargada: '{os.path.basename(f)}'. Pulsa Aplicar para guardar.",
+            text_color="#38bdf8"
+        )
+
     def _start_search(self):
         query = self.entry_search.get().strip()
         if not query:

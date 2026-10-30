@@ -802,15 +802,21 @@ class App(ctk.CTk):
             self.glass_menu = None
             return
 
+        cur_game = self.games[self.selected_index] if (self.games and 0 <= self.selected_index < len(self.games)) else None
+        cur_name = cur_game.get("name", "Juego") if cur_game else ""
+        if len(cur_name) > 20:
+            cur_name = cur_name[:17] + "..."
+
         items = [
-            ("＋", "Agregar Juego", self.open_add_dialog),
-            ("📁", "Escanear Carpeta", self.scan_folder_for_games),
-            ("🚀", "Importar de Steam / Epic / GOG...", self.open_external_import_dialog),
-            ("⚙", "Editar Juegos...", self.open_select_game_dialog),
-            ("🎨", "Cambiar Carátula del Juego...", lambda: self.open_cover_picker_for_selected_game(initial_mode="cover")),
-            ("🖼", "Cambiar Wallpaper de Fondo (16:9)...", lambda: self.open_cover_picker_for_selected_game(initial_mode="wallpaper")),
-            ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog)
+            ("🚀", "Añadir / Importar Juegos...", self.open_external_import_dialog),
+            ("＋", "Añadir Juego Manual (.exe)...", self.open_add_dialog),
         ]
+        if cur_game:
+            items.append(("✏️", f"Editar '{cur_name}'...", lambda: self.open_edit_for_game_index(self.selected_index)))
+            items.append(("🎨", "Cambiar Carátula / Wallpaper...", lambda: self.open_cover_picker_for_selected_game(initial_mode="cover")))
+
+        items.append(("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog))
+        items.append(("🎮", "Configurar Mando...", self.open_gamepad_config_dialog))
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
 
     def _on_global_click(self, event):
@@ -872,7 +878,7 @@ class App(ctk.CTk):
                 parent=self
             )
             return
-        self._select_dialog = SelectGameToEditDialog(self, self.games, on_select_callback=self.open_edit_for_game_index)
+        self._select_dialog = SelectGameToEditDialog(self, self.games, on_select_callback=self.open_edit_for_game_index, initial_index=self.selected_index)
 
     def open_edit_for_game_index(self, index: int, return_callback=None):
         if index < 0 or index >= len(self.games):

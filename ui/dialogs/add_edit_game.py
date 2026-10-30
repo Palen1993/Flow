@@ -171,35 +171,30 @@ class AddEditGameDialog(ctk.CTkToplevel):
         left_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
         left_frame.grid(row=0, column=0, padx=(0, 10), pady=8, sticky="nsew")
         
-        ctk.CTkLabel(left_frame, text="Carátula", font=font_button(14), text_color=COLOR_TEXT_BRIGHT).pack(pady=(12, 6))
+        ctk.CTkLabel(left_frame, text="Carátula 3D", font=font_button(14), text_color=COLOR_TEXT_BRIGHT).pack(pady=(12, 4))
         
-        self.cover_canvas = tk.Canvas(left_frame, width=180, height=220, bg="#0d0f14", highlightthickness=0)
-        self.cover_canvas.pack(pady=5)
-        
-        self.btn_cover = ctk.CTkButton(
-            left_frame, text="Cambiar carátula...", width=155, height=30,
-            fg_color="#222838", hover_color="#2d354a", border_color="#343f55", border_width=1.0,
-            corner_radius=15, text_color=COLOR_TEXT_BRIGHT, font=font_button(12),
-            command=self.browse_cover
-        )
-        self.btn_cover.pack(pady=(8, 4))
+        self.cover_canvas = tk.Canvas(left_frame, width=180, height=220, bg="#0d0f14", highlightthickness=0, cursor="hand2")
+        self.cover_canvas.pack(pady=4)
+        self.cover_canvas.bind("<Button-1>", lambda e: self.download_online_hd_cover())
+
+        ctk.CTkLabel(left_frame, text="Clic para cambiar arte", font=font_body(10), text_color="#64748b").pack(pady=(0, 4))
 
         self.btn_online = ctk.CTkButton(
-            left_frame, text="🌐 Buscar Online HD ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
-            width=165, height=30,
+            left_frame, text="🎨 Cambiar Arte / Wallpaper ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
+            width=190, height=34,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.0,
-            corner_radius=15, text_color=COLOR_TEXT_WHITE, font=font_button(12),
+            corner_radius=17, text_color=COLOR_TEXT_WHITE, font=font_button(11),
             command=self.download_online_hd_cover
         )
         self.btn_online.pack(pady=4)
-        
-        self.btn_autodetect = ctk.CTkButton(
-            left_frame, text="Autodetectar (.exe)", width=155, height=30,
-            fg_color="#1b202c", hover_color="#252d3d", border_color="#2c3649", border_width=1.0,
-            corner_radius=15, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(12),
-            command=self.autodetect_cover
+
+        self.btn_cover = ctk.CTkButton(
+            left_frame, text="📁 Archivo local...", width=140, height=28,
+            fg_color="#1e2434", hover_color="#2a3348", border_color="#333d52", border_width=1.0,
+            corner_radius=14, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(11),
+            command=self.browse_cover
         )
-        self.btn_autodetect.pack(pady=4)
+        self.btn_cover.pack(pady=4)
 
         # Panel derecho: Configuración del juego
         right_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
@@ -316,7 +311,6 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self._nav_controls = [
             ("btn", self.btn_online, self.download_online_hd_cover),
             ("btn", self.btn_cover, self.browse_cover),
-            ("btn", self.btn_autodetect, self.autodetect_cover),
             ("entry", self.name_entry, lambda: self._open_keyboard_for_entry(self.name_entry, "Nombre del Juego")),
             ("entry", self.path_entry, lambda: self._open_keyboard_for_entry(self.path_entry, "Ruta del Ejecutable")),
             ("btn", self.btn_browse_exe, self.browse_exe),

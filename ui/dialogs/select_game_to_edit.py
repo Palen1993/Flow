@@ -27,10 +27,11 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
     def _windows_set_titlebar_icon(self):
         pass
     """Panel de gestión rápida, filtrado y edición masiva / individual de juegos."""
-    def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None):
+    def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0):
         super().__init__(parent)
         self.games = games
         self.on_select = on_select_callback
+        self._initial_target_idx = initial_index if 0 <= initial_index < len(self.games) else 0
         
         self.dialog_width = 720
         self.dialog_height = 600
@@ -343,7 +344,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             child.destroy()
         self.thumb_refs.clear()
         self._card_rows = []
-        self._selected_row_idx = 0
+        target_foc = getattr(self, "_initial_target_idx", 0)
+        self._selected_row_idx = target_foc if 0 <= target_foc < len(self.games) else 0
+        self._initial_target_idx = 0
             
         query = self.search_var.get().strip().lower()
         matches = []
@@ -365,7 +368,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         else:
             for orig_idx, game in matches:
                 self._create_game_card(orig_idx, game)
-            self._highlight_row(0)
+            self._highlight_row(self._selected_row_idx)
                 
         self._update_top_priority_state()
         self._update_top_monitor_state()

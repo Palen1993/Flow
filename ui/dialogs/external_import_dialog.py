@@ -76,19 +76,19 @@ class ExternalImportDialog(BaseGlassDialog):
 
         lbl_title = ctk.CTkLabel(
             top_line,
-            text="🚀  Importar Juegos de Plataformas Externas",
-            font=font_button(18),
+            text="🚀  Importar / Añadir Juegos a la Biblioteca",
+            font=font_button(17),
             text_color=COLOR_TEXT_MAIN
         )
         lbl_title.pack(side="left")
 
-        # Botones de selección rápida
+        # Botón seleccionar todos
         self.btn_select_all = ctk.CTkButton(
             top_line,
             text="Todos ",
             image=get_button_icon_ctk("x", self.family, size=18),
             compound="right",
-            width=100,
+            width=95,
             height=30,
             fg_color=COLOR_IOS_BLUE,
             hover_color=COLOR_IOS_BLUE_HOVER,
@@ -105,7 +105,7 @@ class ExternalImportDialog(BaseGlassDialog):
             text="ROMs ",
             image=get_button_icon_ctk("y", self.family, size=18),
             compound="right",
-            width=105,
+            width=100,
             height=30,
             fg_color=COLOR_BTN_SECONDARY_BG,
             hover_color="#262d3d",
@@ -116,7 +116,24 @@ class ExternalImportDialog(BaseGlassDialog):
             font=font_button(11),
             command=self._open_emulator_rom_scanner
         )
-        self.btn_roms.pack(side="right")
+        self.btn_roms.pack(side="right", padx=4)
+
+        # Botón de escanear carpeta de PC
+        self.btn_scan_folder = ctk.CTkButton(
+            top_line,
+            text="📁 Carpeta PC ",
+            width=115,
+            height=30,
+            fg_color=COLOR_BTN_SECONDARY_BG,
+            hover_color="#262d3d",
+            border_color=COLOR_GLASS_BORDER,
+            border_width=1.2,
+            corner_radius=15,
+            text_color="#38bdf8",
+            font=font_button(11),
+            command=self._scan_custom_folder
+        )
+        self.btn_scan_folder.pack(side="right")
 
         for w in (header, top_line, lbl_title):
             self.make_draggable(w)
@@ -156,6 +173,22 @@ class ExternalImportDialog(BaseGlassDialog):
             text_color=COLOR_TEXT_MUTED
         )
         self.lbl_count.pack(side="left")
+
+        self.btn_manual = ctk.CTkButton(
+            bottom_bar,
+            text="＋ Añadir Manual... ",
+            width=140,
+            height=34,
+            corner_radius=17,
+            fg_color="#1a202d",
+            hover_color="#263044",
+            border_color=COLOR_GLASS_BORDER,
+            border_width=1.0,
+            text_color="#93c5fd",
+            font=font_button(11),
+            command=self._open_manual_add
+        )
+        self.btn_manual.pack(side="left", padx=12)
 
         self.btn_import = ctk.CTkButton(
             bottom_bar,
@@ -388,6 +421,42 @@ class ExternalImportDialog(BaseGlassDialog):
             return True
 
         return False
+
+    def _scan_custom_folder(self):
+        from ui.dialogs.glass_folder_browser import browse_folder
+        from core.system import scan_directory_for_games
+        folder = browse_folder(parent=self, title="Seleccionar Carpeta para Buscar Juegos")
+        if not folder:
+            return
+
+        folder_name = os.path.basename(os.path.abspath(folder)) or folder
+        self.lbl_summary.configure(text=f"Escaneando '{folder_name}' en busca de juegos...")
+        self.update_idletasks()
+
+        def _worker():
+            existing = {os.path.normcase(os.path.abspath(g["path"])) for g in self.candidates if g.get("path")}
+            existing.update(self.existing_paths)
+            found = scan_directory_for_games(folder, existing_paths=existing)
+            def _apply():
+                if not self.winfo_exists():
+                    return
+                if found:
+                    self.candidates.extend(found)
+                    self._populate_candidates(self.candidates)
+                    self.lbl_summary.configure(text=f"¡Se añadieron {len(found)} juego(s) de '{folder_name}' a la lista!")
+                else:
+                    self.lbl_summary.configure(text=f"No se encontraron nuevos ejecutables de juegos en '{folder_name}'.")
+            self.after(0, _apply)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _open_manual_add(self):
+        self.close()
+        root = getattr(self, "parent", None) or getattr(self, "master", None)
+        while root and not hasattr(root, "open_add_dialog"):
+            root = getattr(root, "master", None) or getattr(root, "parent", None)
+        if root and hasattr(root, "open_add_dialog"):
+            root.open_add_dialog()
 
     def _open_emulator_rom_scanner(self):
         """Permite seleccionar una carpeta de ROMs para generar títulos de emulador."""
