@@ -131,7 +131,9 @@ class ExternalImportDialog(BaseGlassDialog):
         self.btn_scan_folder = ctk.CTkButton(
             top_line,
             text="📁 Carpeta PC ",
-            width=115,
+            image=get_button_icon_ctk("lb", self.family, size=18),
+            compound="right",
+            width=135,
             height=30,
             fg_color=COLOR_BTN_SECONDARY_BG,
             hover_color="#262d3d",
@@ -142,7 +144,7 @@ class ExternalImportDialog(BaseGlassDialog):
             font=font_button(11),
             command=self._scan_custom_folder
         )
-        self.btn_scan_folder.pack(side="right")
+        self.btn_scan_folder.pack(side="right", padx=(0, 4))
 
         for w in (header, top_line, lbl_title):
             self.make_draggable(w)
@@ -185,10 +187,12 @@ class ExternalImportDialog(BaseGlassDialog):
 
         self.btn_manual = ctk.CTkButton(
             bottom_bar,
-            text="＋ Añadir Manual... ",
-            width=140,
-            height=34,
-            corner_radius=17,
+            text="＋ Añadir Manual ",
+            image=get_button_icon_ctk("rb", self.family, size=18),
+            compound="right",
+            width=165,
+            height=36,
+            corner_radius=18,
             fg_color="#1a202d",
             hover_color="#263044",
             border_color=COLOR_GLASS_BORDER,
@@ -323,7 +327,7 @@ class ExternalImportDialog(BaseGlassDialog):
             lbl_empty = ctk.CTkLabel(
                 self.scroll_frame,
                 text="No se encontraron juegos en carpetas locales ni clientes externos.\n"
-                     "Puedes seleccionar una carpeta con '📁 Carpeta PC' o ROMs con 'ROMs'.",
+                     "Puedes seleccionar una carpeta con '📁 Carpeta PC (LB)' o añadir manualmente con '＋ Añadir Manual (RB)'.",
                 font=font_body(13),
                 text_color=COLOR_TEXT_DIM
             )
@@ -502,6 +506,16 @@ class ExternalImportDialog(BaseGlassDialog):
         # Botón Y: escanear ROMs de emulador
         if inputs.get("y", False) and not prev.get("y", False):
             self._open_emulator_rom_scanner()
+            return True
+
+        # LB: Escanear Carpeta PC
+        if inputs.get("lb", False) and not prev.get("lb", False):
+            self._scan_custom_folder()
+            return True
+
+        # RB: Añadir Manualmente
+        if inputs.get("rb", False) and not prev.get("rb", False):
+            self._open_manual_add()
             return True
 
         # Start: importar seleccionados

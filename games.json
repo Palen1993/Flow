@@ -17,7 +17,8 @@
         "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Black Myth Wukong.png",
         "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Black Myth Wukong_wallpaper.png",
         "wallpaper_opacity": 0.75,
-        "wallpaper_blur": 0.0
+        "wallpaper_blur": 0.0,
+        "launch_args": ""
     },
     {
         "name": "LEGO Batman Legacy of the Dark Knight",
@@ -68,7 +69,11 @@
         "high_priority": true,
         "platform": "Epic Games",
         "platform_id": "17979201bdd845f0ab53d1d62d841dbf",
-        "already_added": false
+        "already_added": false,
+        "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Viewfinder_wallpaper.png",
+        "wallpaper_opacity": 0.25,
+        "wallpaper_blur": 1.5,
+        "launch_args": ""
     },
     {
         "name": "Hellraiser",

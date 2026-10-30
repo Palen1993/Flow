@@ -22,17 +22,17 @@ from ui.dialogs.base_dialog import BaseGlassDialog
 
 class GlassFolderBrowserDialog(BaseGlassDialog):
     """
-    Explorador de carpetas y archivos estilo Glassmorphism navegable 100% con mando (D-Pad, A, B, X, Start),
+    Explorador de carpetas y archivos estilo Glassmorphism navegable 100% con mando (D-Pad, A, B, X, Start, LB, RB, Y),
     teclado y ratón. Permite seleccionar carpetas de juegos o archivos (.exe, imágenes)
     sin necesidad de ratón en televisores, sofás o consolas portátiles.
     """
-    W = 640
-    H = 520
+    W = 780
+    H = 580
 
     def __init__(
         self,
         parent: Optional[tk.Widget],
-        title: str = "Seleccionar",
+        title: str = "Seleccionar Carpeta",
         initial_dir: Optional[str] = None,
         select_mode: str = "folder",  # 'folder' o 'file'
         file_extensions: Optional[List[str]] = None,
@@ -43,25 +43,47 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         self.file_extensions = [ext.lower() for ext in file_extensions] if file_extensions else None
         self.family = family or getattr(parent, "_current_controller_family", None) or get_connected_controller_family()
 
-        # Determinar directorio inicial válido
+        # Detección de unidades de disco disponibles
+        self.drives = self._detect_logical_drives()
+
+        # Determinar directorio inicial válido (priorizar D:\Juegos si existe y no hay inicial)
         if initial_dir and os.path.isdir(initial_dir):
             self.current_path = os.path.abspath(initial_dir)
         elif initial_dir and os.path.isfile(initial_dir):
             self.current_path = os.path.dirname(os.path.abspath(initial_dir))
+        elif os.path.isdir("D:\\Juegos"):
+            self.current_path = "D:\\Juegos"
+        elif os.path.isdir("D:\\"):
+            self.current_path = "D:\\"
         else:
-            self.current_path = "D:\\" if os.path.isdir("D:\\") else "C:\\"
+            self.current_path = "C:\\"
 
         super().__init__(parent, title=title, width=self.W, height=self.H, corner_radius=22)
 
         # Elementos en la lista: tuplas (tipo: 'up'|'dir'|'file', nombre_visible, ruta_completa)
         self._items: List[tuple] = []
         self._item_buttons: List[ctk.CTkButton] = []
+        self._drive_buttons: dict = {}
         self._selected_index = 0
 
         self._build_ui(title)
         self._bind_events()
         self._refresh_contents()
         self.focus_set()
+
+    def _detect_logical_drives(self) -> List[str]:
+        drives = []
+        try:
+            import win32api
+            drives = [d for d in win32api.GetLogicalDriveStrings().split('\x00') if d]
+        except Exception:
+            pass
+        if not drives:
+            for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+                candidate = f"{letter}:\\"
+                if os.path.exists(candidate):
+                    drives.append(candidate)
+        return drives if drives else ["C:\\"]
 
     def _build_ui(self, title: str):
         self.card = ctk.CTkFrame(
@@ -80,80 +102,111 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         icon_hdr = "📁" if self.select_mode == "folder" else "🎮"
         lbl_t = ctk.CTkLabel(
             header, text=f"{icon_hdr}  {title}",
-            font=("Segoe UI Semibold", 15), text_color=COLOR_TEXT_MAIN
+            font=("Segoe UI Semibold", 16), text_color=COLOR_TEXT_MAIN
         )
         lbl_t.pack(side="left")
 
-        btn_native = ctk.CTkButton(
-            header, text="Explorador Windows 🗁 ", width=155, height=26,
+        # Acceso rápido a carpeta Juegos con (Y)
+        has_games_dir = os.path.isdir("D:\\Juegos") or os.path.isdir(os.path.expanduser("~\\Games"))
+        btn_quick_txt = "📁 Ir a Juegos " if has_games_dir else "📁 Ir a Inicio "
+        self.btn_quick_games = ctk.CTkButton(
+            header, text=btn_quick_txt, width=130, height=28,
             image=get_button_icon_ctk("y", self.family, size=16), compound="right",
-            corner_radius=13, font=font_button(10), fg_color="#1e2434",
-            hover_color="#2a3348", text_color=COLOR_TEXT_MUTED,
+            corner_radius=14, font=font_button(11), fg_color="#1e2434",
+            hover_color="#2a3348", text_color=COLOR_CYAN_ACCENT,
+            command=self._jump_to_games_folder
+        )
+        self.btn_quick_games.pack(side="right", padx=(6, 0))
+
+        btn_native = ctk.CTkButton(
+            header, text="🗁 Windows", width=95, height=28,
+            corner_radius=14, font=font_button(10), fg_color="#181e2b",
+            hover_color="#242d3d", text_color=COLOR_TEXT_MUTED,
             command=self._use_native_picker
         )
         btn_native.pack(side="right")
 
         # 2. Barra de Unidades y Ruta Actual
-        drive_bar = ctk.CTkFrame(self.card, fg_color="#10141d", corner_radius=12,
-                                 border_width=1, border_color="#232b3c")
-        drive_bar.pack(fill="x", padx=18, pady=(0, 6))
+        self.drive_bar = ctk.CTkFrame(self.card, fg_color="#10141d", corner_radius=12,
+                                     border_width=1, border_color="#232b3c")
+        self.drive_bar.pack(fill="x", padx=18, pady=(0, 6))
 
-        drives = []
-        try:
-            import win32api
-            drives = [d for d in win32api.GetLogicalDriveStrings().split('\x00') if d]
-        except Exception:
-            drives = ["C:\\", "D:\\"] if os.path.exists("D:\\") else ["C:\\"]
+        drives_left = ctk.CTkFrame(self.drive_bar, fg_color="transparent")
+        drives_left.pack(side="left", padx=4, pady=4)
 
-        for d in drives:
+        for d in self.drives:
             d_btn = ctk.CTkButton(
-                drive_bar, text=f"💾 {d}", width=64, height=26,
-                corner_radius=10, font=font_button(10), fg_color="#1b212f",
+                drives_left, text=f"💾 {d}", width=70, height=28,
+                corner_radius=10, font=font_button(11), fg_color="#1b212f",
                 hover_color="#007aff", text_color=COLOR_TEXT_LIGHT,
                 command=lambda p=d: self._change_directory(p)
             )
-            d_btn.pack(side="left", padx=4, pady=4)
+            d_btn.pack(side="left", padx=3)
+            self._drive_buttons[d.upper()] = d_btn
 
+        # Indicador de mando para cambiar de disco (RB)
+        drive_hint = ctk.CTkLabel(
+            self.drive_bar,
+            text="Cambiar Disco ",
+            image=get_button_icon_ctk("rb", self.family, size=16),
+            compound="right",
+            font=font_button(11),
+            text_color="#64748b"
+        )
+        drive_hint.pack(side="right", padx=10, pady=4)
+
+        # Ruta actual visible
         self.lbl_path = ctk.CTkLabel(
-            self.card, text=self.current_path, font=font_body(11),
+            self.card, text=f"📂  {self.current_path}", font=font_body(12),
             text_color=COLOR_CYAN_ACCENT, anchor="w"
         )
-        self.lbl_path.pack(fill="x", padx=20, pady=(0, 4))
+        self.lbl_path.pack(fill="x", padx=20, pady=(0, 6))
 
-        # 3. Lista desplazable de elementos
+        # 3. Lista desplazable de carpetas / archivos
         self.scroll_frame = ctk.CTkScrollableFrame(
             self.card, fg_color=COLOR_BG_DARK, corner_radius=14,
             border_width=1, border_color="#202533"
         )
         self.scroll_frame.pack(fill="both", expand=True, padx=18, pady=(0, 10))
 
-        # 4. Barra inferior de confirmación
+        # 4. Barra inferior de confirmación y acciones
         footer = ctk.CTkFrame(self.card, fg_color="transparent")
         footer.pack(fill="x", padx=18, pady=(0, 14))
 
         btn_cancel = ctk.CTkButton(
             footer, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=18),
-            compound="right", width=110, height=36, corner_radius=18,
+            compound="right", width=115, height=38, corner_radius=19,
             font=font_button(12), fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER,
             border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0, text_color=COLOR_TEXT_MUTED_LIGHT,
             command=self._on_cancel
         )
         btn_cancel.pack(side="left")
 
-        action_txt = "Seleccionar Carpeta " if self.select_mode == "folder" else "Seleccionar Archivo "
+        btn_up_footer = ctk.CTkButton(
+            footer, text="Subir Nivel ", image=get_button_icon_ctk("lb", self.family, size=18),
+            compound="right", width=125, height=38, corner_radius=19,
+            font=font_button(12), fg_color="#181e2b", hover_color="#242c3d",
+            border_color="#2e384d", border_width=1.0, text_color="#38bdf8",
+            command=self._go_up_directory
+        )
+        btn_up_footer.pack(side="left", padx=8)
+
+        # Botón confirmar selección principal (Start / X)
+        action_txt = "✓ Seleccionar Carpeta " if self.select_mode == "folder" else "✓ Seleccionar Archivo "
         self.btn_confirm_selection = ctk.CTkButton(
             footer, text=action_txt,
-            image=get_button_icon_ctk("x", self.family, size=18), compound="right",
-            height=36, corner_radius=18, font=font_button(12),
+            image=get_button_icon_ctk("start", self.family, size=18), compound="right",
+            height=38, corner_radius=19, font=font_button(12),
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
             border_color=COLOR_IOS_BLUE_BORDER, border_width=1.2, text_color=COLOR_TEXT_WHITE,
             command=self._confirm_selection
         )
         self.btn_confirm_selection.pack(side="right")
 
+        # Botón entrar en carpeta (A)
         self.btn_open = ctk.CTkButton(
             footer, text="Abrir / Entrar ", image=get_button_icon_ctk("a", self.family, size=18),
-            compound="right", width=130, height=36, corner_radius=18,
+            compound="right", width=140, height=38, corner_radius=19,
             font=font_button(12), fg_color="#222838", hover_color="#2b3448",
             border_color="#38435d", border_width=1.0, text_color=COLOR_TEXT_BRIGHT,
             command=self._activate_selected_item
@@ -180,6 +233,56 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         self.bind("<Return>", lambda e: self._activate_selected_item())
         self.bind("<BackSpace>", lambda e: self._go_up_directory())
 
+    def _update_drive_buttons_highlight(self):
+        cur_drv = os.path.splitdrive(self.current_path)[0].upper() + "\\"
+        for drv_key, btn in self._drive_buttons.items():
+            if drv_key == cur_drv:
+                btn.configure(
+                    fg_color=COLOR_IOS_BLUE,
+                    text_color=COLOR_TEXT_WHITE,
+                    border_color=COLOR_IOS_BLUE_BORDER,
+                    border_width=1.2
+                )
+            else:
+                btn.configure(
+                    fg_color="#1b212f",
+                    text_color=COLOR_TEXT_LIGHT,
+                    border_width=0
+                )
+
+    def _cycle_drive(self, delta: int = 1):
+        if not self.drives:
+            return
+        cur_drv = os.path.splitdrive(self.current_path)[0].upper() + "\\"
+        try:
+            norm_drives = [d.upper() for d in self.drives]
+            idx = norm_drives.index(cur_drv) if cur_drv in norm_drives else 0
+        except Exception:
+            idx = 0
+        next_drv = self.drives[(idx + delta) % len(self.drives)]
+        self._change_directory(next_drv)
+        try:
+            from core.feedback import feedback_click
+            feedback_click()
+        except Exception:
+            pass
+
+    def _jump_to_games_folder(self):
+        if os.path.isdir("D:\\Juegos"):
+            target = "D:\\Juegos"
+        elif os.path.isdir(os.path.expanduser("~\\Games")):
+            target = os.path.expanduser("~\\Games")
+        elif os.path.isdir("D:\\"):
+            target = "D:\\"
+        else:
+            target = "C:\\"
+        self._change_directory(target)
+        try:
+            from core.feedback import feedback_select
+            feedback_select()
+        except Exception:
+            pass
+
     def _change_directory(self, new_dir: str):
         if os.path.isdir(new_dir):
             self.current_path = os.path.abspath(new_dir)
@@ -190,9 +293,16 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         parent = os.path.dirname(self.current_path)
         if parent and parent != self.current_path and os.path.isdir(parent):
             self._change_directory(parent)
+            try:
+                from core.feedback import feedback_click
+                feedback_click()
+            except Exception:
+                pass
 
     def _refresh_contents(self):
         self.lbl_path.configure(text=f"📂  {self.current_path}")
+        self._update_drive_buttons_highlight()
+
         for w in self.scroll_frame.winfo_children():
             w.destroy()
 
@@ -206,7 +316,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             self._items.append(("up", "..", parent_dir))
             btn_up = ctk.CTkButton(
                 self.scroll_frame, text="  📁  ..  (Subir nivel) ",
-                anchor="w", height=34, corner_radius=10, font=font_button(11),
+                image=get_button_icon_ctk("lb", self.family, size=16), compound="right",
+                anchor="w", height=36, corner_radius=10, font=font_button(12),
                 fg_color="#181e2b", hover_color="#242c3d", text_color=COLOR_CYAN_ACCENT,
                 command=self._go_up_directory
             )
@@ -232,20 +343,28 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         except PermissionError:
             lbl_err = ctk.CTkLabel(
                 self.scroll_frame, text="⚠️ Acceso denegado por permisos de Windows",
-                font=font_body(11), text_color=COLOR_STATUS_DANGER
+                font=font_body(12), text_color=COLOR_STATUS_DANGER
             )
-            lbl_err.pack(pady=20)
+            lbl_err.pack(pady=30)
             return
         except Exception as e:
             lbl_err = ctk.CTkLabel(
                 self.scroll_frame, text=f"Error: {e}",
-                font=font_body(11), text_color=COLOR_STATUS_DANGER
+                font=font_body(12), text_color=COLOR_STATUS_DANGER
             )
-            lbl_err.pack(pady=20)
+            lbl_err.pack(pady=30)
             return
 
         subdirs.sort(key=lambda s: s.lower())
         files.sort(key=lambda s: s.lower())
+
+        if not subdirs and not files:
+            lbl_empty = ctk.CTkLabel(
+                self.scroll_frame,
+                text="📂 Carpeta vacía o sin archivos coincidentes.\nPulsa Start o X para seleccionarla, o LB para subir de nivel.",
+                font=font_body(12), text_color=COLOR_TEXT_MUTED
+            )
+            lbl_empty.pack(pady=30)
 
         # Añadir carpetas
         for f_name in subdirs:
@@ -257,9 +376,9 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                 self.scroll_frame,
                 text=f"  📁  {f_name}",
                 anchor="w",
-                height=34,
+                height=36,
                 corner_radius=10,
-                font=font_body(11),
+                font=font_body(12),
                 fg_color="transparent",
                 hover_color="#222838",
                 text_color=COLOR_TEXT_LIGHT,
@@ -267,6 +386,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             )
             btn.pack(fill="x", padx=4, pady=1)
             btn.bind("<Double-Button-1>", lambda e, p=full_p: self._change_directory(p))
+            btn.bind("<Button-1>", lambda e, i=item_idx: self._on_click_item(i))
             btn.bind("<Enter>", lambda e, i=item_idx: self._on_hover(i))
             self._item_buttons.append(btn)
 
@@ -281,9 +401,9 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                 self.scroll_frame,
                 text=f"  {f_icon}  {f_name}",
                 anchor="w",
-                height=34,
+                height=36,
                 corner_radius=10,
-                font=font_body(11),
+                font=font_body(12),
                 fg_color="transparent",
                 hover_color="#1d263b",
                 text_color="#93c5fd" if f_name.lower().endswith(".exe") else "#a7f3d0",
@@ -291,10 +411,15 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             )
             btn.pack(fill="x", padx=4, pady=1)
             btn.bind("<Double-Button-1>", lambda e, p=full_p: self._confirm_file_path(p))
+            btn.bind("<Button-1>", lambda e, i=item_idx: self._on_click_item(i))
             btn.bind("<Enter>", lambda e, i=item_idx: self._on_hover(i))
             self._item_buttons.append(btn)
 
         self._update_selection()
+
+    def _on_click_item(self, idx: int):
+        self._selected_index = idx
+        self._update_selection(scroll=False)
 
     def _on_hover(self, idx: int):
         self._selected_index = idx
@@ -321,12 +446,38 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                     text_color=def_color
                 )
 
+        # Actualizar texto del botón de confirmación según el elemento enfocado
+        if self._items and 0 <= self._selected_index < len(self._items):
+            item_type, name, _ = self._items[self._selected_index]
+            if item_type == "dir":
+                disp_name = (name[:22] + "...") if len(name) > 25 else name
+                self.btn_confirm_selection.configure(text=f"✓ Seleccionar '{disp_name}' ")
+                self.btn_open.configure(state="normal", text="Abrir / Entrar ")
+            elif item_type == "up":
+                cur_name = os.path.basename(self.current_path) or self.current_path
+                disp_name = (cur_name[:20] + "...") if len(cur_name) > 23 else cur_name
+                self.btn_confirm_selection.configure(text=f"✓ Seleccionar '{disp_name}' ")
+                self.btn_open.configure(state="normal", text="Subir Nivel ")
+            elif item_type == "file":
+                self.btn_confirm_selection.configure(text="✓ Seleccionar Archivo ")
+                self.btn_open.configure(state="normal", text="Elegir ")
+        else:
+            cur_name = os.path.basename(self.current_path) or self.current_path
+            disp_name = (cur_name[:20] + "...") if len(cur_name) > 23 else cur_name
+            self.btn_confirm_selection.configure(text=f"✓ Seleccionar '{disp_name}' ")
+            self.btn_open.configure(state="disabled")
+
     def _navigate_list(self, delta: int):
         if not self._item_buttons:
             return
         n = len(self._item_buttons)
         self._selected_index = max(0, min(n - 1, self._selected_index + delta))
         self._update_selection(scroll=True)
+        try:
+            from core.feedback import feedback_click
+            feedback_click()
+        except Exception:
+            pass
 
     def _activate_selected_item(self):
         if not self._items or self._selected_index >= len(self._items):
@@ -336,6 +487,11 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             self._go_up_directory()
         elif item_type == "dir":
             self._change_directory(full_p)
+            try:
+                from core.feedback import feedback_select
+                feedback_select()
+            except Exception:
+                pass
         elif item_type == "file":
             self._confirm_file_path(full_p)
 
@@ -345,18 +501,47 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
 
     def _confirm_file_path(self, file_path: str):
         self.selected_path = file_path
+        try:
+            from core.feedback import feedback_menu
+            feedback_menu()
+        except Exception:
+            pass
         self._close()
 
     def _confirm_selection(self):
         if self.select_mode == "folder":
+            # Si el elemento enfocado es una subcarpeta ('dir'), el usuario desea seleccionar esa subcarpeta
+            if self._items and 0 <= self._selected_index < len(self._items):
+                item_type, _name, full_p = self._items[self._selected_index]
+                if item_type == "dir" and os.path.isdir(full_p):
+                    self.selected_path = full_p
+                    try:
+                        from core.feedback import feedback_menu
+                        feedback_menu()
+                    except Exception:
+                        pass
+                    self._close()
+                    return
+
+            # De lo contrario (ej: está sobre 'up' o lista vacía), seleccionar la carpeta actual
             self.selected_path = self.current_path
+            try:
+                from core.feedback import feedback_menu
+                feedback_menu()
+            except Exception:
+                pass
             self._close()
         else:
-            # En modo archivo, si hay un archivo seleccionado en la lista, usarlo
+            # Modo archivo (.exe o imagen)
             if self._items and 0 <= self._selected_index < len(self._items):
                 item_type, _name, full_p = self._items[self._selected_index]
                 if item_type == "file":
                     self.selected_path = full_p
+                    try:
+                        from core.feedback import feedback_menu
+                        feedback_menu()
+                    except Exception:
+                        pass
                     self._close()
                     return
             self._activate_selected_item()
@@ -387,29 +572,58 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         self.destroy()
 
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
+        # 1. Navegación en la lista vertical
         if inputs.get("up", False) and not prev_inputs.get("up", False):
             self._navigate_list(-1)
             return True
         if inputs.get("down", False) and not prev_inputs.get("down", False):
             self._navigate_list(1)
             return True
+
+        # 2. Navegación horizontal de discos (Izquierda / Derecha)
+        if inputs.get("right", False) and not prev_inputs.get("right", False):
+            self._cycle_drive(1)
+            return True
+        if inputs.get("left", False) and not prev_inputs.get("left", False):
+            self._cycle_drive(-1)
+            return True
+
+        # 3. Gatillos o botones de hombro para discos (RB / RT para avanzar, LT para retroceder)
+        if (inputs.get("rb", False) and not prev_inputs.get("rb", False)) or            (inputs.get("rt", False) and not prev_inputs.get("rt", False)):
+            self._cycle_drive(1)
+            return True
+        if inputs.get("lt", False) and not prev_inputs.get("lt", False):
+            self._cycle_drive(-1)
+            return True
+
+        # 4. Botón A: Abrir / Entrar en la subcarpeta resaltada
         if inputs.get("a", False) and not prev_inputs.get("a", False):
             self._activate_selected_item()
             return True
+
+        # 5. Botón B o Back: Cancelar y cerrar
         if inputs.get("b", False) and not prev_inputs.get("b", False):
             self._on_cancel()
             return True
-        if (inputs.get("lb", False) and not prev_inputs.get("lb", False)) or \
-           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+
+        # 6. Botón LB o Back: Subir de nivel en la jerarquía de carpetas
+        if inputs.get("lb", False) and not prev_inputs.get("lb", False):
             self._go_up_directory()
             return True
-        if (inputs.get("x", False) and not prev_inputs.get("x", False)) or \
-           (inputs.get("start", False) and not prev_inputs.get("start", False)):
+        if inputs.get("back", False) and not prev_inputs.get("back", False):
+            self._go_up_directory()
+            return True
+
+        # 7. Start o X: Confirmar y seleccionar carpeta/archivo (inteligente)
+        if (inputs.get("x", False) and not prev_inputs.get("x", False)) or            (inputs.get("start", False) and not prev_inputs.get("start", False)):
             self._confirm_selection()
             return True
+
+        # 8. Botón Y: Salto rápido a carpeta de Juegos (D:\Juegos)
         if inputs.get("y", False) and not prev_inputs.get("y", False):
-            self._use_native_picker()
+            self._jump_to_games_folder()
             return True
+
         return True
 
 
