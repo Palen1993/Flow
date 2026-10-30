@@ -1439,6 +1439,17 @@ class CoverPickerDialog(ctk.CTkToplevel):
             feedback_click()
             self._highlight_card(new_idx)
 
+    def _open_search_keyboard(self):
+        from ui.dialogs.on_screen_keyboard import prompt_on_screen_keyboard
+        def _on_confirm(val: str):
+            try:
+                self.entry_search.delete(0, tk.END)
+                self.entry_search.insert(0, val)
+                self._on_search_button_clicked()
+            except Exception:
+                pass
+        prompt_on_screen_keyboard(self, title="Buscar Carátula o Wallpaper", initial_text=self.entry_search.get(), on_confirm=_on_confirm)
+
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
         if inputs.get("b", False) and not prev_inputs.get("b", False):
             self.destroy()
@@ -1509,11 +1520,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 return True
 
         if inputs.get("x", False) and not prev_inputs.get("x", False):
-            try:
-                self.entry_search.focus_set()
-                self.entry_search.select_range(0, tk.END)
-            except Exception:
-                pass
+            self._open_search_keyboard()
             return True
 
         if inputs.get("left", False) and not prev_inputs.get("left", False):

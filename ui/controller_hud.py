@@ -182,14 +182,8 @@ def get_button_icon_ctk(btn_key: str, family: Optional[str] = None, size: int = 
         family = get_connected_controller_family()
     fam = "playstation" if family == "playstation" else "xbox"
     k = btn_key.lower()
-    cache_key = (k, fam, size)
-    if cache_key in _ICON_CTK_CACHE:
-        return _ICON_CTK_CACHE[cache_key]
-
     pil_img = render_button_icon_pil(k, fam, size=size)
-    ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(pil_img.width, pil_img.height))
-    _ICON_CTK_CACHE[cache_key] = ctk_img
-    return ctk_img
+    return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(pil_img.width, pil_img.height))
 
 
 def render_controller_badge_pill(action: str, family: str = "xbox", height: int = 32) -> Image.Image:

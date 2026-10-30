@@ -320,6 +320,16 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         )
         btn_close.pack(side="right", padx=4, pady=4)
 
+        btn_search = ctk.CTkButton(
+            footer, text="Buscar ", image=get_button_icon_ctk("y", size=20), compound="right",
+            width=128, height=38,
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
+            border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_MUTED,
+            font=font_button(12), command=self._open_search_keyboard
+        )
+        btn_search.pack(side="right", padx=6, pady=4)
+
     def refresh_list(self):
         for child in self.scroll_frame.winfo_children():
             child.destroy()
@@ -385,9 +395,19 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
                 else:
                     card.configure(border_color=COLOR_BORDER_CARD, border_width=1.0, fg_color=COLOR_BG_CARD_SECONDARY)
 
+    def _open_search_keyboard(self):
+        from ui.dialogs.on_screen_keyboard import prompt_on_screen_keyboard
+        def _on_confirm(val: str):
+            self.search_var.set(val)
+            self.refresh_list()
+        prompt_on_screen_keyboard(self, title="Filtrar Juegos", initial_text=self.search_var.get(), on_confirm=_on_confirm)
+
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
         if inputs.get("b", False) and not prev_inputs.get("b", False):
             self.destroy()
+            return True
+        if inputs.get("y", False) and not prev_inputs.get("y", False):
+            self._open_search_keyboard()
             return True
         if inputs.get("lb", False) and not prev_inputs.get("lb", False):
             self.chk_all_priority.toggle()

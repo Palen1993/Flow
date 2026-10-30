@@ -307,10 +307,10 @@ class AddEditGameDialog(ctk.CTkToplevel):
             ("btn", self.btn_online, self.download_online_hd_cover),
             ("btn", self.btn_cover, self.browse_cover),
             ("btn", self.btn_autodetect, self.autodetect_cover),
-            ("entry", self.name_entry, None),
-            ("entry", self.path_entry, None),
+            ("entry", self.name_entry, lambda: self._open_keyboard_for_entry(self.name_entry, "Nombre del Juego")),
+            ("entry", self.path_entry, lambda: self._open_keyboard_for_entry(self.path_entry, "Ruta del Ejecutable")),
             ("btn", self.btn_browse_exe, self.browse_exe),
-            ("entry", self.args_entry, None),
+            ("entry", self.args_entry, lambda: self._open_keyboard_for_entry(self.args_entry, "Parámetros de Ejecución")),
             ("dropdown", self.monitor_dropdown, self.monitor_dropdown._toggle_dropdown),
             ("check", self.priority_check, self.priority_check.toggle),
             ("btn", self.btn_save, self.save),
@@ -519,6 +519,15 @@ class AddEditGameDialog(ctk.CTkToplevel):
             except Exception:
                 pass
             self._temp_preview_cover = None
+
+    def _open_keyboard_for_entry(self, entry_widget: ctk.CTkEntry, title: str):
+        from ui.dialogs.on_screen_keyboard import prompt_on_screen_keyboard
+        def _on_confirm(new_val: str):
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, new_val)
+            if entry_widget == self.path_entry:
+                self.auto_fill_name_from_exe()
+        prompt_on_screen_keyboard(self, title=title, initial_text=entry_widget.get(), on_confirm=_on_confirm)
 
     def save(self):
         from core.config import COVERS_DIR

@@ -12,6 +12,7 @@ from ui.dialogs.cover_picker_dialog import CoverPickerDialog
 from ui.dialogs.controller_info_dialog import ControllerInfoDialog
 from ui.dialogs.glass_message_box import GlassMessageBox, show_info, show_warning, show_error, ask_yes_no
 from ui.dialogs.glass_folder_browser import GlassFolderBrowserDialog, browse_folder, browse_file
+from ui.dialogs.on_screen_keyboard import OnScreenKeyboardDialog, prompt_on_screen_keyboard
 
 __all__ = [
     "BaseGlassDialog",
@@ -31,5 +32,7 @@ __all__ = [
     "ask_yes_no",
     "GlassFolderBrowserDialog",
     "browse_folder",
-    "browse_file"
+    "browse_file",
+    "OnScreenKeyboardDialog",
+    "prompt_on_screen_keyboard"
 ]
