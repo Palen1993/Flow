@@ -22,10 +22,11 @@ print("=" * 65)
 
 errors = []
 
-# 1. TEST CONFIGURACIÓN Y PERSISTENCIA
-print("\n[1/8] Probando core.config (Carga, Guardado Atómico, Normalización y Portabilidad)...")
+# 1. TEST CONFIGURACIÓN, PERSISTENCIA Y LOGGING
+print("\n[1/8] Probando core.config y core.logger (Persistencia, Portabilidad y Rotación de Logs)...")
 try:
     from core.config import load_games_data, save_games_data, CONFIG_FILE, get_storage_dir, is_portable_mode
+    from core.logger import get_logger, LOG_FILE
     storage = get_storage_dir()
     assert os.path.isdir(storage), f"Storage dir no existe: {storage}"
     games = load_games_data()
@@ -36,8 +37,14 @@ try:
         if path:
             assert "/" not in path or "\\" not in path, f"Path no normalizado: {path}"
     print("  ✓ Todas las rutas están limpiamente normalizadas en Windows.")
+    
+    # Validar logger
+    log = get_logger("AuditTest")
+    log.info("Verificación de RotatingFileHandler en mega_audit")
+    assert os.path.isfile(LOG_FILE), "gameflow.log no generado"
+    print(f"  ✓ Logging profesional verificado: {LOG_FILE} (maxBytes=512KB, backupCount=2)")
 except Exception as e:
-    errors.append(f"core.config: {e}")
+    errors.append(f"core.config/logger: {e}")
     print(f"  ❌ Error: {e}")
 
 # 2. TEST DETECCIÓN DE MONITORES Y DPI

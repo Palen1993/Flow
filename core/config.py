@@ -71,6 +71,14 @@ if STORAGE_DIR != BASE_DIR and not os.path.exists(CONFIG_FILE):
         except Exception:
             pass
 
+def _get_logger():
+    try:
+        from core.logger import get_logger
+        return get_logger("Config")
+    except Exception:
+        import logging
+        return logging.getLogger("GameFlow.Config")
+
 _local_thread_lock = threading.RLock()
 
 @contextlib.contextmanager
@@ -154,17 +162,17 @@ def load_games_data() -> List[Dict[str, Any]]:
                                         g["wallpaper"] = cand
                         return data
             except Exception as e:
-                print(f"[Config] Error cargando {CONFIG_FILE}: {e}")
+                _get_logger().error(f"Error cargando {CONFIG_FILE}: {e}", exc_info=True)
                 bak_file = f"{CONFIG_FILE}.bak"
                 if os.path.exists(bak_file):
                     try:
                         with open(bak_file, "r", encoding="utf-8") as f:
                             data = json.load(f)
                             if isinstance(data, list):
-                                print(f"[Config] Biblioteca restaurada con éxito desde {bak_file}")
+                                _get_logger().info(f"Biblioteca restaurada con éxito desde {bak_file}")
                                 return data
                     except Exception as e2:
-                        print(f"[Config] Error leyendo archivo de respaldo {bak_file}: {e2}")
+                        _get_logger().error(f"Error leyendo archivo de respaldo {bak_file}: {e2}")
         return []
 
 def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool = True) -> bool:
@@ -210,7 +218,7 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
                             if disk_last and (not mem_last or disk_last > mem_last):
                                 g["last_played"] = disk_last
             except Exception as e:
-                print(f"[Config] Aviso en merge de playtime: {e}")
+                _get_logger().warning(f"Aviso en merge de playtime: {e}")
 
         try:
             # Si el archivo actual existe y es válido, mantenerlo como respaldo .bak antes de sobrescribir
@@ -228,7 +236,7 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
             os.replace(tmp_file, CONFIG_FILE)
             return True
         except Exception as e:
-            print(f"[Config] Error guardando {CONFIG_FILE}: {e}")
+            _get_logger().error(f"Error guardando {CONFIG_FILE}: {e}", exc_info=True)
             if os.path.exists(tmp_file):
                 try:
                     os.remove(tmp_file)

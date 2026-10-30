@@ -10,6 +10,12 @@ import psutil
 import threading
 import win32gui
 import win32con
+try:
+    from core.logger import get_logger
+    logger = get_logger("Launcher")
+except Exception:
+    import logging
+    logger = logging.getLogger("GameFlow.Launcher")
 
 # Estructura nativa para ShellExecuteExW con retención de handle de proceso (PID exacto)
 class SHELLEXECUTEINFOW(ctypes.Structure):
@@ -167,10 +173,10 @@ def sync_unreal_engine_config(game_path: str, target_monitor_rect: tuple):
 
                 with open(ini_path, 'w', encoding='utf-8') as f:
                     f.write(content)
-                print(f"[Launcher] Configuración de Unreal Engine ({game_name}) sincronizada: Pos=({t_left}, {t_top}), Res={w}x{h}, Mode=Borderless")
+                logger.info(f"Configuración de Unreal Engine ({game_name}) sincronizada: Pos=({t_left}, {t_top}), Res={w}x{h}, Mode=Borderless")
                 break
     except Exception as e:
-        print(f"[Launcher] Error al sincronizar config de Unreal Engine: {e}")
+        logger.error(f"Error al sincronizar config de Unreal Engine: {e}")
 
 def sync_game_display_config(game_path: str, target_monitor_index: int, target_monitor_rect=None):
     """
@@ -191,14 +197,14 @@ def sync_game_display_config(game_path: str, target_monitor_index: int, target_m
                     content = re.sub(r"WindowPosY=[-\d]+", f"WindowPosY={target_monitor_rect[1]}", content)
                 with open(ini_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                print(f"[Launcher] Configuración de AC Black Flag sincronizada con Monitor {target_monitor_index}")
+                logger.info(f"Configuración de AC Black Flag sincronizada con Monitor {target_monitor_index}")
 
         # Sincronización automática de GameUserSettings.ini para juegos Unreal Engine
         if target_monitor_rect and is_unreal_engine_game(game_path):
             sync_unreal_engine_config(game_path, target_monitor_rect)
 
     except Exception as e:
-        print(f"[Launcher] Error al sincronizar config gráfica: {e}")
+        logger.error(f"Error al sincronizar config gráfica: {e}")
 
 def run_game_sentinel(initial_pids: list, exe_base: str, target_monitor_rect: tuple, target_monitor_name: str):
     """
@@ -212,7 +218,7 @@ def run_game_sentinel(initial_pids: list, exe_base: str, target_monitor_rect: tu
     start_time = time.time()
     tracked_pids = set(initial_pids or [])
     last_correction_time = 0
-    print(f"[Centinela] Guardia activa iniciada para {target_monitor_name} {target_monitor_rect}")
+    logger.info(f"Guardia activa iniciada para {target_monitor_name} {target_monitor_rect}")
 
     while True:
         try:
@@ -230,7 +236,7 @@ def run_game_sentinel(initial_pids: list, exe_base: str, target_monitor_rect: tu
                         pass
 
             if not alive_pids:
-                print(f"[Centinela] El proceso del juego ({exe_base}) ha concluido. Centinela apagado.")
+                logger.info(f"El proceso del juego ({exe_base}) ha concluido. Centinela apagado.")
                 break
 
             # Incorporar procesos hijos
@@ -264,7 +270,7 @@ def run_game_sentinel(initial_pids: list, exe_base: str, target_monitor_rect: tu
                     if not is_inside and (time.time() - last_correction_time > 0.8):
                         last_correction_time = time.time()
                         w_title = w.get('title') or w.get('safe_title', 'Juego')
-                        print(f"[Centinela] ¡Re-anclaje detectado en caliente! '{w_title}' se desvió a Rect={rect}. Devolviendo a {target_monitor_name}...")
+                        logger.warning(f"¡Re-anclaje detectado en caliente! '{w_title}' se desvió a Rect={rect}. Devolviendo a {target_monitor_name}...")
                         move_window_to_monitor(hwnd, target_monitor_rect, force_borderless=True)
                         time.sleep(0.15)
                         try:
@@ -330,10 +336,10 @@ def spawn_detached_sentinel(pids: list, exe_base: str, target_monitor_rect: tupl
         flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 
         proc = subprocess.Popen(cmd, cwd=base_dir, creationflags=flags, close_fds=True)
-        print(f"[Launcher] Guardián desacoplado iniciado (PID {proc.pid}) para {target_monitor_name} {target_monitor_rect}")
+        logger.info(f"Guardián desacoplado iniciado (PID {proc.pid}) para {target_monitor_name} {target_monitor_rect}")
         return proc.pid
     except Exception as e:
-        print(f"[Launcher] Error iniciando guardián desacoplado: {e}")
+        logger.error(f"Error iniciando guardián desacoplado: {e}")
         return None
 
 def launch_game_thread(game_path: str, target_monitor_index: int, high_priority: bool, 
@@ -366,7 +372,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
             orig_idx = target_monitor_index
             target_monitor_index = primary.get("id", 0)
             fallback_msg = f"Monitor {orig_idx} desconectado. Redirigiendo a {primary['name']}..."
-            print(f"[Launcher] {fallback_msg}")
+            logger.info(fallback_msg)
             if status_cb:
                 status_cb(fallback_msg)
 
@@ -376,7 +382,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
 
         if status_cb:
             status_cb("Iniciando ejecutable...")
-        print(f"[Launcher] Iniciando {game_path}...")
+        logger.info(f"Iniciando {game_path}...")
         game_dir = os.path.dirname(game_path)
         pid = None
 
@@ -402,23 +408,23 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                 ue_params = ["-borderless", f"-WinX={t_left}", f"-WinY={t_top}", f"-ResX={w}", f"-ResY={h}"]
                 cmd.extend(ue_params)
                 extra_args_list.extend(ue_params)
-                print(f"[Launcher] Blindaje Unreal Engine inyectado: {' '.join(ue_params)}")
+                logger.info(f"Blindaje Unreal Engine inyectado: {' '.join(ue_params)}")
             elif engine == "unity":
                 # Unity indexa pantallas desde 1 (1 = DISPLAY1, 2 = DISPLAY2, 3 = DISPLAY3)
                 unity_params = ["-monitor", str(target_monitor_index + 1), "-screen-fullscreen", "1"]
                 cmd.extend(unity_params)
                 extra_args_list.extend(unity_params)
-                print(f"[Launcher] Blindaje Unity Engine inyectado: {' '.join(unity_params)}")
+                logger.info(f"Blindaje Unity Engine inyectado: {' '.join(unity_params)}")
             elif engine == "godot":
                 godot_params = ["--screen", str(target_monitor_index)]
                 cmd.extend(godot_params)
                 extra_args_list.extend(godot_params)
-                print(f"[Launcher] Blindaje Godot Engine inyectado: {' '.join(godot_params)}")
+                logger.info(f"Blindaje Godot Engine inyectado: {' '.join(godot_params)}")
             elif engine == "source":
                 source_params = ["-noborder", "-x", str(t_left), "-y", str(t_top)]
                 cmd.extend(source_params)
                 extra_args_list.extend(source_params)
-                print(f"[Launcher] Blindaje Source Engine inyectado: {' '.join(source_params)}")
+                logger.info(f"Blindaje Source Engine inyectado: {' '.join(source_params)}")
 
         if custom_args and custom_args.strip():
             try:
@@ -440,7 +446,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
         except (OSError, PermissionError) as e:
             # Error 740: Requiere elevación como Administrador
             if getattr(e, 'winerror', None) == 740 or "requiere elevaci" in str(e).lower() or "elevation" in str(e).lower():
-                print(f"[Launcher] {game_path} requiere elevación. Solicitando permisos de Administrador...")
+                logger.info(f"{game_path} requiere elevación. Solicitando permisos de Administrador...")
                 if status_cb:
                     status_cb("Solicitando permisos de Administrador...")
                 pid = launch_with_elevation(game_path, extra_args, game_dir)
@@ -471,7 +477,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
 
             if status_cb:
                 status_cb(f"Sincronizando con {t_name}...")
-            print(f"[Launcher] Monitorizando ventanas del juego para {t_name} {t_rect}...")
+            logger.info(f"Monitorizando ventanas del juego para {t_name} {t_rect}...")
 
             timeout = 25.0
             start_time = time.time()
@@ -518,7 +524,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                         # Capa 4: Posicionamiento activo y conversión a Borderless
                         if not is_inside or hwnd != last_moved_hwnd:
                             w_title = best_window.get('title') or best_window.get('safe_title', 'Juego')
-                            print(f"[Launcher] Ventana detectada '{w_title}' ({best_window['width']}x{best_window['height']}). Posicionando en {t_name}...")
+                            logger.info(f"Ventana detectada '{w_title}' ({best_window['width']}x{best_window['height']}). Posicionando en {t_name}...")
                             if status_cb:
                                 status_cb("Posicionando juego en la pantalla seleccionada...")
                             move_window_to_monitor(hwnd, t_rect, force_borderless=True)
@@ -537,7 +543,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                                 if still_outside:
                                     failed_moves_count += 1
                                     if failed_moves_count >= 2:
-                                        print(f"[Launcher] La ventana no responde a SetWindowPos. Disparando bypass DWM por hardware (Win + Shift + Flecha)...")
+                                        logger.warning("La ventana no responde a SetWindowPos. Disparando bypass DWM por hardware (Win + Shift + Flecha)...")
                                         force_dwm_window_shift_to_monitor(hwnd, t_rect)
                             except Exception:
                                 pass
@@ -547,7 +553,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                                 stable_consecutive_checks += 1
                                 # Estabilizada durante al menos 4 chequeos consecutivos (~2 segundos seguidos)
                                 if stable_consecutive_checks >= 4:
-                                    print(f"[Launcher] Ventana principal estabilizada correctamente en {t_name}.")
+                                    logger.info(f"Ventana principal estabilizada correctamente en {t_name}.")
                                     break
 
                 time.sleep(0.4)
@@ -561,7 +567,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                 if status_cb:
                     status_cb(f"¡Juego ejecutándose en {t_name}!")
             else:
-                print("[Launcher] Tiempo de espera finalizado (juego ejecutándose).")
+                logger.info("Tiempo de espera finalizado (juego ejecutándose).")
                 if status_cb:
                     status_cb("¡Juego iniciado!")
         else:
@@ -575,7 +581,7 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
             on_success_cb()
 
     except Exception as e:
-        print(f"Error ejecutando el juego: {e}")
+        logger.error(f"Error ejecutando el juego: {e}", exc_info=True)
         if status_cb:
             status_cb(f"Error: {e}")
         with open("error.log", "a", encoding="utf-8") as f:

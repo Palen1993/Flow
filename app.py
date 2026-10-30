@@ -24,6 +24,9 @@ except Exception:
 
 from core.config import load_games_data, save_games_data, get_games_file_mtime
 from core.system import get_monitors
+from core.logger import get_logger
+
+logger = get_logger("App")
 from core.launcher import launch_game_thread
 from core.cover_resolver import resolve_game_cover
 from core.scanner import scan_directory_for_games
@@ -177,7 +180,7 @@ class App(ctk.CTk):
             self.update_ui_details(self.selected_index)
             return True
         except Exception as e:
-            print(f"[App] Error al refrescar juegos desde disco: {e}")
+            logger.error(f"Error al refrescar juegos desde disco: {e}", exc_info=True)
             return False
 
     def create_widgets(self):
@@ -466,7 +469,7 @@ class App(ctk.CTk):
 
     def launch_current_game(self):
         if getattr(self, "_is_launching", False):
-            print("[App] Lanzamiento ignorado: ya hay un juego iniciando.")
+            logger.warning("Lanzamiento ignorado: ya hay un juego iniciando.")
             return
 
         n = len(self.games)
@@ -565,7 +568,7 @@ class App(ctk.CTk):
                 self._status_reset_job = self.after(4200, _restore_subtitle)
             except Exception:
                 pass
-        print(msg)
+        logger.info(msg)
 
     def scan_folder_for_games(self):
         folder = browse_folder(parent=self, title="Seleccionar Carpeta de Juegos")

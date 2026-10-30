@@ -16,6 +16,9 @@ import customtkinter as ctk
 
 from app import App
 from core.system import ensure_admin
+from core.logger import get_logger
+
+logger = get_logger("Main")
 
 # Re-exportaciones para compatibilidad
 from core.system import get_monitors, is_admin, move_window_to_monitor
@@ -49,7 +52,7 @@ def main():
 
     _mutex = acquire_single_instance_mutex()
     if not _mutex:
-        print("[Lanzador] Ya existe una instancia activa. Trayendo al frente y cerrando duplicado.")
+        logger.info("Ya existe una instancia activa. Trayendo al frente y cerrando duplicado.")
         try:
             from gamepad_watcher import find_launcher_process, focus_launcher_window
             proc = find_launcher_process()

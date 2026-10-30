@@ -9,6 +9,12 @@ import psutil
 import win32gui
 import win32api
 import win32process
+try:
+    from core.logger import get_logger
+    logger = get_logger("System")
+except Exception:
+    import logging
+    logger = logging.getLogger("GameFlow.System")
 import win32con
 
 # Asegurar codificación segura UTF-8 para evitar errores con títulos Unicode (como el carácter Δ de Metal Gear)
@@ -211,9 +217,9 @@ def set_high_priority(pid: int):
     try:
         p = psutil.Process(pid)
         p.nice(psutil.HIGH_PRIORITY_CLASS)
-        print(f"Prioridad alta establecida para PID {pid}")
+        logger.info(f"Prioridad alta establecida para PID {pid}")
     except Exception as e:
-        print(f"Error al establecer prioridad: {e}")
+        logger.error(f"Error al establecer prioridad: {e}")
 
 def get_game_windows(pids: List[int]) -> List[Dict[str, Any]]:
     """
@@ -297,9 +303,9 @@ def warp_cursor_to_monitor(monitor_rect: Tuple[int, int, int, int]):
         cx = left + (right - left) // 2
         cy = top + (bottom - top) // 2
         ctypes.windll.user32.SetCursorPos(int(cx), int(cy))
-        print(f"[System] Cursor situado preventivamente en el centro del monitor: ({cx}, {cy})")
+        logger.info(f"Cursor situado preventivamente en el centro del monitor: ({cx}, {cy})")
     except Exception as e:
-        print(f"[System] No se pudo situar el cursor: {e}")
+        logger.warning(f"No se pudo situar el cursor: {e}")
 
 def send_win_shift_arrow(direction: str = 'left'):
     """
@@ -326,9 +332,9 @@ def send_win_shift_arrow(direction: str = 'left'):
         ctypes.windll.user32.keybd_event(vk_arrow, 0, KEYEVENTF_KEYUP, 0)
         ctypes.windll.user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
         ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
-        print(f"[System] Inyección DWM ejecutada: Win + Shift + {direction.upper()}")
+        logger.info(f"Inyección DWM ejecutada: Win + Shift + {direction.upper()}")
     except Exception as e:
-        print(f"[System] Error inyectando combinación Win+Shift+Flecha: {e}")
+        logger.error(f"Error inyectando combinación Win+Shift+Flecha: {e}")
 
 def force_dwm_window_shift_to_monitor(hwnd: int, target_monitor_rect: Tuple[int, int, int, int], max_tries: int = 3) -> bool:
     """
@@ -424,13 +430,13 @@ def move_window_to_monitor(hwnd: int, monitor_rect: Tuple[int, int, int, int], f
         except Exception:
             pass
 
-        print(f"[System] Ventana {hwnd} posicionada con éxito en ({left}, {top}) [{target_width}x{target_height}]")
+        logger.info(f"Ventana {hwnd} posicionada con éxito en ({left}, {top}) [{target_width}x{target_height}]")
         return True
     except Exception as e:
         if getattr(e, 'winerror', None) == 5 or "acceso denegado" in str(e).lower() or "access denied" in str(e).lower():
-            print(f"[System] Aviso UIPI: No se puede mover la ventana {hwnd} (el juego requiere permisos de Administrador)")
+            logger.warning(f"Aviso UIPI: No se puede mover la ventana {hwnd} (el juego requiere permisos de Administrador)")
         else:
-            print(f"[System] Error al mover ventana {hwnd}: {e}")
+            logger.error(f"Error al mover ventana {hwnd}: {e}")
         return False
 
 
