@@ -7,7 +7,7 @@ from gamepad_manager import (
 )
 from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
-from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
+from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY,
     COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
@@ -17,78 +17,29 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
+    font_button, font_body, scroll_to_widget
 )
 
-class GamepadConfigDialog(ctk.CTkToplevel):
-    def _windows_set_titlebar_color(self, color_mode: str):
-        pass
-
-    def _windows_set_titlebar_icon(self):
-        pass
+class GamepadConfigDialog(BaseGlassDialog):
     """Diálogo modal para emparejamiento, calibración y automatización del mando."""
     def __init__(self, parent, on_save_callback=None):
-        super().__init__(parent)
+        super().__init__(parent, title="🎮 Configurar Mando", width=650, height=600, corner_radius=26)
         self.on_save_callback = on_save_callback
         self.cfg = load_gamepad_config()
         self.paired_devices = get_paired_gamepads()
-        
-        self.dialog_width = 650
-        self.dialog_height = 600
-        self.title("🎮 Configurar Mando")
-        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
-        self.resizable(False, False)
-        
-        try:
-            self.overrideredirect(True)
-        except Exception:
-            pass
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-            
-        self.configure(fg_color=COLOR_BG_CARD)
-        self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
         self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.is_monitoring = True
-        self.drag_x = 0
-        self.drag_y = 0
         
         self.create_widgets()
-        self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<Up>", lambda e: self._step_focus(-1))
         self.bind("<Down>", lambda e: self._step_focus(1))
         self.bind("<Return>", lambda e: self._activate_focused())
         self.bind("<space>", lambda e: self._activate_focused())
         
-        self._center_window()
-        self.after(20, self._center_window)
-        self.after(30, lambda: apply_rounded_window_region(self, self.dialog_width, self.dialog_height, 26))
-        register_modal_stack(self)
         self.after(100, self._poll_status)
-        try:
-            self.grab_set()
-        except Exception:
-            pass
 
-    def _center_window(self):
-        try:
-            self.update_idletasks()
-            pw = self.master.winfo_width()
-            ph = self.master.winfo_height()
-            px = self.master.winfo_rootx()
-            py = self.master.winfo_rooty()
-            w = self.dialog_width
-            h = self.dialog_height
-            x = max(10, px + max(0, (pw - w) // 2))
-            y = max(10, py + max(0, (ph - h) // 2))
-            self.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
+    _center_window = BaseGlassDialog.center_window
 
     def _start_drag(self, event):
         if hasattr(self, "device_combo") and getattr(self.device_combo, "_active_dropdown", None):
@@ -97,16 +48,9 @@ class GamepadConfigDialog(ctk.CTkToplevel):
                 self.device_combo._active_dropdown = None
             except Exception:
                 pass
-        self.drag_x = event.x_root - self.winfo_x()
-        self.drag_y = event.y_root - self.winfo_y()
-
-    def _on_drag(self, event):
-        x = event.x_root - self.drag_x
-        y = event.y_root - self.drag_y
-        self.geometry(f"+{x}+{y}")
+        super()._start_drag(event)
 
     def destroy(self):
-        unregister_modal_stack(self)
         if hasattr(self, "device_combo") and getattr(self.device_combo, "_active_dropdown", None):
             try:
                 self.device_combo._active_dropdown.destroy()

@@ -59,12 +59,12 @@ class GlassMessageBox(BaseGlassDialog):
         self.focus_set()
 
     def _build_ui(self, w: int, h: int, title: str, message: str, confirm_text: str, cancel_text: str):
+        pad = max(6, int(12 * self.scale_factor))
         self.card = ctk.CTkFrame(
-            self, width=w - 24, height=h - 24, corner_radius=22,
+            self, corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
-        self.card.place(relx=0.5, rely=0.5, anchor="center")
-        self.card.pack_propagate(False)
+        self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)
 
         # Encabezado con icono temático

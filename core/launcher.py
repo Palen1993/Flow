@@ -581,11 +581,9 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
             on_success_cb()
 
     except Exception as e:
-        logger.error(f"Error ejecutando el juego: {e}", exc_info=True)
+        logger.error(f"Error ejecutando el juego '{game_path}': {e}", exc_info=True)
         if status_cb:
             status_cb(f"Error: {e}")
-        with open("error.log", "a", encoding="utf-8") as f:
-            f.write(f"Error ejecutando {game_path}: {e}\n")
         if on_error_cb:
             on_error_cb(str(e))
 

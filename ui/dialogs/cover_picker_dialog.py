@@ -1,6 +1,7 @@
 import os
 import sys
 import ctypes
+import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
@@ -27,7 +28,7 @@ from core.coverflow_engine import (
 )
 from core.feedback import feedback_click, feedback_cover_applied
 from ui.controller_hud import get_button_icon_ctk
-from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
+from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
     COLOR_BG_DARK, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY,
@@ -36,18 +37,13 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_title, font_body, hide_from_taskbar, bring_to_front_absolute
+    font_button, font_title, font_body
 )
 
 _GLOBAL_THUMB_CACHE: Dict[str, Image.Image] = {}
 
 
-class CoverPickerDialog(ctk.CTkToplevel):
-    def _windows_set_titlebar_color(self, color_mode: str):
-        pass
-
-    def _windows_set_titlebar_icon(self):
-        pass
+class CoverPickerDialog(BaseGlassDialog):
     """
     Diálogo modal visual e interactivo para buscar, previsualizar en vivo y adaptar carátulas HD.
     
@@ -77,8 +73,8 @@ class CoverPickerDialog(ctk.CTkToplevel):
         current_cover_pil: Optional[Image.Image] = None,
         current_wallpaper_path: str = ""
     ):
-        super().__init__(parent)
-        self.parent = parent
+        super().__init__(parent, title="Selector de Carátula y Wallpaper HD", width=1140, height=860, corner_radius=28)
+
         self.initial_query = initial_query.strip()
         self.game_name = (game_name or initial_query).strip()
         self.on_selected_callback = on_selected_callback
@@ -96,28 +92,6 @@ class CoverPickerDialog(ctk.CTkToplevel):
             except Exception:
                 self.current_wallpaper_pil = None
 
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        self.dialog_width = min(1140, int(screen_w * 0.85))
-        self.dialog_height = min(860, int(screen_h * 0.88))
-        self.title("Selector de Carátula y Wallpaper HD")
-        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
-        self.resizable(False, False)
-
-        # Ventana sin barra nativa de Windows, SIN -transparentcolor (evita artefactos GDI WS_EX_LAYERED al hacer scroll)
-        try:
-            self.overrideredirect(True)
-        except Exception:
-            pass
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-
-        self.configure(fg_color=COLOR_BG_CARD)
-        self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
         self.family = getattr(parent, "_current_controller_family", "xbox")
 
         # Estado interno de candidatos y caché de imágenes
@@ -179,24 +153,19 @@ class CoverPickerDialog(ctk.CTkToplevel):
         self._preview_drag_start_y = 0
         self._preview_drag_start_offset = 0.5
 
-        # Variables de arrastre de ventana
-        self._drag_x = 0
-        self._drag_y = 0
+        self._action_queue: queue.Queue = queue.Queue()
 
         self._build_ui()
         self._sync_mode_ui(trigger_search=False)
         self._bind_events()
-        self._center_window()
-        self.after(30, self._apply_rounded_window_region)
+        self.center_window()
+        self.apply_rounded_corners()
+        self.after(50, self._poll_action_queue)
 
-        try:
-            self.grab_set()
-        except Exception:
-            pass
-
-        register_modal_stack(self)
         # Disparar búsqueda automática tras abrir
         self.after(60, self._start_search)
+
+    _center_window = BaseGlassDialog.center_window
 
     def _match_wp_preset_idx(self) -> int:
         """Devuelve el preset de wallpaper que coincide con la opacidad/borrosidad actual (o -1 si es personalizado)."""
@@ -210,39 +179,6 @@ class CoverPickerDialog(ctk.CTkToplevel):
 
     def _slider_to_opacity(self, value: float) -> float:
         return round(self.WP_OP_MIN + float(value) * (self.WP_OP_MAX - self.WP_OP_MIN), 2)
-
-    def _apply_rounded_window_region(self):
-        """Aplica esquinas redondeadas nativas Win32 sin usar WS_EX_LAYERED (-transparentcolor) para máxima fluidez GDI."""
-        if sys.platform != "win32":
-            return
-        try:
-            hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
-            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, self.dialog_width + 1, self.dialog_height + 1, 28, 28)
-            ctypes.windll.user32.SetWindowRgn(hwnd, rgn, True)
-        except Exception:
-            pass
-
-    def _center_window(self):
-        try:
-            self.update_idletasks()
-            sw = self.winfo_screenwidth()
-            sh = self.winfo_screenheight()
-            w = self.dialog_width
-            h = self.dialog_height
-            x = max(0, (sw - w) // 2)
-            y = max(0, (sh - h) // 2)
-            self.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
-
-    def _start_drag(self, event):
-        self._drag_x = event.x_root - self.winfo_x()
-        self._drag_y = event.y_root - self.winfo_y()
-
-    def _on_drag(self, event):
-        x = event.x_root - self._drag_x
-        y = event.y_root - self._drag_y
-        self.geometry(f"+{x}+{y}")
 
     def _build_ui(self):
         # Contenedor principal con borde elegante
@@ -838,6 +774,9 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 if adiff <= 0.14:
                     b_txt = f"✦ 1:1 Cuadrada ({iw}×{ih})"
                     b_col = (52, 199, 89)
+                elif iw > ih * 1.2:
+                    b_txt = f"✦ HD 16:9 ({iw}×{ih})"
+                    b_col = (56, 189, 248)
                 else:
                     b_txt = f"{src} ({iw}×{ih})"
                     b_col = (56, 189, 248)
@@ -1215,21 +1154,31 @@ class CoverPickerDialog(ctk.CTkToplevel):
         except Exception:
             return
 
+        w = max(300, self.view_w)
+        avail_w = w - self.CARD_PAD_X * (self.GRID_COLS + 1)
+        card_w = max(180, avail_w // self.GRID_COLS)
+        preview_im, card_thumb, orig_sz = self._prepare_card_and_preview_images(
+            pil_loaded, self.asset_mode == "wallpaper", card_w
+        )
         local_cand = {
             "name": f"[Local] {os.path.basename(f)}",
+            "source": "Archivo Local",
             "poster_url": f,
             "thumb_url": f,
+            "orig_size": orig_sz,
             "is_local": True
         }
-        self.raw_pil_by_idx[0] = pil_loaded
-        self.hd_pil_by_idx[0] = pil_loaded
-        if hasattr(self, "_thumb_cache"):
-            self._thumb_cache.clear()
-        self.candidates.insert(0, local_cand)
+        self.all_candidates.insert(0, local_cand)
         self.filtered_candidates.insert(0, local_cand)
+        self.raw_pil_by_idx = {idx + 1: im for idx, im in self.raw_pil_by_idx.items()}
+        self.hd_pil_by_idx = {idx + 1: im for idx, im in self.hd_pil_by_idx.items()}
+        self.card_thumb_by_idx = {idx + 1: im for idx, im in self.card_thumb_by_idx.items()}
+        self.raw_pil_by_idx[0] = preview_im
+        self.hd_pil_by_idx[0] = pil_loaded
+        self.card_thumb_by_idx[0] = card_thumb
         self.selected_card_idx = 0
-        self._render_candidate_grid()
-        self._update_preview()
+        self._schedule_grid_redraw(rebuild_master=True)
+        self._update_live_preview(preview_im)
         self.lbl_status.configure(
             text=f"📁 Imagen local cargada: '{os.path.basename(f)}'. Pulsa Aplicar para guardar.",
             text_color="#38bdf8"
@@ -1321,13 +1270,24 @@ class CoverPickerDialog(ctk.CTkToplevel):
                         pass
                 threading.Thread(target=_prewarm_other, daemon=True).start()
 
-            try:
-                if self.winfo_exists():
-                    self.after(0, _apply_ui)
-            except Exception:
-                pass
+            self._action_queue.put(_apply_ui)
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _poll_action_queue(self):
+        try:
+            while True:
+                fn = self._action_queue.get_nowait()
+                if not self.winfo_exists():
+                    return
+                if callable(fn):
+                    fn()
+        except queue.Empty:
+            pass
+        except Exception:
+            pass
+        if self.winfo_exists():
+            self.after(50, self._poll_action_queue)
 
     def _prepare_card_and_preview_images(self, im: Image.Image, is_wp: bool, card_w: int):
         """Pre-escala la miniatura de tarjeta y la imagen de vista previa en el hilo secundario (0 carga en el hilo UI)."""
@@ -1353,7 +1313,11 @@ class CoverPickerDialog(ctk.CTkToplevel):
                 max_tw = int(max_th * 16 / 9)
             card_thumb = adapt_wallpaper_to_widescreen(preview_im, width=max_tw, height=th_h)
         else:
-            scale = min(132.0 / max(1, iw), 132.0 / max(1, ih))
+            if iw > ih * 1.18:
+                max_tw = max(140, card_w - 24)
+                scale = min(float(max_tw) / max(1, iw), 124.0 / max(1, ih))
+            else:
+                scale = min(132.0 / max(1, iw), 132.0 / max(1, ih))
             tw, th = max(1, int(iw * scale)), max(1, int(ih * scale))
             card_thumb = preview_im.convert("RGB").resize((tw, th), Image.Resampling.BILINEAR)
 
@@ -1390,7 +1354,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                     if primary_u == poster_u:
                         self.hd_pil_by_idx[idx] = im
                         self.full_res_loaded[idx] = True
-                    self.after(0, lambda i=idx, p=preview_im, c=card_thumb, s=orig_sz, g=gen: self._apply_thumbnail_to_card(i, p, c, s, g))
+                    self._action_queue.put(lambda i=idx, p=preview_im, c=card_thumb, s=orig_sz, g=gen: self._apply_thumbnail_to_card(i, p, c, s, g))
                 except Exception:
                     pass
 
@@ -1512,19 +1476,19 @@ class CoverPickerDialog(ctk.CTkToplevel):
             try:
                 self.entry_search.delete(0, tk.END)
                 self.entry_search.insert(0, val)
-                self._on_search_button_clicked()
+                self._start_search()
             except Exception:
                 pass
         prompt_on_screen_keyboard(self, title="Buscar Carátula o Wallpaper", initial_text=self.entry_search.get(), on_confirm=_on_confirm)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
-           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+        if inputs.get("b", False) and not prev_inputs.get("b", False):
             self.destroy()
             return True
 
         # Botón Select / Share: Alternar entre Carátula (Caja 3D) y Wallpaper 16:9 (Fondo Big Picture)
-        if inputs.get("select", False) and not prev_inputs.get("select", False):
+        if (inputs.get("select", False) and not prev_inputs.get("select", False)) or \
+           (inputs.get("back", False) and not prev_inputs.get("back", False)):
             next_mode = "wallpaper" if self.asset_mode == "cover" else "cover"
             self._switch_asset_mode(next_mode)
             return True
@@ -1682,11 +1646,7 @@ class CoverPickerDialog(ctk.CTkToplevel):
                             text_color="#f43f5e"
                         )
 
-                try:
-                    if self.winfo_exists():
-                        self.after(0, _finish_wp)
-                except Exception:
-                    pass
+                self._action_queue.put(_finish_wp)
 
             threading.Thread(target=_wp_worker, daemon=True).start()
             return
@@ -1754,16 +1714,11 @@ class CoverPickerDialog(ctk.CTkToplevel):
                         text_color="#f43f5e"
                     )
 
-            try:
-                if self.winfo_exists():
-                    self.after(0, _finish)
-            except Exception:
-                pass
+            self._action_queue.put(_finish)
 
         threading.Thread(target=_download_worker, daemon=True).start()
 
     def destroy(self):
-        unregister_modal_stack(self)
         try:
             self.grab_release()
         except Exception:

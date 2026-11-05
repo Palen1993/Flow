@@ -6,7 +6,7 @@ from PIL import Image, ImageTk
 
 from core.coverflow_engine import create_procedural_album
 from ui.controller_hud import get_button_icon_ctk
-from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
+from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
     COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
@@ -15,41 +15,16 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG,
     COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
+    font_button, font_body, scroll_to_widget
 )
 
-class ScanResultsDialog(ctk.CTkToplevel):
-    def _windows_set_titlebar_color(self, color_mode: str):
-        pass
-
-    def _windows_set_titlebar_icon(self):
-        pass
+class ScanResultsDialog(BaseGlassDialog):
     """Diálogo modal para previsualizar, renombrar e importar juegos escaneados."""
     def __init__(self, parent, scanned_folder: str, candidates: List[Dict[str, Any]], on_import_callback=None):
-        super().__init__(parent)
+        super().__init__(parent, title="📁 Juegos Detectados", width=760, height=580, corner_radius=26)
         self.on_import = on_import_callback
         self.candidates = candidates
         self.scanned_folder = scanned_folder
-        
-        self.dialog_width = 760
-        self.dialog_height = 580
-        self.title("📁 Juegos Detectados")
-        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
-        self.resizable(False, False)
-        
-        try:
-            self.overrideredirect(True)
-        except Exception:
-            pass
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-            
-        self.configure(fg_color=COLOR_BG_CARD)
-        self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
         self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.items_vars = []  # Lista de tuplas: (checkbox_var, name_entry, candidate_data)
@@ -57,55 +32,12 @@ class ScanResultsDialog(ctk.CTkToplevel):
         self._focused_row_idx = 0
         self.thumb_refs = []  # Referencias para evitar recolección de basura de PhotoImage
         
-        self.drag_x = 0
-        self.drag_y = 0
-        
         self.create_widgets()
-        self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<Up>", lambda e: self._step_row(-1))
         self.bind("<Down>", lambda e: self._step_row(1))
         self.bind("<Return>", lambda e: self.import_selected())
-        
-        self._center_window()
-        self.after(20, self._center_window)
-        self.after(30, lambda: apply_rounded_window_region(self, self.dialog_width, self.dialog_height, 26))
-        register_modal_stack(self)
-        try:
-            self.grab_set()
-        except Exception:
-            pass
 
-    def _center_window(self):
-        try:
-            self.update_idletasks()
-            pw = self.master.winfo_width()
-            ph = self.master.winfo_height()
-            px = self.master.winfo_rootx()
-            py = self.master.winfo_rooty()
-            w = self.dialog_width
-            h = self.dialog_height
-            x = max(10, px + max(0, (pw - w) // 2))
-            y = max(10, py + max(0, (ph - h) // 2))
-            self.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
-
-    def _start_drag(self, event):
-        self.drag_x = event.x_root - self.winfo_x()
-        self.drag_y = event.y_root - self.winfo_y()
-
-    def _on_drag(self, event):
-        x = event.x_root - self.drag_x
-        y = event.y_root - self.drag_y
-        self.geometry(f"+{x}+{y}")
-
-    def destroy(self):
-        unregister_modal_stack(self)
-        try:
-            self.grab_release()
-        except Exception:
-            pass
-        super().destroy()
+    _center_window = BaseGlassDialog.center_window
 
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(

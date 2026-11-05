@@ -101,7 +101,9 @@ class WindowStateService:
 
         self.app.minsize(400, 200)
 
-        # Centrar ventana flotante en el monitor actual con tamaño compacto y amplio
+        # Centrar ventana flotante en el monitor actual compensando el ScalingTracker de CustomTkinter
+        from ui.display_scale import get_ctk_window_scaling
+        ctk_scale = get_ctk_window_scaling(self.app)
         try:
             hmon = win32api.MonitorFromWindow(self.app.winfo_id(), win32con.MONITOR_DEFAULTTONEAREST)
             mon_info = win32api.GetMonitorInfo(hmon)
@@ -111,18 +113,20 @@ class WindowStateService:
             )
             screen_w = rc[2] - rc[0]
             screen_h = rc[3] - rc[1]
-            win_w = min(1440, max(1000, int(screen_w * 0.84)))
-            win_h = min(540, max(460, int(screen_h * 0.48)))
-            x = rc[0] + max(0, (screen_w - win_w) // 2)
-            y = rc[1] + max(0, (screen_h - win_h) // 2)
+            phys_win_w = max(720, min(int(screen_w * 0.84), screen_w - 40))
+            phys_win_h = max(320, min(int(screen_h * 0.48), screen_h - 60))
+            x = rc[0] + max(0, (screen_w - phys_win_w) // 2)
+            y = rc[1] + max(0, (screen_h - phys_win_h) // 2)
         except Exception:
             screen_w = self.app.winfo_screenwidth()
             screen_h = self.app.winfo_screenheight()
-            win_w = min(1440, max(1000, int(screen_w * 0.84)))
-            win_h = min(540, max(460, int(screen_h * 0.48)))
-            x = max(0, (screen_w - win_w) // 2)
-            y = max(0, (screen_h - win_h) // 2)
+            phys_win_w = max(720, min(int(screen_w * 0.84), screen_w - 40))
+            phys_win_h = max(320, min(int(screen_h * 0.48), screen_h - 60))
+            x = max(0, (screen_w - phys_win_w) // 2)
+            y = max(0, (screen_h - phys_win_h) // 2)
 
+        win_w = max(400, int(round(phys_win_w / ctk_scale)))
+        win_h = max(200, int(round(phys_win_h / ctk_scale)))
         self.app.geometry(f"{win_w}x{win_h}+{x}+{y}")
         self.app.update_idletasks()
 
@@ -171,7 +175,7 @@ class WindowStateService:
             cover_stage.configure(bg=COLOR_BG_CANVAS)
             cover_stage.is_transparent_mode = False
 
-        self.app.minsize(880, 620)
+        self.app.minsize(640, 400)
         try:
             self.app.attributes("-fullscreen", True)
         except Exception:

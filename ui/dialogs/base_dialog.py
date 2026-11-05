@@ -5,12 +5,19 @@ import customtkinter as ctk
 
 from ui.theme import apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute, COLOR_BG_CARD
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
+from ui.display_scale import (
+    calculate_dialog_bounds,
+    get_monitor_work_area_for_window,
+    get_ctk_window_scaling,
+    set_active_display_scale
+)
 
 class BaseGlassDialog(ctk.CTkToplevel):
     """
     Clase base unificada para todos los diálogos modales estilo Glassmorphism de GameFlow.
     
     Características integradas:
+    - Adaptación y escalado dinámico de resolución y DPI según la pantalla activa.
     - Ventana borderless sin barra nativa de Windows (overrideredirect).
     - Esquinas redondeadas Win32 aceleradas por hardware (CreateRoundRectRgn).
     - Fondo oscuro metálico (#141722) con borde refinado.
@@ -38,13 +45,20 @@ class BaseGlassDialog(ctk.CTkToplevel):
         auto_grab: bool = True
     ):
         super().__init__(parent)
-        self.dialog_width = width
-        self.dialog_height = height
-        self.corner_radius = corner_radius
         self.parent = parent
         
+        # Sizing adaptativo dinámico según la resolución del monitor donde se reproduce
+        final_w, final_h, scale = calculate_dialog_bounds(width, height, window=parent or self)
+        self.dialog_width = final_w
+        self.dialog_height = final_h
+        self.corner_radius = max(14, int(round(corner_radius * scale)))
+        self.scale_factor = scale
+        
+        # Establecer escala activa para que las fuentes y controles del diálogo se creen proporcionales
+        set_active_display_scale(scale)
+        
         self.title(title)
-        self.geometry(f"{width}x{height}")
+        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
         self.resizable(False, False)
         
         try:
@@ -81,6 +95,8 @@ class BaseGlassDialog(ctk.CTkToplevel):
             self._pending_afters.append(self.after(25, lambda: bring_to_front_absolute(self)))
             self._pending_afters.append(self.after(35, self.apply_rounded_corners))
             self._pending_afters.append(self.after(80, lambda: bring_to_front_absolute(self)))
+            self._pending_afters.append(self.after(95, self.center_window))
+            self._pending_afters.append(self.after(110, self.apply_rounded_corners))
         except Exception:
             pass
         
@@ -120,6 +136,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
             self._unregister_from_modal_stack()
 
     def destroy(self):
+        set_active_display_scale(1.0)
         self._unregister_from_modal_stack()
         for after_id in getattr(self, "_pending_afters", []):
             try:
@@ -133,27 +150,22 @@ class BaseGlassDialog(ctk.CTkToplevel):
             pass
 
     def center_window(self, width: Optional[int] = None, height: Optional[int] = None):
-        """Centra la ventana respecto a la ventana padre o a la pantalla."""
+        """Centra siempre la ventana en el centro exacto del área útil del monitor activo."""
         try:
             if not self.winfo_exists():
                 return
             self.update_idletasks()
             w = width or self.dialog_width
             h = height or self.dialog_height
+            ctk_scale = get_ctk_window_scaling(self)
+            phys_w = int(round(w * ctk_scale))
+            phys_h = int(round(h * ctk_scale))
             
             p = self.parent or getattr(self, "master", None)
-            if p and p.winfo_exists():
-                pw = p.winfo_width()
-                ph = p.winfo_height()
-                px = p.winfo_rootx()
-                py = p.winfo_rooty()
-                x = px + max(0, (pw - w) // 2)
-                y = py + max(0, (ph - h) // 2)
-            else:
-                sw = self.winfo_screenwidth()
-                sh = self.winfo_screenheight()
-                x = max(0, (sw - w) // 2)
-                y = max(0, (sh - h) // 2)
+            ref_win = p if (p and p.winfo_exists()) else self
+            work_w, work_h, rc = get_monitor_work_area_for_window(ref_win)
+            x = rc[0] + max(0, (work_w - phys_w) // 2)
+            y = rc[1] + max(0, (work_h - phys_h) // 2)
             self.geometry(f"{w}x{h}+{x}+{y}")
         except Exception:
             pass

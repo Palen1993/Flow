@@ -31,6 +31,131 @@ _CANDIDATES_CACHE: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 
 MAX_IMAGE_DOWNLOAD_BYTES = 15 * 1024 * 1024  # 15 MB máximo de seguridad
 
+_SEARCH_STOPWORDS = {
+    "the", "and", "for", "with", "from", "into", "onto", "upon", "about", "of", "in", "to", "on", "at", "by",
+    "del", "las", "los", "una", "uno", "por", "para", "con", "sin", "sobre", "el", "la", "de", "en", "y",
+    "game", "games", "video", "videogame", "pc", "windows", "edition", "deluxe", "standard",
+    "ultimate", "collector", "collectors", "collection", "remastered", "remake",
+    "resynced", "definitive", "complete", "goty", "year", "version", "repack",
+    "pack", "dlc", "bundle", "anthology", "trilogy", "saga", "series", "episode",
+    "part", "chapter", "vol", "volume", "official", "cover", "boxart", "wallpaper",
+    "wallpapers", "background", "backgrounds", "1920x1080", "1080p", "4k", "hd", "uhd",
+    "images", "image", "photo", "photos", "free", "top", "buy", "online", "shop", "review"
+}
+
+_UMBRELLA_BRAND_WORDS = {
+    "lego", "marvel", "marvels", "disney", "tom", "clancy", "clancys",
+    "sid", "meier", "meiers", "clive", "barker", "barkers"
+}
+
+_COMMON_GENERIC_TITLE_WORDS = {
+    "dark", "black", "knight", "legacy", "world", "king", "new", "modern",
+    "origins", "chronicles", "legends", "shadow", "shadows", "war", "wars",
+    "age", "solid", "creed", "assassins", "assassin", "metal", "gear",
+    "call", "duty", "final", "fantasy", "resident", "evil", "grand", "theft", "auto",
+    "star", "super", "bros", "story", "journey", "next", "door", "revival"
+}
+
+_SPAM_URL_OR_TITLE_SUBSTRINGS = (
+    "lego.com/cdn/cs/set",
+    "bbystatic.com",
+    "jaysbrickblog.com",
+    "brickabrac",
+    "brickset.com",
+    "bricklink.com",
+    "rebrickable.com",
+    "creator 3-in-1",
+    "creative brick box",
+    "building toy set",
+    "building set",
+    "minifigures series",
+    "lego classic",
+    "lego friends",
+    "lego technic",
+    "lego city neuheiten",
+)
+
+
+def _extract_meaningful_tokens(text: str) -> List[str]:
+    """Extrae palabras clave significativas en minúsculas ignorando stopwords y años sueltos."""
+    if not text:
+        return []
+    normalized = text.lower()
+    normalized = re.sub(r"[’'`´™®©]", "", normalized)
+    raw_words = re.findall(r"[a-z0-9]{2,}", normalized)
+    tokens: List[str] = []
+    for w in raw_words:
+        if w in _SEARCH_STOPWORDS:
+            continue
+        if re.fullmatch(r"20[12]\d", w):
+            continue
+        if w == "assassin":
+            w = "assassins"
+        if w not in tokens:
+            tokens.append(w)
+    return tokens
+
+
+def _is_candidate_relevant(title: str, url: str, desc: str, query: str) -> bool:
+    """
+    Verifica estrictamente que un resultado (de Steam, GOG, SteamGridDB o Web)
+    pertenezca explícitamente al juego buscado y no a juguetes genéricos, listas ni otros juegos.
+    """
+    q_tokens = _extract_meaningful_tokens(query)
+    if not q_tokens:
+        return True
+
+    unquoted_url = urllib.parse.unquote(url or "")
+    combined_raw = f"{title or ''} {unquoted_url}".lower()
+    for spam_sub in _SPAM_URL_OR_TITLE_SUBSTRINGS:
+        if spam_sub in combined_raw or spam_sub in (desc or "").lower():
+            return False
+
+    cand_tokens = set(_extract_meaningful_tokens(combined_raw))
+    if not cand_tokens:
+        return False
+
+    # 1. Si el juego tiene una marca paraguas (ej. 'lego'), DEBE estar en el título o URL del candidato
+    for brand in _UMBRELLA_BRAND_WORDS:
+        if brand in q_tokens and brand not in cand_tokens:
+            return False
+
+    # 2. Juego de 1 sola palabra significativa (ej. 'Viewfinder', 'Hellraiser')
+    if len(q_tokens) == 1:
+        return q_tokens[0] in cand_tokens
+
+    # 3. Juego de 2 palabras significativas (ej. 'Split Fiction') -> exigir ambas palabras
+    if len(q_tokens) == 2:
+        return all(t in cand_tokens for t in q_tokens)
+
+    # 4. Juego de 3 o más palabras significativas:
+    non_brand = [t for t in q_tokens if t not in _UMBRELLA_BRAND_WORDS]
+    distinctive = [t for t in non_brand if t not in _COMMON_GENERIC_TITLE_WORDS]
+    if not distinctive:
+        distinctive = non_brand or q_tokens
+
+    # Si hay 1 o 2 palabras distintivas específicas (ej. ['batman'], ['harry', 'potter'], ['snake', 'eater'], ['flag']),
+    # exigir que TODAS ellas estén presentes en el título o URL del candidato
+    if len(distinctive) <= 2:
+        if not all(d in cand_tokens for d in distinctive):
+            return False
+    else:
+        if sum(1 for d in distinctive if d in cand_tokens) < 2:
+            return False
+
+    # Si empieza por marca + franquicia (ej. 'lego batman ...' o 'lego harry potter'), exigir la palabra inmediatamente posterior a la marca
+    if q_tokens[0] in _UMBRELLA_BRAND_WORDS and len(q_tokens) >= 2:
+        primary_subject = q_tokens[1]
+        if primary_subject not in cand_tokens:
+            return False
+
+    matched_count = sum(1 for t in q_tokens if t in cand_tokens)
+    min_required = 2 if len(q_tokens) <= 4 else 3
+    if q_tokens[0] in _UMBRELLA_BRAND_WORDS and q_tokens[0] in cand_tokens and q_tokens[1] in cand_tokens:
+        min_required = 2
+
+    return matched_count >= min_required
+
 def _safe_read_response(resp, max_bytes: int = MAX_IMAGE_DOWNLOAD_BYTES, chunk_size: int = 64 * 1024) -> bytes:
     """Lee el cuerpo de la respuesta en streaming limitando el tamaño máximo contra bombas de descompresión."""
     data = bytearray()
@@ -45,16 +170,17 @@ def _safe_read_response(resp, max_bytes: int = MAX_IMAGE_DOWNLOAD_BYTES, chunk_s
 
 def search_google_web_covers(raw_query: str, max_results: int = 18) -> List[Dict[str, Any]]:
     """
-    Busca carátulas en una única petición ultrarrápida (~400ms) priorizando formato cuadrado (1:1)
-    y boxarts proporcionales en internet (PlayStation Store, Xbox, Epic, SteamGridDB, IGDB, MobyGames).
+    Busca carátulas y key art de alta resolución en una petición ultrarrápida (~400ms)
+    filtrando estrictamente que pertenezcan explícitamente al juego buscado.
     """
     if not raw_query or not raw_query.strip():
         return []
 
     query = raw_query.strip()
     clean_q = re.sub(r'[\(\)\[\]\{\}]', '', query).strip()
-    q_enc = urllib.parse.quote(f"{clean_q} game cover boxart")
-    url = f"https://www.bing.com/images/search?q={q_enc}&form=HDRSC2&first=1"
+    q_enc = urllib.parse.quote(f"{clean_q} game cover key art")
+    # +filterui:imagesize-large evita que Bing inyecte carruseles de compras/juguetes genéricos y fuerza imágenes HD
+    url = f"https://www.bing.com/images/search?q={q_enc}&qft=+filterui:imagesize-large&form=HDRSC2&first=1"
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
 
     seen_urls = set()
@@ -73,17 +199,20 @@ def search_google_web_covers(raw_query: str, max_results: int = 18) -> List[Dict
                     desc = data.get("desc", "")
                     if not murl or murl in seen_urls:
                         continue
+                    if not _is_candidate_relevant(title, murl, desc, clean_q):
+                        continue
                     lower_m = murl.lower()
                     if any(ext in lower_m for ext in [".jpg", ".jpeg", ".png", ".webp"]) or "image" in lower_m or "upload" in lower_m or "cover" in lower_m or "box" in lower_m:
                         seen_urls.add(murl)
+                        src_label = "SteamGridDB" if "steamgriddb" in lower_m else "Carátula / Key Art HD"
                         results.append({
                             "id": f"web_{len(results)}",
                             "name": title,
                             "poster_url": murl,
                             "thumb_url": turl or murl,
-                            "is_square": False,
+                            "is_square": "512x512" in lower_m or "1024x1024" in lower_m,
                             "is_vertical": True,
-                            "source": "Google / Web",
+                            "source": src_label,
                             "desc": desc
                         })
                         if len(results) >= max_results:
@@ -95,12 +224,110 @@ def search_google_web_covers(raw_query: str, max_results: int = 18) -> List[Dict
 
     return results
 
+
+def search_steamgriddb_covers(raw_query: str, max_results: int = 8) -> List[Dict[str, Any]]:
+    """
+    Busca carátulas verticales y cuadradas en SteamGridDB:
+      - Si existe STEAMGRIDDB_API_KEY en el entorno, usa la API REST v2 oficial.
+      - En modo 0-config (sin API key), extrae directamente grids del CDN de SteamGridDB verificando relevancia.
+    """
+    if not raw_query or not raw_query.strip():
+        return []
+
+    clean_q = re.sub(r'[\(\)\[\]\{\}]', '', raw_query).strip()
+    api_key = os.environ.get("STEAMGRIDDB_API_KEY", "").strip()
+    results: List[Dict[str, Any]] = []
+
+    if api_key:
+        try:
+            auth_headers = {**BROWSER_HEADERS, "Authorization": f"Bearer {api_key}"}
+            q_enc = urllib.parse.quote(clean_q)
+            auto_url = f"https://www.steamgriddb.com/api/v2/search/autocomplete/{q_enc}"
+            req = urllib.request.Request(auto_url, headers=auth_headers)
+            with urllib.request.urlopen(req, timeout=1.8) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                games = data.get("data", [])
+                for g_entry in games:
+                    game_id = g_entry.get("id")
+                    game_name = g_entry.get("name", clean_q)
+                    if not _is_candidate_relevant(game_name, "", "", clean_q):
+                        continue
+                    if game_id:
+                        grids_url = f"https://www.steamgriddb.com/api/v2/grids/game/{game_id}?dimensions=600x900,512x512,1024x1024"
+                        g_req = urllib.request.Request(grids_url, headers=auth_headers)
+                        with urllib.request.urlopen(g_req, timeout=1.8) as g_resp:
+                            g_data = json.loads(g_resp.read().decode("utf-8", errors="ignore"))
+                            for item in g_data.get("data", [])[:max_results]:
+                                full_u = item.get("url")
+                                thumb_u = item.get("thumb") or full_u
+                                w = item.get("width", 600)
+                                h = item.get("height", 900)
+                                if full_u:
+                                    results.append({
+                                        "id": f"sgdb_{item.get('id', len(results))}",
+                                        "name": game_name,
+                                        "poster_url": full_u,
+                                        "thumb_url": thumb_u,
+                                        "is_square": (w == h),
+                                        "is_vertical": (h >= w),
+                                        "source": "SteamGridDB",
+                                        "pre_verified": True
+                                    })
+                        break
+            if results:
+                return results
+        except Exception:
+            pass
+
+    # Fallback 0-config: Búsqueda de alta resolución verificando coincidencia estricta con el juego
+    try:
+        q_enc = urllib.parse.quote(f"{clean_q} steamgriddb cover poster")
+        url = f"https://www.bing.com/images/search?q={q_enc}&qft=+filterui:imagesize-large&form=HDRSC2&first=1"
+        req = urllib.request.Request(url, headers=BROWSER_HEADERS)
+        seen = set()
+        with urllib.request.urlopen(req, timeout=1.8) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+            matches = re.findall(r'class="iusc"[^>]*m="([^"]+)"', html)
+            for m in matches:
+                raw_json = m.replace('&quot;', '"').replace('&amp;', '&')
+                try:
+                    data = json.loads(raw_json)
+                    murl = data.get("murl")
+                    turl = data.get("turl")
+                    title = data.get("t", clean_q)
+                    desc = data.get("desc", "")
+                    if not murl or murl in seen:
+                        continue
+                    if not _is_candidate_relevant(title, murl, desc, clean_q):
+                        continue
+                    seen.add(murl)
+                    results.append({
+                        "id": f"sgdb_web_{len(results)}",
+                        "name": title,
+                        "poster_url": murl,
+                        "thumb_url": turl or murl,
+                        "is_square": False,
+                        "is_vertical": True,
+                        "source": "SteamGridDB",
+                        "pre_verified": True
+                    })
+                    if len(results) >= max_results:
+                        break
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return results
+
 def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[str, Any]]:
     """
-    Busca de manera ultra rápida carátulas oficiales y de internet consultando simultáneamente:
-      1. Google / Web (Boxarts, carátulas de tiendas, mods, IGDB, MobyGames).
-      2. Steam Store (Juegos completos, categoría 998).
-      3. GOG Catalog (Pósters oficiales).
+    Busca de manera ultra rápida carátulas oficiales, key art y wallpapers 1080p/HD
+    explícitamente relacionados con el juego consultando simultáneamente:
+      1. Steam Store (Carátulas verticales 600x900_2x y Hero/Header Key Art HD).
+      2. Google / Web Covers & Key Art HD (+filterui:imagesize-large).
+      3. Google / Web Wallpapers 1080p HD del juego (adaptables al cuadro 3D).
+      4. SteamGridDB y GOG Catalog (filtrados estrictamente por el juego).
     """
     if not raw_query or not raw_query.strip():
         return []
@@ -120,18 +347,27 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
     if cache_key in _CANDIDATES_CACHE:
         return [dict(item) for item in _CANDIDATES_CACHE[cache_key][:max_results]]
 
-    # ---------------------------------------------------------
-    # Búsqueda Concurrente Multiprovedor (Google + Steam + GOG)
-    # ---------------------------------------------------------
-    def _fetch_google():
+    def _fetch_google_covers():
         try:
-            return search_google_web_covers(primary_term, max_results=16)
+            return search_google_web_covers(primary_term, max_results=14)
+        except Exception:
+            return []
+
+    def _fetch_google_hd_wallpapers_for_cover():
+        try:
+            wp_items = search_google_web_wallpapers(primary_term, max_results=12)
+            adapted_list = []
+            for item in wp_items:
+                c_item = dict(item)
+                c_item["id"] = f"cov_hd1080_{len(adapted_list)}"
+                c_item["source"] = "Key Art 1080p HD"
+                adapted_list.append(c_item)
+            return adapted_list
         except Exception:
             return []
 
     def _fetch_steam():
         steam_res = []
-        query_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', primary_term))
         try:
             params = urllib.parse.urlencode({
                 "query": "",
@@ -152,8 +388,7 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
                     try:
                         aid = int(aid_str)
                         clean_t = t.replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'").strip()
-                        t_words = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', clean_t))
-                        if query_keywords and not (query_keywords & t_words):
+                        if not _is_candidate_relevant(clean_t, "", "", primary_term):
                             continue
                         hd_2x = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/library_600x900_2x.jpg"
                         hd_1x = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/library_600x900.jpg"
@@ -164,7 +399,21 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
                             "thumb_url": hd_1x,
                             "is_square": False,
                             "is_vertical": True,
-                            "source": "Steam",
+                            "source": "Steam Oficial",
+                            "pre_verified": True
+                        })
+                        # Añadir también el Key Art apaisado HD oficial de Steam para poder encuadrarlo como carátula
+                        hero_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/library_hero.jpg"
+                        header_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/header.jpg"
+                        steam_res.append({
+                            "id": f"{aid}_hero",
+                            "name": f"{clean_t} (Key Art HD)",
+                            "poster_url": hero_url,
+                            "thumb_url": header_url,
+                            "is_square": False,
+                            "is_vertical": False,
+                            "is_widescreen": True,
+                            "source": "Steam HD 16:9",
                             "pre_verified": True
                         })
                         if len(steam_res) >= 8:
@@ -177,7 +426,6 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
 
     def _fetch_gog():
         gog_res = []
-        query_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', primary_term))
         try:
             params = urllib.parse.urlencode({
                 "limit": 8,
@@ -191,8 +439,7 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
                 gog_data = json.loads(resp.read().decode("utf-8", errors="ignore"))
                 for prod in gog_data.get("products", []):
                     title = prod.get("title", "")
-                    title_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', title))
-                    if query_keywords and not (query_keywords & title_keywords):
+                    if not _is_candidate_relevant(title, "", "", primary_term):
                         continue
                     cover_v = prod.get("coverVertical")
                     prod_id = f"gog_{prod.get('id', title)}"
@@ -204,38 +451,49 @@ def search_cover_candidates(raw_query: str, max_results: int = 24) -> List[Dict[
                             "thumb_url": cover_v,
                             "is_square": False,
                             "is_vertical": True,
-                            "source": "GOG",
+                            "source": "GOG Oficial",
                             "pre_verified": True
                         })
         except Exception:
             pass
         return gog_res
 
-    found_keys = set()
+    found_urls = set()
     valid_candidates: List[Dict[str, Any]] = []
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        f_google = executor.submit(_fetch_google)
+    def _add_candidate(cand: Dict[str, Any]):
+        u = cand.get("poster_url")
+        if u and u not in found_urls:
+            found_urls.add(u)
+            valid_candidates.append(cand)
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
         f_steam = executor.submit(_fetch_steam)
+        f_google_cov = executor.submit(_fetch_google_covers)
+        f_google_wp = executor.submit(_fetch_google_hd_wallpapers_for_cover)
+        f_sgdb = executor.submit(search_steamgriddb_covers, primary_term, 6)
         f_gog = executor.submit(_fetch_gog)
 
-        for wr in f_google.result():
-            k = wr["poster_url"]
-            if k not in found_keys:
-                found_keys.add(k)
-                valid_candidates.append(wr)
-
         for sr in f_steam.result():
-            k = f"steam_{sr['id']}"
-            if k not in found_keys:
-                found_keys.add(k)
-                valid_candidates.append(sr)
+            _add_candidate(sr)
 
         for gr in f_gog.result():
-            k = gr["id"]
-            if k not in found_keys:
-                found_keys.add(k)
-                valid_candidates.append(gr)
+            _add_candidate(gr)
+
+        cov_list = f_google_cov.result()
+        wp_list = f_google_wp.result()
+        sgdb_list = f_sgdb.result()
+
+        # Intercalar carátulas/key art HD con wallpapers 1080p HD y grids de SteamGridDB
+        # para que desde las primeras filas el usuario tenga tanto portadas verticales como arte 1080p del juego
+        max_len = max(len(cov_list), len(wp_list), len(sgdb_list), 0)
+        for idx_i in range(max_len):
+            if idx_i < len(cov_list):
+                _add_candidate(cov_list[idx_i])
+            if idx_i < len(wp_list):
+                _add_candidate(wp_list[idx_i])
+            if idx_i < len(sgdb_list):
+                _add_candidate(sgdb_list[idx_i])
 
     if valid_candidates:
         _CANDIDATES_CACHE[cache_key] = [dict(x) for x in valid_candidates]
@@ -338,6 +596,8 @@ def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[
                     desc = data.get("desc", "")
                     if not murl or murl in seen_urls:
                         continue
+                    if not _is_candidate_relevant(title, murl, desc, clean_q):
+                        continue
                     lower_m = murl.lower()
                     if any(ext in lower_m for ext in [".jpg", ".jpeg", ".png", ".webp"]) or "image" in lower_m or "wallpaper" in lower_m:
                         seen_urls.add(murl)
@@ -396,7 +656,6 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
 
     def _fetch_steam_wp():
         steam_res = []
-        query_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', primary_term))
         try:
             params = urllib.parse.urlencode({
                 "query": "",
@@ -417,8 +676,7 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
                     try:
                         aid = int(aid_str)
                         clean_t = t.replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'").strip()
-                        t_words = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', clean_t))
-                        if query_keywords and not (query_keywords & t_words):
+                        if not _is_candidate_relevant(clean_t, "", "", primary_term):
                             continue
                         hero_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/library_hero.jpg"
                         header_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{aid}/header.jpg"
@@ -443,7 +701,6 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
 
     def _fetch_gog_wp():
         gog_res = []
-        query_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', primary_term))
         try:
             params = urllib.parse.urlencode({
                 "limit": 8,
@@ -457,8 +714,7 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
                 gog_data = json.loads(resp.read().decode("utf-8", errors="ignore"))
                 for prod in gog_data.get("products", []):
                     title = prod.get("title", "")
-                    title_keywords = set(w.lower() for w in re.findall(r'[a-zA-Z0-9]{3,}', title))
-                    if query_keywords and not (query_keywords & title_keywords):
+                    if not _is_candidate_relevant(title, "", "", primary_term):
                         continue
                     cover_h = prod.get("coverHorizontal")
                     prod_id = f"gog_wp_{prod.get('id', title)}"

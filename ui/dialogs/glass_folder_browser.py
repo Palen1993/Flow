@@ -86,12 +86,12 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         return drives if drives else ["C:\\"]
 
     def _build_ui(self, title: str):
+        pad = max(6, int(10 * self.scale_factor))
         self.card = ctk.CTkFrame(
-            self, width=self.W - 20, height=self.H - 20, corner_radius=22,
+            self, corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
-        self.card.place(relx=0.5, rely=0.5, anchor="center")
-        self.card.pack_propagate(False)
+        self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)
 
         # 1. Cabecera

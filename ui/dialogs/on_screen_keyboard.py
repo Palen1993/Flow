@@ -60,12 +60,12 @@ class OnScreenKeyboardDialog(BaseGlassDialog):
         self.focus_set()
 
     def _build_ui(self, title: str):
+        pad = max(6, int(10 * self.scale_factor))
         self.card = ctk.CTkFrame(
-            self, width=self.W - 20, height=self.H - 20, corner_radius=22,
+            self, corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
-        self.card.place(relx=0.5, rely=0.5, anchor="center")
-        self.card.pack_propagate(False)
+        self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)
 
         # 1. Cabecera con Título y visor del texto escrito
@@ -158,53 +158,56 @@ class OnScreenKeyboardDialog(BaseGlassDialog):
             row_inner.pack(anchor="center")
 
             for c_idx, key in enumerate(row):
-                btn_w = 48
+                scale = getattr(self, "scale_factor", 1.0)
+                btn_w = int(round(48 * scale))
+                btn_h = max(26, int(round(34 * scale)))
+                btn_rad = max(6, int(round(9 * scale)))
                 btn_fg = COLOR_BTN_SECONDARY_BG
                 btn_hover = COLOR_BTN_SECONDARY_HOVER
                 btn_border = COLOR_BTN_SECONDARY_BORDER
                 txt_col = COLOR_TEXT_MAIN
-                fnt = font_button(13)
+                fnt = font_button(max(10, int(round(13 * scale))))
 
                 if key in ("MAYÚS", "ABC"):
-                    btn_w = 70
+                    btn_w = int(round(70 * scale))
                     btn_fg = "#222c3d" if self.is_uppercase else COLOR_BTN_SECONDARY_BG
                     btn_border = COLOR_CYAN_ACCENT if self.is_uppercase else COLOR_BTN_SECONDARY_BORDER
                     txt_col = COLOR_CYAN_ACCENT if self.is_uppercase else COLOR_TEXT_MUTED_LIGHT
-                    fnt = font_button(11)
+                    fnt = font_button(max(9, int(round(11 * scale))))
                 elif key == "?123":
-                    btn_w = 70
-                    fnt = font_button(11)
+                    btn_w = int(round(70 * scale))
+                    fnt = font_button(max(9, int(round(11 * scale))))
                     txt_col = COLOR_CYAN_ACCENT
                 elif key == "BORRAR":
-                    btn_w = 82
+                    btn_w = int(round(82 * scale))
                     btn_fg = "#2c1c23"
                     btn_hover = COLOR_BTN_DANGER_HOVER
                     btn_border = "#442430"
                     txt_col = "#fca5a5"
-                    fnt = font_button(11)
+                    fnt = font_button(max(9, int(round(11 * scale))))
                 elif key == "ESPACIO":
-                    btn_w = 210
-                    fnt = font_button(11)
+                    btn_w = int(round(210 * scale))
+                    fnt = font_button(max(9, int(round(11 * scale))))
                     txt_col = COLOR_TEXT_MUTED_LIGHT
                 elif key == "LIMPIAR":
-                    btn_w = 78
+                    btn_w = int(round(78 * scale))
                     btn_fg = "#282024"
                     txt_col = COLOR_TEXT_MUTED
-                    fnt = font_button(11)
+                    fnt = font_button(max(9, int(round(11 * scale))))
                 elif key == "LISTO":
-                    btn_w = 90
+                    btn_w = int(round(90 * scale))
                     btn_fg = COLOR_IOS_BLUE
                     btn_hover = COLOR_IOS_BLUE_HOVER
                     btn_border = COLOR_IOS_BLUE_BORDER
                     txt_col = COLOR_TEXT_WHITE
-                    fnt = font_button(12)
+                    fnt = font_button(max(10, int(round(12 * scale))))
 
                 btn = ctk.CTkButton(
                     row_inner,
                     text=key,
                     width=btn_w,
-                    height=36,
-                    corner_radius=9,
+                    height=btn_h,
+                    corner_radius=btn_rad,
                     fg_color=btn_fg,
                     hover_color=btn_hover,
                     border_color=btn_border,

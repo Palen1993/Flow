@@ -533,7 +533,7 @@ class ExternalImportDialog(BaseGlassDialog):
 
     def _scan_custom_folder(self):
         from ui.dialogs.glass_folder_browser import browse_folder
-        from core.system import scan_directory_for_games
+        from core.scanner import scan_directory_for_games
         folder = browse_folder(parent=self, title="Seleccionar Carpeta para Buscar Juegos")
         if not folder:
             return

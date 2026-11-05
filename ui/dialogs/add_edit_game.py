@@ -11,7 +11,7 @@ from core.coverflow_engine import create_procedural_album, create_jewel_case
 from core.cover_resolver import resolve_game_cover
 from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
-from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
+from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
     COLOR_GLASS_BORDER, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
@@ -20,44 +20,18 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED_LIGHT,
-    font_button, font_body, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
+    font_button, font_body
 )
 
-class AddEditGameDialog(ctk.CTkToplevel):
-    def _windows_set_titlebar_color(self, color_mode: str):
-        pass
-
-    def _windows_set_titlebar_icon(self):
-        pass
-
+class AddEditGameDialog(BaseGlassDialog):
     def __init__(self, parent, monitors: List[Dict[str, Any]], game_data: Optional[Dict[str, Any]] = None, callback=None, delete_callback=None, on_close_callback=None):
-        super().__init__(parent)
+        title = "Editar Juego" if game_data else "Agregar Juego"
+        super().__init__(parent, title=title, width=650, height=560, corner_radius=26)
         self.callback = callback
         self.delete_callback = delete_callback
         self.on_close_callback = on_close_callback
         self.monitors = monitors
         self.game_data = game_data
-        
-        self.dialog_width = 650
-        self.dialog_height = 560
-        self.title("Editar Juego" if game_data else "Agregar Juego")
-        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
-        self.resizable(False, False)
-        
-        # Fondo transparente sin barra de título del sistema operativo
-        try:
-            self.overrideredirect(True)
-        except Exception:
-            pass
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-            
-        self.configure(fg_color=COLOR_BG_CARD)
-        self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
         self.family = getattr(parent, "_current_controller_family", "xbox")
         
         self.current_cover_path = game_data.get("cover", "") if game_data else ""
@@ -66,35 +40,9 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.current_wallpaper_blur = float(game_data.get("wallpaper_blur", 1.5)) if game_data else 1.5
         self.preview_image_ref = None
         
-        self.drag_x = 0
-        self.drag_y = 0
-        
         self.create_widgets()
-        self.bind("<Escape>", lambda e: self.destroy())
-        
-        self._center_window()
-        self.after(20, self._center_window)
-        self.after(30, lambda: apply_rounded_window_region(self, self.dialog_width, self.dialog_height, 26))
-        register_modal_stack(self)
-        try:
-            self.grab_set()
-        except Exception:
-            pass
-        
-    def _center_window(self):
-        try:
-            self.update_idletasks()
-            pw = self.master.winfo_width()
-            ph = self.master.winfo_height()
-            px = self.master.winfo_rootx()
-            py = self.master.winfo_rooty()
-            w = self.dialog_width
-            h = self.dialog_height
-            x = max(10, px + max(0, (pw - w) // 2))
-            y = max(10, py + max(0, (ph - h) // 2))
-            self.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
+
+    _center_window = BaseGlassDialog.center_window
 
     def _start_drag(self, event):
         if hasattr(self, "monitor_dropdown") and getattr(self.monitor_dropdown, "_active_dropdown", None):
@@ -103,16 +51,9 @@ class AddEditGameDialog(ctk.CTkToplevel):
                 self.monitor_dropdown._active_dropdown = None
             except Exception:
                 pass
-        self.drag_x = event.x_root - self.winfo_x()
-        self.drag_y = event.y_root - self.winfo_y()
-
-    def _on_drag(self, event):
-        x = event.x_root - self.drag_x
-        y = event.y_root - self.drag_y
-        self.geometry(f"+{x}+{y}")
+        super()._start_drag(event)
 
     def destroy(self):
-        unregister_modal_stack(self)
         self._cleanup_temp_preview()
         if hasattr(self, "monitor_dropdown") and getattr(self.monitor_dropdown, "_active_dropdown", None):
             try:
@@ -364,18 +305,24 @@ class AddEditGameDialog(ctk.CTkToplevel):
         self.cover_canvas.delete("all")
         self.cover_canvas.create_image(0, 0, image=self.preview_image_ref, anchor="nw")
 
+    def auto_fill_name_from_exe(self):
+        exe_path = self.path_entry.get().strip()
+        if not exe_path:
+            return
+        if not self.name_entry.get().strip():
+            base = os.path.basename(exe_path)
+            name = os.path.splitext(base)[0]
+            self.name_entry.insert(0, name)
+        if not self.current_cover_path or not os.path.isfile(self.current_cover_path):
+            self.autodetect_cover()
+
     def browse_exe(self):
         cur_p = self.path_entry.get().strip()
         filename = browse_file(parent=self, title="Seleccionar Ejecutable del Juego", initial_dir=cur_p, file_extensions=[".exe"])
         if filename:
             self.path_entry.delete(0, 'end')
             self.path_entry.insert(0, filename)
-            if not self.name_entry.get().strip():
-                base = os.path.basename(filename)
-                name = os.path.splitext(base)[0]
-                self.name_entry.insert(0, name)
-            if not self.current_cover_path or not os.path.isfile(self.current_cover_path):
-                self.autodetect_cover()
+            self.auto_fill_name_from_exe()
 
     def browse_cover(self):
         cur_c = self.current_cover_path

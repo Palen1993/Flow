@@ -173,17 +173,26 @@ def render_button_icon_pil(btn_key: str, family: Optional[str] = None, size: int
     return downscaled
 
 
-def get_button_icon_ctk(btn_key: str, family: Optional[str] = None, size: int = 20) -> ctk.CTkImage:
+def get_button_icon_ctk(btn_key: str, family: Optional[str] = None, size: int = 20, scale: Optional[float] = None) -> ctk.CTkImage:
     """
     Devuelve un objeto CTkImage listo para incrustar en cualquier CTkButton o CTkLabel
     (ej: Cancelar con el circulito real (B) / (◯), Guardar con (Start), Aplicar con (A) / (✕), etc.).
     """
+    from ui.display_scale import get_active_display_scale
     if family is None:
         family = get_connected_controller_family()
     fam = "playstation" if family == "playstation" else "xbox"
     k = btn_key.lower()
-    pil_img = render_button_icon_pil(k, fam, size=size)
-    return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(pil_img.width, pil_img.height))
+    sc = scale if scale is not None else get_active_display_scale()
+    eff_size = max(14, int(round(size * sc)))
+    cache_key = (k, fam, eff_size)
+    cached = _ICON_CTK_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    pil_img = render_button_icon_pil(k, fam, size=eff_size)
+    ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(pil_img.width, pil_img.height))
+    _ICON_CTK_CACHE[cache_key] = ctk_img
+    return ctk_img
 
 
 def render_controller_badge_pill(action: str, family: str = "xbox", height: int = 32) -> Image.Image:

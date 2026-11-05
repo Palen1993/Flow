@@ -10,10 +10,13 @@ from core.coverflow_engine import create_procedural_album
 
 def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
     """Extrae el icono de máxima resolución integrado en un .exe liberando todos los recursos GDI."""
+    hicon = ctypes.c_void_p()
+    desktop_dc = 0
+    hdc_mem = None
+    hbmp = None
     try:
         ico_x = size
         ico_y = size
-        hicon = ctypes.c_void_p()
         icon_id = ctypes.c_uint()
         res = ctypes.windll.user32.PrivateExtractIconsW(
             exe_path, 0, ico_x, ico_y, ctypes.byref(hicon), ctypes.byref(icon_id), 1, 0
@@ -29,15 +32,31 @@ def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
             bmpinfo = hbmp.GetInfo()
             bmpstr = hbmp.GetBitmapBits(True)
             img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
-            
-            # Liberación estricta de recursos GDI y handles de Windows
-            ctypes.windll.user32.DestroyIcon(hicon.value)
-            win32gui.DeleteObject(hbmp.GetHandle())
-            hdc_mem.DeleteDC()
-            win32gui.ReleaseDC(0, desktop_dc)
             return img
     except Exception:
         pass
+    finally:
+        # Liberación estricta y garantizada de recursos GDI y handles de Windows
+        if hicon.value:
+            try:
+                ctypes.windll.user32.DestroyIcon(hicon.value)
+            except Exception:
+                pass
+        if hbmp is not None:
+            try:
+                win32gui.DeleteObject(hbmp.GetHandle())
+            except Exception:
+                pass
+        if hdc_mem is not None:
+            try:
+                hdc_mem.DeleteDC()
+            except Exception:
+                pass
+        if desktop_dc:
+            try:
+                win32gui.ReleaseDC(0, desktop_dc)
+            except Exception:
+                pass
     return None
 
 def load_icon_image(ico_path: str) -> Optional[Image.Image]:

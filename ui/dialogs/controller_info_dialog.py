@@ -116,12 +116,12 @@ class ControllerInfoDialog(BaseGlassDialog):
         self.focus_set()
 
     def _build_ui(self):
+        pad = max(6, int(12 * self.scale_factor))
         self.card = ctk.CTkFrame(
-            self, width=self.W - 24, height=self.H - 24, corner_radius=22,
+            self, corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
-        self.card.place(relx=0.5, rely=0.5, anchor="center")
-        self.card.pack_propagate(False)
+        self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
 
         self.lbl_title = ctk.CTkLabel(
             self.card, text="Estado de los Mandos",
@@ -155,15 +155,6 @@ class ControllerInfoDialog(BaseGlassDialog):
     def _bind_events(self):
         for key in ("<Return>", "<space>", "<Escape>", "<a>", "<A>", "<b>", "<B>"):
             self.bind(key, lambda e: self.close())
-
-    def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
-        if (inputs.get("a", False) and not prev_inputs.get("a", False)) or \
-           (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
-           (inputs.get("start", False) and not prev_inputs.get("start", False)) or \
-           (inputs.get("back", False) and not prev_inputs.get("back", False)):
-            self.close()
-            return True
-        return False
 
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:
         if (inputs.get("a", False) and not prev_inputs.get("a", False)) or \

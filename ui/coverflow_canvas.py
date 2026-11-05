@@ -46,6 +46,8 @@ class CoverFlowCanvas(tk.Canvas):
         self.ui_launch_disabled = False
         self._launch_hovered = False
         self._bottom_overlay_cache: Dict[Tuple[Any, ...], Image.Image] = {}
+        self.display_scale = 1.0
+        self._current_font_scale = 1.0
 
         try:
             self._font_title_bp = ImageFont.truetype("segoeuib.ttf", 26)
@@ -198,24 +200,26 @@ class CoverFlowCanvas(tk.Canvas):
         # Fase 2: Carga perezosa (Lazy Loading) del resto de juegos en segundo plano
         remaining_indices = [i for i in range(n) if i not in visible_indices]
         if remaining_indices:
+            loader_gen = self._cache_generation
             def _bg_loader():
                 for i in remaining_indices:
-                    if i >= len(self.games):
-                        break
+                    if self._cache_generation != loader_gen or i >= len(self.games):
+                        return
                     g = self.games[i]
                     key = self._get_key(g)
                     if key not in self.raw_jewels:
                         self.raw_jewels[key] = self._get_or_create_jewel_case(g)
                     if key not in self.raw_wallpapers:
                         self._load_wallpaper_for_game(g)
-                try:
-                    self.after(0, self.redraw)
-                except Exception:
-                    pass
+                if self._cache_generation != loader_gen:
+                    return
+                q = getattr(self.master, "_action_queue", None)
+                if q is not None:
+                    q.put(("callable", self.redraw))
             threading.Thread(target=_bg_loader, daemon=True).start()
 
     def _rebuild_rendered_cache(self):
-        """Genera instantáneamente los ángulos estáticos y precomputa en segundo plano los ángulos de transición."""
+        """Genera instantáneamente los ángulos estáticos de la ventana activa y precomputa en segundo plano los ángulos de transición."""
         self._cache_generation += 1
         current_gen = self._cache_generation
         has_refl = not getattr(self, "is_transparent_mode", False)
@@ -224,9 +228,16 @@ class CoverFlowCanvas(tk.Canvas):
         self.flat_covers.clear()
         self.rendered_cache.clear()
         size = self.base_size
+        center_idx = int(round(getattr(self, "target_pos", 0.0)))
+        n = len(self.games)
+        active_indices = [
+            i for i in range(max(0, center_idx - 7), min(n, center_idx + 8))
+        ]
+        active_Indices_sorted = sorted(active_indices, key=lambda idx: abs(idx - center_idx))
         
         # 1. Fase síncrona ultra rápida (<60ms total): crea carátulas planas y los 3 ángulos de reposo (-1.0, 0.0, +1.0)
-        for g in self.games:
+        for idx in active_Indices_sorted:
+            g = self.games[idx]
             key = self._get_key(g)
             jewel = self.raw_jewels.get(key)
             if not jewel:
@@ -250,14 +261,10 @@ class CoverFlowCanvas(tk.Canvas):
                 -0.875, -0.75, -0.625, -0.5, -0.375, -0.25, -0.125,
                 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875
             ]
-            center_idx = int(round(getattr(self, "target_pos", 0.0)))
-            sorted_games = sorted(
-                list(self.games),
-                key=lambda g: abs(self.games.index(g) - center_idx) if g in self.games else 999
-            )
-            for g in sorted_games:
-                if self._cache_generation != current_gen:
+            for idx in active_Indices_sorted:
+                if self._cache_generation != current_gen or idx >= len(self.games):
                     return
+                g = self.games[idx]
                 key = self._get_key(g)
                 flat_data = self.flat_covers.get(key)
                 if not flat_data:
@@ -275,6 +282,9 @@ class CoverFlowCanvas(tk.Canvas):
 
     def _prune_rendered_cache(self, max_games: int = 15):
         """Política LRU: Acota la memoria eliminando los juegos más lejanos al índice visible."""
+        if len(self.wallpaper_bg_cache) > 8:
+            for old_wp_k in list(self.wallpaper_bg_cache.keys())[:-6]:
+                self.wallpaper_bg_cache.pop(old_wp_k, None)
         if len(self.rendered_cache) <= max_games:
             return
         center_idx = int(round(getattr(self, "target_pos", 0.0)))
@@ -286,6 +296,7 @@ class CoverFlowCanvas(tk.Canvas):
         sorted_keys = sorted(key_to_dist.keys(), key=lambda k: key_to_dist[k], reverse=True)
         for k in sorted_keys[:len(self.rendered_cache) - max_games]:
             self.rendered_cache.pop(k, None)
+            self.flat_covers.pop(k, None)
 
     def get_rendered_cover(self, game_key: str, af: float) -> Tuple[Optional[Image.Image], int]:
         """Obtiene la carátula proyectada en 3D del caché o la calcula bajo demanda con política LRU acotada."""
@@ -328,8 +339,9 @@ class CoverFlowCanvas(tk.Canvas):
 
         bg = Image.new('RGB', (w, h), (15, 18, 24))
         
-        # Spotlight ambiental ultra suave estilo Liquid Glass
-        spot_w, spot_h = min(w, 920), min(h, 460)
+        # Spotlight ambiental ultra suave estilo Liquid Glass proporcional al lienzo
+        spot_w = max(400, min(w, int(w * 0.60)))
+        spot_h = max(240, min(h, int(h * 0.46)))
         spot_small = Image.new('RGBA', (200, 100), (0, 0, 0, 0))
         s_draw = ImageDraw.Draw(spot_small)
         s_draw.ellipse([10, 10, 190, 90], fill=(0, 122, 255, 30))
@@ -389,13 +401,30 @@ class CoverFlowCanvas(tk.Canvas):
         self.last_w = w
         self.last_h = h
         
+        # Factor de escala relativo a 1080p (720p=~0.8, 1080p=1.0, 1440p=~1.33, 4K=~2.0)
+        self.display_scale = max(0.75, min(2.5, h / 1080.0))
+        
+        # Actualizar fuentes vectoriales del HUD si la resolución cambió significativamente
+        if abs(self.display_scale - getattr(self, "_current_font_scale", 1.0)) > 0.05:
+            self._current_font_scale = self.display_scale
+            title_pt = max(16, int(round(26 * self.display_scale)))
+            sub_pt = max(10, int(round(13 * self.display_scale)))
+            try:
+                self._font_title_bp = ImageFont.truetype("segoeuib.ttf", title_pt)
+                self._font_sub_bp = ImageFont.truetype("segoeuib.ttf", sub_pt)
+            except Exception:
+                self._font_title_bp = ImageFont.load_default()
+                self._font_sub_bp = ImageFont.load_default()
+            self._bottom_overlay_cache.clear()
+
         has_refl = not getattr(self, "is_transparent_mode", False)
-        # Sizing óptimo: adaptable si está en modo transparente o en pantalla completa 100%
+        # Sizing óptimo: adaptable dinámicamente según la resolución y modo de visualización
         if getattr(self, "is_transparent_mode", False):
-            new_base_size = max(220, min(380, int(h * 0.70)))
+            new_base_size = max(180, min(int(h * 0.72), int(w * 0.42)))
         else:
             max_by_w = int(w * 0.36)
-            new_base_size = max(180, min(420, min(int(h * 0.42), max_by_w)))
+            # En Big Picture la carátula escala con la altura sin límite rígido de 420px (en 4K llega a ~900px)
+            new_base_size = max(180, min(int(h * 0.44), max_by_w))
         
         size_changed = (new_base_size != self.base_size)
         refl_changed = (getattr(self, "rendered_has_refl", None) != has_refl)
@@ -569,12 +598,15 @@ class CoverFlowCanvas(tk.Canvas):
         """
         self.hud_hitboxes = []
         fam = getattr(self, "controller_family", "xbox")
+        scale = getattr(self, "display_scale", 1.0)
 
         if getattr(self, "is_transparent_mode", False):
             try:
-                strip, rel_boxes = render_controller_hud_strip(family=fam, height=32, gap=4)
-                hud_x = max(10, w - strip.width - 18)
-                hud_y = 10
+                strip_h = max(24, int(round(32 * scale)))
+                strip_gap = max(3, int(round(4 * scale)))
+                strip, rel_boxes = render_controller_hud_strip(family=fam, height=strip_h, gap=strip_gap)
+                hud_x = max(10, w - strip.width - int(18 * scale))
+                hud_y = int(10 * scale)
                 bg.paste(strip, (hud_x, hud_y), strip)
                 self.hud_hitboxes = [
                     (hud_x + bx1, hud_y + by1, hud_x + bx2, hud_y + by2, act)
@@ -586,14 +618,15 @@ class CoverFlowCanvas(tk.Canvas):
 
         # 1. Modo Big Picture: Botones flotantes arriba a la derecha (wallpaper visible hasta y=0 detrás)
         try:
+            top_h = max(28, int(round(36 * scale)))
             top_img, top_boxes = render_big_picture_top_hud(
                 family=fam,
                 battery_txt=getattr(self, "ui_battery_text", "🎮 Mando"),
                 battery_col=getattr(self, "ui_battery_color", (100, 116, 139)),
-                height=36
+                height=top_h
             )
-            hud_x = max(10, w - top_img.width - 18)
-            hud_y = 14
+            hud_x = max(10, w - top_img.width - int(18 * scale))
+            hud_y = int(14 * scale)
             bg.paste(top_img, (hud_x, hud_y), top_img)
             for (bx1, by1, bx2, by2, act) in top_boxes:
                 self.hud_hitboxes.append((hud_x + bx1, hud_y + by1, hud_x + bx2, hud_y + by2, act))
@@ -602,8 +635,16 @@ class CoverFlowCanvas(tk.Canvas):
 
         # 2. Modo Big Picture: Título, Monitor y botón '▶ INICIAR JUEGO' abajo (wallpaper visible hasta y=h detrás)
         try:
+            bot_h = max(120, int(round(158 * scale)))
+            title_y = int(round(23 * scale))
+            sub_y = int(round(57 * scale))
+            pill_y = int(round(76 * scale))
+            pill_w = max(180, int(round(248 * scale)))
+            pill_h = max(36, int(round(48 * scale)))
+
             b_key = (
                 w,
+                bot_h,
                 self.ui_title,
                 self.ui_status,
                 self.ui_status_color,
@@ -612,7 +653,6 @@ class CoverFlowCanvas(tk.Canvas):
                 bool(self.ui_launch_disabled)
             )
             bot_strip = self._bottom_overlay_cache.get(b_key)
-            bot_h = 158
             if bot_strip is None:
                 bot_strip = Image.new("RGBA", (w, bot_h), (0, 0, 0, 0))
                 bdraw = ImageDraw.Draw(bot_strip)
@@ -620,15 +660,14 @@ class CoverFlowCanvas(tk.Canvas):
 
                 # Título del juego con sombra suave para legibilidad total sobre cualquier wallpaper
                 if self.ui_title:
-                    bdraw.text((cx + 1, 23), self.ui_title, font=self._font_title_bp, fill=(0, 0, 0, 215), anchor="mm")
-                    bdraw.text((cx, 22), self.ui_title, font=self._font_title_bp, fill=(248, 250, 252, 255), anchor="mm")
+                    bdraw.text((cx + 1, title_y + 1), self.ui_title, font=self._font_title_bp, fill=(0, 0, 0, 215), anchor="mm")
+                    bdraw.text((cx, title_y), self.ui_title, font=self._font_title_bp, fill=(248, 250, 252, 255), anchor="mm")
 
                 # Subtítulo (Monitor 2 - SAMSUNG (1920x1080) • Tiempo jugado)
                 # Limpiamos emojis fuera de Latin/Geometric que segoeuib.ttf en Pillow renderizaría como '□'
                 if self.ui_status:
                     clean_status = (
                         self.ui_status
-                        .replace("🖥", "")
                         .replace("🖥", "")
                         .replace("⏱", "Tiempo:")
                         .replace("🎮", "")
@@ -639,8 +678,8 @@ class CoverFlowCanvas(tk.Canvas):
                     while "  •" in clean_status:
                         clean_status = clean_status.replace("  •", " •")
                     clean_status = clean_status.replace(" • ", "   •   ")
-                    bdraw.text((cx + 1, 57), clean_status, font=self._font_sub_bp, fill=(0, 0, 0, 215), anchor="mm")
-                    bdraw.text((cx, 56), clean_status, font=self._font_sub_bp, fill=(*self.ui_status_color, 255), anchor="mm")
+                    bdraw.text((cx + 1, sub_y + 1), clean_status, font=self._font_sub_bp, fill=(0, 0, 0, 215), anchor="mm")
+                    bdraw.text((cx, sub_y), clean_status, font=self._font_sub_bp, fill=(*self.ui_status_color, 255), anchor="mm")
 
                 # Píldora '▶ INICIAR JUEGO (A/✕)'
                 if self.games:
@@ -648,20 +687,20 @@ class CoverFlowCanvas(tk.Canvas):
                         family=fam,
                         hovered=self._launch_hovered,
                         disabled=self.ui_launch_disabled,
-                        width=248,
-                        height=48
+                        width=pill_w,
+                        height=pill_h
                     )
-                    bot_strip.paste(pill_img, (cx - 124, 76), pill_img)
+                    bot_strip.paste(pill_img, (cx - pill_w // 2, pill_y), pill_img)
 
                 if len(self._bottom_overlay_cache) > 16:
                     self._bottom_overlay_cache.clear()
                 self._bottom_overlay_cache[b_key] = bot_strip
 
-            bot_y = max(0, h - bot_h - 14)
+            bot_y = max(0, h - bot_h - int(round(14 * scale)))
             bg.paste(bot_strip, (0, bot_y), bot_strip)
             if self.games and not self.ui_launch_disabled:
                 cx = w // 2
-                self.hud_hitboxes.append((cx - 124, bot_y + 76, cx + 124, bot_y + 124, "launch"))
+                self.hud_hitboxes.append((cx - pill_w // 2, bot_y + pill_y, cx + pill_w // 2, bot_y + pill_y + pill_h, "launch"))
         except Exception:
             pass
 
@@ -691,13 +730,15 @@ class CoverFlowCanvas(tk.Canvas):
         p = self.current_pos
         cx = w // 2
         size = self.base_size
+        scale = getattr(self, "display_scale", 1.0)
         has_refl = not getattr(self, "is_transparent_mode", False)
         if has_refl:
             refl_h = int(size * 0.44)
-            floor_y = min(h - refl_h - 135, max(size + 58, int(h * 0.56)))
+            bottom_margin = max(100, int(round(140 * scale)))
+            floor_y = min(h - refl_h - bottom_margin, max(size + int(round(58 * scale)), int(h * 0.56)))
         else:
             refl_h = 0
-            floor_y = (h + size) // 2 + 16
+            floor_y = (h + size) // 2 + int(round(16 * scale))
 
         center_spacing = int(size * 0.82)
         stack_spacing = int(size * 0.22)

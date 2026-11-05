@@ -9,7 +9,7 @@ from core.coverflow_engine import create_procedural_album
 from core.cover_resolver import resolve_game_cover
 from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
-from ui.dialogs.base_dialog import register_modal_stack, unregister_modal_stack
+from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
     COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
@@ -17,41 +17,16 @@ from ui.theme import (
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
+    font_button, font_body, scroll_to_widget
 )
 
-class SelectGameToEditDialog(ctk.CTkToplevel):
-    def _windows_set_titlebar_color(self, color_mode: str):
-        pass
-
-    def _windows_set_titlebar_icon(self):
-        pass
+class SelectGameToEditDialog(BaseGlassDialog):
     """Panel de gestión rápida, filtrado y edición masiva / individual de juegos."""
     def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0):
-        super().__init__(parent)
+        super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=26)
         self.games = games
         self.on_select = on_select_callback
         self._initial_target_idx = initial_index if 0 <= initial_index < len(self.games) else 0
-        
-        self.dialog_width = 920
-        self.dialog_height = 640
-        self.title("⚙ Seleccionar Juego para Editar")
-        self.geometry(f"{self.dialog_width}x{self.dialog_height}")
-        self.resizable(False, False)
-        
-        try:
-            self.overrideredirect(True)
-        except Exception:
-            pass
-        try:
-            self.attributes("-topmost", True)
-        except Exception:
-            pass
-            
-        self.configure(fg_color=COLOR_BG_CARD)
-        self.transient(parent)
-        hide_from_taskbar(self)
-        bring_to_front_absolute(self)
         self.family = getattr(parent, "_current_controller_family", "xbox")
         
         # Opciones de monitores disponibles
@@ -67,39 +42,13 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *args: self.refresh_list())
         
-        self.drag_x = 0
-        self.drag_y = 0
-        
         self.create_widgets()
         self.refresh_list()
-        self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<Up>", lambda e: self._step_row(-1))
         self.bind("<Down>", lambda e: self._step_row(1))
         self.bind("<Return>", lambda e: self._activate_selected_row())
-        
-        self._center_window()
-        self.after(20, self._center_window)
-        self.after(30, lambda: apply_rounded_window_region(self, self.dialog_width, self.dialog_height, 26))
-        register_modal_stack(self)
-        try:
-            self.grab_set()
-        except Exception:
-            pass
 
-    def _center_window(self):
-        try:
-            self.update_idletasks()
-            pw = self.master.winfo_width()
-            ph = self.master.winfo_height()
-            px = self.master.winfo_rootx()
-            py = self.master.winfo_rooty()
-            w = self.dialog_width
-            h = self.dialog_height
-            x = max(10, px + max(0, (pw - w) // 2))
-            y = max(10, py + max(0, (ph - h) // 2))
-            self.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
+    _center_window = BaseGlassDialog.center_window
 
     def _start_drag(self, event):
         if hasattr(self, "global_monitor_menu") and getattr(self.global_monitor_menu, "_active_dropdown", None):
@@ -108,16 +57,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
                 self.global_monitor_menu._active_dropdown = None
             except Exception:
                 pass
-        self.drag_x = event.x_root - self.winfo_x()
-        self.drag_y = event.y_root - self.winfo_y()
-
-    def _on_drag(self, event):
-        x = event.x_root - self.drag_x
-        y = event.y_root - self.drag_y
-        self.geometry(f"+{x}+{y}")
+        super()._start_drag(event)
 
     def destroy(self):
-        unregister_modal_stack(self)
         if hasattr(self, "global_monitor_menu") and getattr(self.global_monitor_menu, "_active_dropdown", None):
             try:
                 self.global_monitor_menu._active_dropdown.destroy()
@@ -330,7 +272,7 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         btn_close.pack(side="right", padx=4, pady=4)
 
         btn_search = ctk.CTkButton(
-            footer, text="Buscar ", image=get_button_icon_ctk("y", self.family, size=20), compound="right",
+            footer, text="Buscar ", image=get_button_icon_ctk("select", self.family, size=20), compound="right",
             width=128, height=38,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
             border_color=COLOR_GLASS_BORDER, border_width=1.2,
@@ -414,16 +356,16 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
         prompt_on_screen_keyboard(self, title="Filtrar Juegos", initial_text=self.search_var.get(), on_confirm=_on_confirm)
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
-        if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
-           (inputs.get("back", False) and not prev_inputs.get("back", False)):
+        if inputs.get("b", False) and not prev_inputs.get("b", False):
             self.destroy()
+            return True
+        if (inputs.get("back", False) and not prev_inputs.get("back", False)) or \
+           (inputs.get("select", False) and not prev_inputs.get("select", False)):
+            self._open_search_keyboard()
             return True
         if (inputs.get("start", False) and not prev_inputs.get("start", False)) or \
            (inputs.get("a", False) and not prev_inputs.get("a", False)):
             self._activate_selected_row()
-            return True
-        if inputs.get("y", False) and not prev_inputs.get("y", False):
-            self._open_search_keyboard()
             return True
         if inputs.get("lb", False) and not prev_inputs.get("lb", False):
             self.chk_all_priority.toggle()
@@ -434,6 +376,9 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
 
         rows = getattr(self, "_card_rows", [])
         if not rows:
+            if inputs.get("y", False) and not prev_inputs.get("y", False):
+                self._open_search_keyboard()
+                return True
             return False
 
         if inputs.get("up", False) and not prev_inputs.get("up", False):
@@ -441,9 +386,6 @@ class SelectGameToEditDialog(ctk.CTkToplevel):
             return True
         if inputs.get("down", False) and not prev_inputs.get("down", False):
             self._step_row(1)
-            return True
-        if inputs.get("a", False) and not prev_inputs.get("a", False):
-            self._activate_selected_row()
             return True
         if inputs.get("x", False) and not prev_inputs.get("x", False):
             # Alternar prioridad alta del juego seleccionado

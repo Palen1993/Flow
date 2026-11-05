@@ -67,6 +67,9 @@ class GamepadNavigationService:
                             prev[k] = False
                     self._last_repeat_ts = now
 
+            # Actualizar _prev_buttons ANTES de despachar eventos por si algún manejador abre un wait_window() anidado
+            self._prev_buttons = dict(inputs)
+
             # 2. Prioridad absoluta: Enrutamiento al modal o menú desplegable en la cima de la pila
             top_modal = self.app._get_topmost_active_modal()
             if top_modal is not None:
@@ -89,7 +92,6 @@ class GamepadNavigationService:
                             top_modal.destroy()
                     except Exception:
                         pass
-                self._prev_buttons = inputs
                 return
 
             # Si el lanzador está minimizado: responder a Select, Start o Guía para restaurar

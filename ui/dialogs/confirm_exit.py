@@ -23,38 +23,43 @@ class ConfirmExitDialog(BaseGlassDialog):
         self._update_focus()
 
     def create_widgets(self):
+        sc = getattr(self, "scale_factor", 1.0)
         self.card = ctk.CTkFrame(
-            self, width=390, height=190, corner_radius=22,
+            self, width=self.dialog_width - int(24 * sc), height=self.dialog_height - int(24 * sc), corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
         
         self.lbl_title = ctk.CTkLabel(
             self.card, text="¿Cerrar el lanzador?",
-            font=("Segoe UI Semibold", 17),
+            font=font_button(16),
             text_color=COLOR_TEXT_MAIN
         )
         self.lbl_title.place(relx=0.5, rely=0.34, anchor="center")
         
         btn_frame = ctk.CTkFrame(self.card, fg_color="transparent")
         btn_frame.place(relx=0.5, rely=0.68, anchor="center")
+
+        btn_w = int(138 * sc)
+        btn_h = int(38 * sc)
+        btn_rad = int(19 * sc)
         
         self.btn_cancel = ctk.CTkButton(
-            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
-            width=138, height=38,
+            btn_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=int(20 * sc)), compound="right",
+            width=btn_w, height=btn_h,
             fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_BTN_SECONDARY_HOVER,
             border_color=COLOR_BTN_SECONDARY_BORDER, border_width=1.0,
-            corner_radius=19, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_button(13),
+            corner_radius=btn_rad, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_button(13),
             command=self.cancel
         )
         self.btn_cancel.pack(side="left", padx=8)
         
         self.btn_exit = ctk.CTkButton(
-            btn_frame, text="Cerrar ", image=get_button_icon_ctk("a", self.family, size=20), compound="right",
-            width=138, height=38,
+            btn_frame, text="Cerrar ", image=get_button_icon_ctk("a", self.family, size=int(20 * sc)), compound="right",
+            width=btn_w, height=btn_h,
             fg_color=COLOR_BTN_DANGER_BG, hover_color=COLOR_BTN_DANGER_HOVER,
             border_color=COLOR_BTN_DANGER_BORDER, border_width=1.2,
-            corner_radius=19, text_color=COLOR_TEXT_WHITE, font=font_button(13),
+            corner_radius=btn_rad, text_color=COLOR_TEXT_WHITE, font=font_button(13),
             command=self.confirm
         )
         self.btn_exit.pack(side="left", padx=8)

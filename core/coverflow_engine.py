@@ -273,6 +273,10 @@ def get_cover_flow_geom(size: int, angle_factor: float, has_reflection: bool = T
     grad_mask = grad_1px.resize((target_w, tot_h), Image.Resampling.NEAREST)
     
     res = (target_w, tot_h, coeffs, grad_mask)
+    if len(_COVER_GEOM_CACHE) >= 256:
+        # Política FIFO/LRU ligera para evitar crecimiento indefinido tras redimensionados
+        for old_k in list(_COVER_GEOM_CACHE.keys())[:64]:
+            _COVER_GEOM_CACHE.pop(old_k, None)
     _COVER_GEOM_CACHE[key] = res
     return res
 

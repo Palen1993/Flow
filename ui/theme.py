@@ -129,21 +129,26 @@ THEME_TOKENS = {
     "text_dim": COLOR_TEXT_DIM
 }
 
+from ui.display_scale import get_active_display_scale, get_ctk_window_scaling
+
 FONT_FAMILY = "Segoe UI"
 FONT_HEADING = "Segoe UI Semibold"
 
-def font_title(size: int = 24, weight: str = "bold") -> ctk.CTkFont:
-    return ctk.CTkFont(family=FONT_HEADING, size=size, weight=weight)
+def font_title(size: int = 24, weight: str = "bold", scale: float = None) -> ctk.CTkFont:
+    sc = scale if scale is not None else get_active_display_scale()
+    return ctk.CTkFont(family=FONT_HEADING, size=max(12, int(round(size * sc))), weight=weight)
 
-def font_body(size: int = 12, weight: str = "normal") -> ctk.CTkFont:
-    return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
+def font_body(size: int = 12, weight: str = "normal", scale: float = None) -> ctk.CTkFont:
+    sc = scale if scale is not None else get_active_display_scale()
+    return ctk.CTkFont(family=FONT_FAMILY, size=max(10, int(round(size * sc))), weight=weight)
 
-def font_button(size: int = 13, weight: str = "bold") -> ctk.CTkFont:
-    return ctk.CTkFont(family=FONT_HEADING, size=size, weight=weight)
+def font_button(size: int = 13, weight: str = "bold", scale: float = None) -> ctk.CTkFont:
+    sc = scale if scale is not None else get_active_display_scale()
+    return ctk.CTkFont(family=FONT_HEADING, size=max(10, int(round(size * sc))), weight=weight)
 
 
 def apply_rounded_window_region(window, width: int, height: int, radius: int = 28):
-    """Aplica esquinas redondeadas nativas Win32 sin usar -transparentcolor (evita artefactos GDI al hacer scroll)."""
+    """Aplica esquinas redondeadas nativas Win32 en píxeles físicos sin usar -transparentcolor."""
     import sys
     import ctypes
     if sys.platform != "win32":
@@ -151,8 +156,15 @@ def apply_rounded_window_region(window, width: int, height: int, radius: int = 2
     try:
         if not window or not window.winfo_exists():
             return
+        window.update_idletasks()
+        ctk_scale = get_ctk_window_scaling(window)
+        actual_w = window.winfo_width()
+        actual_h = window.winfo_height()
+        phys_w = actual_w if actual_w > 100 else int(round(width * ctk_scale))
+        phys_h = actual_h if actual_h > 100 else int(round(height * ctk_scale))
+        phys_r = int(round(radius * ctk_scale))
         hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
-        rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, int(width) + 1, int(height) + 1, int(radius), int(radius))
+        rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, phys_w + 1, phys_h + 1, phys_r, phys_r)
         ctypes.windll.user32.SetWindowRgn(hwnd, rgn, True)
     except Exception:
         pass

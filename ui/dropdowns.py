@@ -11,6 +11,7 @@ from ui.theme import (
     font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
+from ui.display_scale import get_display_scale_factor, get_ctk_window_scaling, scale_value
 
 class FloatingGlassDropdown(ctk.CTkToplevel):
     """Menú desplegable flotante translúcido con bordes redondeados y soporte para scroll."""
@@ -51,31 +52,38 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         bw = anchor_widget.winfo_width()
         bh = anchor_widget.winfo_height()
         
-        dw = max(bw, min_width)
-        item_h = 36
+        ctk_scale = get_ctk_window_scaling(self)
+        scale = get_display_scale_factor(parent)
+        log_bw = int(round(bw / ctk_scale))
+        dw = max(log_bw, scale_value(min_width, scale))
+        item_h = scale_value(36, scale)
+        btn_h = scale_value(30, scale)
+        btn_rad = scale_value(8, scale)
         max_visible = 6
         num_items = len(values)
         
         if num_items <= max_visible:
-            dh = num_items * item_h + 18
+            dh = num_items * item_h + scale_value(18, scale)
             use_scroll = False
         else:
-            dh = max_visible * item_h + 18
+            dh = max_visible * item_h + scale_value(18, scale)
             use_scroll = True
             
+        phys_dw = int(round(dw * ctk_scale))
+        phys_dh = int(round(dh * ctk_scale))
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         
-        # Alinear preferentemente borde derecho del botón con el dropdown si desborda
-        x = bx + bw - dw
+        # Alinear preferentemente borde derecho del botón con el dropdown si desborda (en píxeles físicos)
+        x = bx + bw - phys_dw
         if x < 10:
             x = max(10, bx)
-        if x + dw > screen_w - 10:
-            x = screen_w - dw - 10
+        if x + phys_dw > screen_w - 10:
+            x = screen_w - phys_dw - 10
             
         y = by + bh + 4
-        if y + dh > screen_h - 10:
-            y = max(10, by - dh - 4)
+        if y + phys_dh > screen_h - 10:
+            y = max(10, by - phys_dh - 4)
             
         self.geometry(f"{dw}x{dh}+{x}+{y}")
         
@@ -117,13 +125,13 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                 "master": container,
                 "text": f"{prefix}{icon}{val}",
                 "anchor": "w",
-                "height": 30,
-                "corner_radius": 8,
+                "height": btn_h,
+                "corner_radius": btn_rad,
                 "fg_color": "#102b4c" if is_active else "transparent",
                 "hover_color": "#1a3d66",
                 "border_width": 1.2 if is_active else 0,
                 "text_color": "#38bdf8" if is_active else "#f0f9ff",
-                "font": font_body(12, weight="bold" if is_active else "normal"),
+                "font": font_body(max(10, int(12 * scale)), weight="bold" if is_active else "normal"),
                 "command": lambda v=val: self._select_val(v)
             }
             if is_active:
@@ -367,22 +375,29 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         self.after(25, lambda: (hide_from_taskbar(self), bring_to_front_absolute(self)))
         
         parent.update_idletasks()
-        mw = 355
-        mh = len(items) * 44 + 28
+        ctk_scale = get_ctk_window_scaling(self)
+        scale = get_display_scale_factor(parent)
+        mw = scale_value(355, scale)
+        item_h = scale_value(44, scale)
+        mh = len(items) * item_h + scale_value(28, scale)
+        btn_h = scale_value(38, scale)
+        btn_rad = scale_value(12, scale)
+        btn_font = font_button(max(10, int(13 * scale)))
+        phys_mw = int(round(mw * ctk_scale))
         try:
-            if anchor_widget is not None and anchor_widget != parent and anchor_widget.winfo_viewable() and anchor_widget.winfo_height() < 120:
+            if anchor_widget is not None and anchor_widget != parent and anchor_widget.winfo_viewable() and anchor_widget.winfo_height() < int(120 * ctk_scale):
                 bx = anchor_widget.winfo_rootx()
                 by = anchor_widget.winfo_rooty()
                 bw = anchor_widget.winfo_width()
                 bh = anchor_widget.winfo_height()
-                x = max(10, bx + bw - mw)
-                y = by + bh + 8
+                x = max(10, bx + bw - phys_mw)
+                y = by + bh + int(8 * ctk_scale)
             else:
                 px = parent.winfo_rootx()
                 py = parent.winfo_rooty()
                 pw = parent.winfo_width()
-                x = max(10, px + pw - mw - 22)
-                y = py + 56
+                x = max(10, px + pw - phys_mw - int(22 * ctk_scale))
+                y = py + int(56 * ctk_scale)
                 # Si el lienzo CoverFlow tiene un botón "menu" ("⚙ Opciones"), alinear bajo él
                 stage = getattr(parent, "cover_stage", None)
                 if stage is not None and getattr(stage, "hud_hitboxes", None):
@@ -390,8 +405,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                         if hact == "menu":
                             sx = stage.winfo_rootx()
                             sy = stage.winfo_rooty()
-                            x = max(10, min(px + pw - mw - 18, sx + hx1))
-                            y = sy + hy2 + 8
+                            x = max(10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
+                            y = sy + hy2 + int(8 * ctk_scale)
                             break
         except Exception:
             x, y = 100, 60
@@ -426,12 +441,12 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 content,
                 text=btn_text,
                 anchor="w",
-                height=38,
-                corner_radius=12,
+                height=btn_h,
+                corner_radius=btn_rad,
                 fg_color="transparent",
                 hover_color=COLOR_BG_ITEM_HOVER,
                 text_color=COLOR_TEXT_BRIGHT,
-                font=font_button(13),
+                font=btn_font,
                 command=lambda a=action: on_item(a)
             )
             btn.pack(fill="x", padx=4, pady=2)

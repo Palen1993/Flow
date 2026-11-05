@@ -82,6 +82,7 @@ class App(ctk.CTk):
         self.selected_index = 0
         self.exit_dialog = None
         self._modal_stack: List[Any] = []
+        self._action_queue: queue.Queue = queue.Queue()
         self.gamepad_config = load_gamepad_config()
 
         self.protocol("WM_DELETE_WINDOW", self.open_exit_dialog)
@@ -90,6 +91,7 @@ class App(ctk.CTk):
         self.create_widgets()
         self.bind_events()
         self._start_gamepad_loop()
+        self.after(50, self._poll_action_queue)
 
         # Liberar el botón Xbox de la Game Bar y asegurar el watcher de fondo
         try:
@@ -176,6 +178,46 @@ class App(ctk.CTk):
         next_idx = self.library.find_alphabetical_jump(self.selected_index, direction=direction, char=ch)
         if next_idx is not None:
             self.cover_stage.select_index(next_idx)
+            target_game = self.games[next_idx]
+            g_name = (target_game.get("name") or "Juego").strip()
+            initial = g_name[0].upper() if g_name else "#"
+            self.set_status(f"Salto rápido [{initial}]  •  {g_name}")
+
+    def _on_window_configure(self, event=None):
+        """Detecta en caliente cambios de monitor o DPI (WM_DPICHANGED / arrastre multi-monitor) y reescala la UI."""
+        if event is not None and event.widget is not self:
+            return
+        now = time.perf_counter()
+        if now - getattr(self, "_last_dpi_check_ts", 0.0) < 0.25:
+            return
+        self._last_dpi_check_ts = now
+        try:
+            from ui.display_scale import (
+                get_monitor_work_area_for_window,
+                get_window_dpi,
+                get_display_scale_factor,
+                set_active_display_scale
+            )
+            work_w, work_h, mon_rc = get_monitor_work_area_for_window(self)
+            dpi = get_window_dpi(self)
+            sig = (work_w, work_h, mon_rc, dpi)
+            prev_sig = getattr(self, "_active_monitor_sig", None)
+            if prev_sig != sig:
+                self._active_monitor_sig = sig
+                scale = get_display_scale_factor(self)
+                set_active_display_scale(scale)
+                if prev_sig is not None:
+                    self.monitors = get_monitors()
+                    self._sync_controller_family_ui(force=True)
+                    if hasattr(self, "cover_stage") and self.cover_stage:
+                        cw = self.cover_stage.winfo_width()
+                        ch = self.cover_stage.winfo_height()
+                        if cw > 60 and ch > 60:
+                            self.cover_stage.last_w = 0
+                            self.cover_stage.last_h = 0
+                            self.cover_stage._on_resize(type("Event", (), {"width": cw, "height": ch})())
+        except Exception:
+            pass
 
     # -------------------------------------------------------------
     # Creación de Componentes Gráficos de Interfaz
@@ -302,6 +344,7 @@ class App(ctk.CTk):
         self.bind("<Tab>", lambda e: self.toggle_size_mode())
         self.bind("<Escape>", lambda e: self.set_mini_mode() if not self.is_mini_mode else None)
         self.bind("<Key>", self._on_quick_letter_jump, add="+")
+        self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
         self.selected_index = index
@@ -419,43 +462,13 @@ class App(ctk.CTk):
                 pass
 
         def status_cb(msg):
-            try:
-                if self.winfo_exists():
-                    self.after(0, lambda: self.set_status(msg) if self.winfo_exists() else None)
-            except Exception:
-                pass
+            self._action_queue.put(("status", msg))
 
         def on_success():
-            try:
-                if not self.winfo_exists():
-                    return
-                if close_on_launch:
-                    self.after(1200, self.close_application)
-                else:
-                    self.after(0, lambda: self.btn_launch.configure(state="normal") if self.btn_launch.winfo_exists() else None)
-            except Exception:
-                pass
+            self._action_queue.put(("launch_success", close_on_launch))
 
         def on_error(err_msg):
-            def _ui_err():
-                try:
-                    if not self.winfo_exists():
-                        return
-                    if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
-                        self.btn_launch.configure(state="normal")
-                    if close_on_launch:
-                        self._handle_launch_error(err_msg)
-                    else:
-                        self.set_status(f"Error iniciando juego: {err_msg}")
-                        show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
-                except Exception:
-                    pass
-            try:
-                if self.winfo_exists():
-                    self.after(0, _ui_err)
-            except Exception:
-                pass
-            self.after(0, _ui_err)
+            self._action_queue.put(("launch_error", (err_msg, close_on_launch)))
 
         self.execution_service.launch(
             game,
@@ -463,6 +476,37 @@ class App(ctk.CTk):
             on_success_cb=on_success,
             on_error_cb=on_error
         )
+
+    def _poll_action_queue(self):
+        try:
+            while True:
+                action, payload = self._action_queue.get_nowait()
+                if not self.winfo_exists():
+                    return
+                if action == "status":
+                    self.set_status(payload)
+                elif action == "launch_success":
+                    if payload:
+                        self.after(1200, self.close_application)
+                    elif hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
+                        self.btn_launch.configure(state="normal")
+                elif action == "launch_error":
+                    err_msg, close_on_launch = payload
+                    if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
+                        self.btn_launch.configure(state="normal")
+                    if close_on_launch:
+                        self._handle_launch_error(err_msg)
+                    else:
+                        self.set_status(f"Error iniciando juego: {err_msg}")
+                        show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
+                elif action == "callable" and callable(payload):
+                    payload()
+        except queue.Empty:
+            pass
+        except Exception as e:
+            logger.error(f"Error procesando cola de acciones UI: {e}")
+        if self.winfo_exists():
+            self.after(50, self._poll_action_queue)
 
     def _handle_launch_error(self, err_msg: str):
         self.execution_service.reset()
@@ -556,6 +600,14 @@ class App(ctk.CTk):
                 self._modal_stack.remove(modal)
             except ValueError:
                 pass
+        # Restaurar foco y captura (grab) al modal padre en la cima de la pila si existe
+        top = self._get_topmost_active_modal()
+        if top is not None and top != getattr(self, "glass_menu", None):
+            try:
+                top.grab_set()
+                top.focus_force()
+            except Exception:
+                pass
 
     def _get_topmost_active_modal(self):
         while self._modal_stack:
@@ -578,10 +630,13 @@ class App(ctk.CTk):
         self._gamepad_tick()
 
     def _gamepad_tick(self):
+        # Programar el siguiente ciclo ANTES de ejecutar tick() para que bucles modales anidados
+        # (wait_window en exploradores de carpetas ROMs/PC o cuadros de confirmación) jamás congelen el mando a 40 Hz
+        if self.winfo_exists():
+            self.after(25, self._gamepad_tick)
         target_id = self.gamepad_config.get("selected_controller_id", "any")
         enable_nav = self.gamepad_config.get("enable_controller_nav", True)
         self.gamepad_service.tick(target_id=target_id, enable_nav=enable_nav)
-        self.after(25, self._gamepad_tick)
 
     def on_gamepad_connected(self, dev_name: str):
         self.set_status(f"🎮 {dev_name} conectado")
