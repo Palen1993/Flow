@@ -707,6 +707,8 @@ class SelectGameToEditDialog(BaseGlassDialog):
                 return
             self.games = current_games
             invalidate_thumb_cache()
+            if hasattr(self.master, "cover_stage") and self.master.cover_stage:
+                self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
             self.deiconify()
             self.lift()
             self.focus_force()

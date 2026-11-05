@@ -35,6 +35,8 @@ class CoverFlowCanvas(tk.Canvas):
         self.wallpaper_bg_cache: Dict[Tuple[str, int, int, float, float], Image.Image] = {}
         self.flat_covers: Dict[str, Tuple[Image.Image, int, int]] = {}
         self.rendered_cache: Dict[str, Dict[float, Tuple[Image.Image, int]]] = {}
+        self._cover_sigs: Dict[str, Tuple[Any, ...]] = {}
+        self._wp_sigs: Dict[str, Tuple[Any, ...]] = {}
         self._cache_generation = 0
         self._library_load_id = 0
 
@@ -108,6 +110,36 @@ class CoverFlowCanvas(tk.Canvas):
         """Genera un identificador único para el juego evitando colisiones de nombres iguales."""
         return g.get("path") or g.get("name", "game")
 
+    def _get_cover_sig(self, g: Dict[str, Any]) -> Tuple[Any, ...]:
+        """Calcula una firma única del archivo y metadatos de carátula para detectar cambios en caliente."""
+        cover_path = resolve_game_cover(g)
+        mtime = 0.0
+        fsize = 0
+        if cover_path and os.path.isfile(cover_path):
+            try:
+                st = os.stat(cover_path)
+                mtime = st.st_mtime
+                fsize = st.st_size
+            except Exception:
+                pass
+        return (cover_path, mtime, fsize, g.get("name", ""))
+
+    def _get_wallpaper_sig(self, g: Dict[str, Any]) -> Tuple[Any, ...]:
+        """Calcula una firma única del archivo y parámetros del wallpaper para detectar cambios en caliente."""
+        wp_path = g.get("wallpaper") or ""
+        mtime = 0.0
+        fsize = 0
+        if wp_path and os.path.isfile(wp_path):
+            try:
+                st = os.stat(wp_path)
+                mtime = st.st_mtime
+                fsize = st.st_size
+            except Exception:
+                pass
+        opacity = g.get("wallpaper_opacity", 0.25)
+        blur = g.get("wallpaper_blur", 1.5)
+        return (wp_path, mtime, fsize, opacity, blur)
+
     def _load_wallpaper_for_game(self, g: Dict[str, Any]):
         """Carga en memoria el wallpaper apaisado de un juego (si está configurado y existe)."""
         key = self._get_key(g)
@@ -136,7 +168,9 @@ class CoverFlowCanvas(tk.Canvas):
         if not g:
             return
         key = self._get_key(g)
+        self.raw_wallpapers.pop(key, None)
         self._load_wallpaper_for_game(g)
+        self._wp_sigs[key] = self._get_wallpaper_sig(g)
         # Invalidar caché de fondos para este juego
         to_remove = [k for k in self.wallpaper_bg_cache.keys() if k[0] == key]
         for k in to_remove:
@@ -151,6 +185,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.raw_jewels.pop(key, None)
         self.flat_covers.pop(key, None)
         self.rendered_cache.pop(key, None)
+        self._cover_sigs[key] = self._get_cover_sig(g)
 
         jewel = self._get_or_create_jewel_case(g)
         self.raw_jewels[key] = jewel
@@ -179,9 +214,29 @@ class CoverFlowCanvas(tk.Canvas):
         for k in list(self.raw_jewels.keys()):
             if k not in valid_keys:
                 self.raw_jewels.pop(k, None)
+                self._cover_sigs.pop(k, None)
         for k in list(self.raw_wallpapers.keys()):
             if k not in valid_keys:
                 self.raw_wallpapers.pop(k, None)
+                self._wp_sigs.pop(k, None)
+
+        # Detectar cambios en carátulas o wallpapers y purgar selectivamente la caché en caliente
+        for g in self.games:
+            key = self._get_key(g)
+            new_cov_sig = self._get_cover_sig(g)
+            if self._cover_sigs.get(key) != new_cov_sig:
+                self.raw_jewels.pop(key, None)
+                self.flat_covers.pop(key, None)
+                self.rendered_cache.pop(key, None)
+                self._cover_sigs[key] = new_cov_sig
+
+            new_wp_sig = self._get_wallpaper_sig(g)
+            if self._wp_sigs.get(key) != new_wp_sig:
+                self.raw_wallpapers.pop(key, None)
+                to_remove = [k for k in self.wallpaper_bg_cache.keys() if k[0] == key]
+                for k in to_remove:
+                    self.wallpaper_bg_cache.pop(k, None)
+                self._wp_sigs[key] = new_wp_sig
 
         self.wallpaper_bg_cache.clear()
         self.flat_covers.clear()
@@ -203,8 +258,10 @@ class CoverFlowCanvas(tk.Canvas):
             key = self._get_key(g)
             if key not in self.raw_jewels:
                 self.raw_jewels[key] = self._get_or_create_jewel_case(g)
+                self._cover_sigs[key] = self._get_cover_sig(g)
             if key not in self.raw_wallpapers:
                 self._load_wallpaper_for_game(g)
+                self._wp_sigs[key] = self._get_wallpaper_sig(g)
 
         self._rebuild_rendered_cache()
         cw = max(60, self.winfo_width())
@@ -225,8 +282,10 @@ class CoverFlowCanvas(tk.Canvas):
                     key = self._get_key(g)
                     if key not in self.raw_jewels:
                         self.raw_jewels[key] = self._get_or_create_jewel_case(g)
+                        self._cover_sigs[key] = self._get_cover_sig(g)
                     if key not in self.raw_wallpapers:
                         self._load_wallpaper_for_game(g)
+                        self._wp_sigs[key] = self._get_wallpaper_sig(g)
 
                     # Si este juego ya tiene jewel pero aún no tiene flat cover, generarlo
                     jewel = self.raw_jewels.get(key)

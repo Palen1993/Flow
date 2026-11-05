@@ -5,7 +5,7 @@ Contains modal and floating management dialogs.
 from ui.dialogs.base_dialog import BaseGlassDialog, register_modal_stack, unregister_modal_stack
 from ui.dialogs.add_edit_game import AddEditGameDialog
 from ui.dialogs.scan_results import ScanResultsDialog
-from ui.dialogs.select_game_to_edit import SelectGameToEditDialog
+from ui.dialogs.select_game_to_edit import SelectGameToEditDialog, invalidate_thumb_cache
 from ui.dialogs.gamepad_config_dialog import GamepadConfigDialog
 from ui.dialogs.confirm_exit import ConfirmExitDialog
 from ui.dialogs.cover_picker_dialog import CoverPickerDialog
@@ -25,6 +25,7 @@ __all__ = [
     "AddEditGameDialog",
     "ScanResultsDialog",
     "SelectGameToEditDialog",
+    "invalidate_thumb_cache",
     "GamepadConfigDialog",
     "ConfirmExitDialog",
     "CoverPickerDialog",

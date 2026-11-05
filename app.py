@@ -48,7 +48,7 @@ from ui.dropdowns import FloatingGlassMenu
 from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
-    ExternalImportDialog, BatchSteamGridDBDialog,
+    ExternalImportDialog, BatchSteamGridDBDialog, invalidate_thumb_cache,
     show_info, show_error, ask_yes_no, browse_folder
 )
 from gamepad_manager import (
@@ -862,6 +862,7 @@ class App(ctk.CTk):
                 added_count += 1
 
         self.save_games()
+        invalidate_thumb_cache()
         target_idx = initial_count if initial_count < len(self.games) else 0
         self.cover_stage.set_games(self.games, target_index=target_idx)
         self.update_ui_details(target_idx)
@@ -917,6 +918,7 @@ class App(ctk.CTk):
             return
 
         def _on_batch_complete():
+            invalidate_thumb_cache()
             self.save_games()
             self.cover_stage.set_games(self.games, target_index=self.selected_index)
             self.update_ui_details(self.selected_index)
@@ -1016,7 +1018,7 @@ class App(ctk.CTk):
             self,
             self.monitors,
             game_data=game,
-            callback=lambda name, path, mon, hp, cov, args="": self.on_specific_game_edited(index, name, path, mon, hp, cov, args),
+            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None: self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb),
             delete_callback=lambda: self.delete_specific_game(index, confirm=False),
             on_close_callback=return_callback
         )
@@ -1024,22 +1026,24 @@ class App(ctk.CTk):
     def open_edit_dialog(self):
         self.open_select_game_dialog()
 
-    def on_game_added(self, name, path, monitor, high_priority, cover, launch_args: str = ""):
-        new_index = self.library.add_game(name, path, monitor, high_priority, cover, launch_args)
+    def on_game_added(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
+        new_index = self.library.add_game(name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
         self.games = self.library.games
+        invalidate_thumb_cache()
         self.cover_stage.set_games(self.games, target_index=new_index)
         self.update_ui_details(new_index)
         self.set_status(f"Juego '{name}' añadido con éxito.")
 
-    def on_specific_game_edited(self, index: int, name: str, path: str, monitor: int, high_priority: bool, cover: str, launch_args: str = ""):
-        if self.library.update_game(index, name, path, monitor, high_priority, cover, launch_args):
+    def on_specific_game_edited(self, index: int, name: str, path: str, monitor: int, high_priority: bool, cover: str, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
+        if self.library.update_game(index, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur):
             self.games = self.library.games
+            invalidate_thumb_cache()
             self.cover_stage.set_games(self.games, target_index=index)
             self.update_ui_details(index)
             self.set_status(f"Juego '{name}' actualizado.")
 
-    def on_game_edited(self, name, path, monitor, high_priority, cover, launch_args: str = ""):
-        self.on_specific_game_edited(self.selected_index, name, path, monitor, high_priority, cover, launch_args)
+    def on_game_edited(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
+        self.on_specific_game_edited(self.selected_index, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
 
     def delete_specific_game(self, index: int, confirm: bool = False):
         if index < 0 or index >= len(self.games):
@@ -1048,6 +1052,7 @@ class App(ctk.CTk):
         if not confirm or ask_yes_no("Eliminar Juego", f"¿Estás seguro de que deseas eliminar '{game['name']}' de la biblioteca?", parent=self, confirm_text="Eliminar", is_destructive=True):
             new_idx = self.library.delete_game(index)
             self.games = self.library.games
+            invalidate_thumb_cache()
             self.cover_stage.set_games(self.games, target_index=new_idx)
             self.update_ui_details(new_idx)
             self.set_status(f"Juego '{game['name']}' eliminado.")

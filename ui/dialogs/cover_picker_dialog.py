@@ -1751,6 +1751,11 @@ class CoverPickerDialog(BaseGlassDialog):
                     return
                 if success and os.path.isfile(target_file_path):
                     feedback_cover_applied()
+                    try:
+                        from ui.dialogs.select_game_to_edit import invalidate_thumb_cache
+                        invalidate_thumb_cache(target_file_path)
+                    except Exception:
+                        pass
                     if self.on_selected_callback:
                         self.on_selected_callback(target_file_path)
                     self.destroy()

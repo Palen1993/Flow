@@ -594,9 +594,9 @@ class AddEditGameDialog(BaseGlassDialog):
         if not self.current_cover_path:
             self.autodetect_cover()
 
-        # Si la carátula proviene de una previsualización temporal (_preview_), promoverla al archivo definitivo
+        # 1. Asegurar persistencia de la carátula en la carpeta covers/
+        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
         if getattr(self, "_temp_preview_cover", None) and self.current_cover_path == self._temp_preview_cover:
-            safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
             final_cover = os.path.join(COVERS_DIR, f"{safe_name}.png")
             try:
                 if os.path.isfile(self._temp_preview_cover):
@@ -605,12 +605,39 @@ class AddEditGameDialog(BaseGlassDialog):
                     self._temp_preview_cover = None
             except Exception:
                 pass
+        elif self.current_cover_path and os.path.isfile(self.current_cover_path):
+            final_cover = os.path.join(COVERS_DIR, f"{safe_name}.png")
+            if os.path.normcase(os.path.abspath(self.current_cover_path)) != os.path.normcase(os.path.abspath(final_cover)):
+                try:
+                    import shutil
+                    shutil.copy2(self.current_cover_path, final_cover)
+                    self.current_cover_path = final_cover
+                except Exception:
+                    pass
+
+        # 2. Asegurar persistencia del wallpaper en la carpeta wallpapers/
+        from core.config import WALLPAPERS_DIR
+        if self.current_wallpaper_path and os.path.isfile(self.current_wallpaper_path):
+            final_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
+            if os.path.normcase(os.path.abspath(self.current_wallpaper_path)) != os.path.normcase(os.path.abspath(final_wp)):
+                try:
+                    import shutil
+                    shutil.copy2(self.current_wallpaper_path, final_wp)
+                    self.current_wallpaper_path = final_wp
+                except Exception:
+                    pass
             
         if self.callback:
             try:
-                self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                self.callback(
+                    name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
+                    self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur
+                )
             except TypeError:
-                self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
+                try:
+                    self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                except TypeError:
+                    self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
         self.destroy()
 
     def confirm_delete(self):

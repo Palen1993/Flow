@@ -108,7 +108,10 @@ class GameLibraryService:
         monitor: int,
         high_priority: bool,
         cover: str,
-        launch_args: str = ""
+        launch_args: str = "",
+        wallpaper: Optional[str] = None,
+        wallpaper_opacity: Optional[float] = None,
+        wallpaper_blur: Optional[float] = None
     ) -> int:
         """Añade un nuevo juego a la colección y persiste en disco. Devuelve el índice del nuevo juego."""
         new_game = {
@@ -120,6 +123,12 @@ class GameLibraryService:
         }
         if launch_args:
             new_game["launch_args"] = launch_args
+        if wallpaper:
+            new_game["wallpaper"] = wallpaper
+        if wallpaper_opacity is not None:
+            new_game["wallpaper_opacity"] = round(float(wallpaper_opacity), 2)
+        if wallpaper_blur is not None:
+            new_game["wallpaper_blur"] = round(float(wallpaper_blur), 1)
         self.games.append(new_game)
         self.save()
         return len(self.games) - 1
@@ -132,7 +141,10 @@ class GameLibraryService:
         monitor: int,
         high_priority: bool,
         cover: str,
-        launch_args: str = ""
+        launch_args: str = "",
+        wallpaper: Optional[str] = None,
+        wallpaper_opacity: Optional[float] = None,
+        wallpaper_blur: Optional[float] = None
     ) -> bool:
         """Actualiza los metadatos de un juego existente y guarda en disco."""
         if 0 <= index < len(self.games):
@@ -145,6 +157,15 @@ class GameLibraryService:
                 "cover": cover,
                 "launch_args": launch_args
             })
+            if wallpaper is not None:
+                if wallpaper:
+                    existing["wallpaper"] = wallpaper
+                else:
+                    existing.pop("wallpaper", None)
+            if wallpaper_opacity is not None:
+                existing["wallpaper_opacity"] = round(float(wallpaper_opacity), 2)
+            if wallpaper_blur is not None:
+                existing["wallpaper_blur"] = round(float(wallpaper_blur), 1)
             self.games[index] = existing
             self.save()
             return True
