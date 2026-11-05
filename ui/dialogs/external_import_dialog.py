@@ -19,7 +19,7 @@ from ui.theme import (
     COLOR_CYAN_ACCENT, COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG, COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget
+    font_button, font_body, scroll_to_widget, apply_gamepad_focus
 )
 from core.logger import get_logger
 
@@ -212,6 +212,8 @@ class ExternalImportDialog(BaseGlassDialog):
             height=38,
             fg_color=COLOR_IOS_BLUE,
             hover_color=COLOR_IOS_BLUE_HOVER,
+            border_color="#ffffff",
+            border_width=2,
             corner_radius=19,
             text_color=COLOR_TEXT_WHITE,
             font=font_button(13),
@@ -473,10 +475,7 @@ class ExternalImportDialog(BaseGlassDialog):
 
     def _highlight_focused_row(self):
         for idx, r in enumerate(self._row_frames):
-            if idx == self._focused_row_idx:
-                r.configure(border_color=COLOR_CYAN_ACCENT, border_width=2.0)
-            else:
-                r.configure(border_color="#242e42", border_width=1.0)
+            apply_gamepad_focus(r, idx == self._focused_row_idx, role="card")
 
     def _toggle_focused_row(self):
         if 0 <= self._focused_row_idx < len(self.items_vars):

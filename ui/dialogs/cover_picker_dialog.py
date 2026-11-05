@@ -548,8 +548,8 @@ class CoverPickerDialog(BaseGlassDialog):
             font=("Segoe UI Semibold", 12),
             fg_color="#007aff",
             hover_color="#0062cc",
-            border_color="#3894ff",
-            border_width=1.2,
+            border_color="#ffffff",
+            border_width=2,
             text_color=COLOR_TEXT_WHITE,
             height=38,
             corner_radius=19,
@@ -574,8 +574,8 @@ class CoverPickerDialog(BaseGlassDialog):
         """Actualiza pestañas, etiquetas, presets y deslizadores según estemos en Carátula o Wallpaper 16:9."""
         is_wp = (self.asset_mode == "wallpaper")
         if is_wp:
-            self.btn_mode_cover.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED)
-            self.btn_mode_wallpaper.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
+            self.btn_mode_cover.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED, border_width=0)
+            self.btn_mode_wallpaper.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE, border_color="#ffffff", border_width=2)
             self.lbl_prev_hdr.configure(text="👁  Vista Previa en Big Picture")
             self.lbl_prev_sub.configure(text="Fondo 16:9 a pantalla completa (sin barras)")
             self.lbl_fit_title.configure(text="Ajustes rápidos de Fondo ")
@@ -591,15 +591,17 @@ class CoverPickerDialog(BaseGlassDialog):
                 is_active = (i == self._wp_preset_idx)
                 b.configure(
                     text=lbl_t,
-                    fg_color="#ff3b30" if (i == 4 and is_active) else ("#007aff" if is_active else "#1a202c"),
+                    fg_color="#ff1744" if (i == 4 and is_active) else ("#007aff" if is_active else "#1a202c"),
+                    border_color="#ffffff",
+                    border_width=2 if is_active else 0,
                     text_color=COLOR_TEXT_WHITE if is_active else ("#fca5a5" if i == 4 else "#cbd5e1")
                 )
             norm_slider = self._opacity_to_slider(self.wp_opacity)
             self.offset_slider.set(norm_slider)
             self.blur_slider.set(max(0.0, min(1.0, self.wp_blur / 12.0)))
         else:
-            self.btn_mode_cover.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
-            self.btn_mode_wallpaper.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED)
+            self.btn_mode_cover.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE, border_color="#ffffff", border_width=2)
+            self.btn_mode_wallpaper.configure(fg_color="transparent", text_color=COLOR_TEXT_MUTED, border_width=0)
             self.lbl_prev_hdr.configure(text="👁  Vista Previa en Cover Flow")
             self.lbl_prev_sub.configure(text="Arrastra la imagen o usa los botones para encuadrar")
             self.lbl_fit_title.configure(text="Modo de adaptación al cuadro ")
@@ -613,6 +615,8 @@ class CoverPickerDialog(BaseGlassDialog):
                 b.configure(
                     text=lbl_t,
                     fg_color="#007aff" if is_active else "#1a202c",
+                    border_color="#ffffff",
+                    border_width=2 if is_active else 0,
                     text_color=COLOR_TEXT_WHITE if is_active else "#cbd5e1"
                 )
             self.offset_slider.set(self.crop_offset if self.crop_offset is not None else 0.35)
@@ -738,9 +742,9 @@ class CoverPickerDialog(BaseGlassDialog):
         draw.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=(15, 18, 24))
 
         is_sel = (idx == self.selected_card_idx)
-        bg_col = (24, 34, 54) if is_sel else (20, 23, 34)
-        border_col = (0, 122, 255) if is_sel else (36, 44, 61)
-        border_w = 2 if is_sel else 1
+        bg_col = (28, 48, 82) if is_sel else (20, 23, 34)
+        border_col = (0, 229, 255) if is_sel else (36, 44, 61)
+        border_w = 3 if is_sel else 1
 
         draw.rounded_rectangle([x0, y0, x1, y1], radius=14, fill=bg_col, outline=border_col, width=border_w)
 
@@ -808,7 +812,13 @@ class CoverPickerDialog(BaseGlassDialog):
         btn_fill = (0, 122, 255) if is_sel else (31, 37, 51)
         btn_txt = "✓ Seleccionado" if (is_sel and is_wp) else ("✓ Seleccionada" if is_sel else "Ver en Previa")
         btn_tcol = (255, 255, 255) if is_sel else (203, 213, 225)
-        draw.rounded_rectangle([x0 + 14, btn_y0, x1 - 14, btn_y1], radius=10, fill=btn_fill)
+        draw.rounded_rectangle(
+            [x0 + 14, btn_y0, x1 - 14, btn_y1],
+            radius=10,
+            fill=btn_fill,
+            outline=(255, 255, 255) if is_sel else None,
+            width=2 if is_sel else 0
+        )
         draw.text((cx, (btn_y0 + btn_y1) // 2), btn_txt, fill=btn_tcol, anchor="mm", font=self._pil_font_btn)
 
     def _rebuild_master_grid_image(self):
@@ -942,6 +952,8 @@ class CoverPickerDialog(BaseGlassDialog):
                 is_act = (i == preset_idx)
                 b.configure(
                     fg_color="#007aff" if is_act else "#1a202c",
+                    border_color="#ffffff",
+                    border_width=2 if is_act else 0,
                     text_color=COLOR_TEXT_WHITE if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
                 )
             cur_pil = self.raw_pil_by_idx.get(self.selected_card_idx) or self.current_wallpaper_pil
@@ -963,10 +975,13 @@ class CoverPickerDialog(BaseGlassDialog):
             self.offset_slider.set(0.5)
 
         for i, b in enumerate(self._fit_buttons):
-            if i == preset_idx:
-                b.configure(fg_color="#007aff", text_color=COLOR_TEXT_WHITE)
-            else:
-                b.configure(fg_color="#1a202c", text_color=COLOR_TEXT_MUTED_LIGHT)
+            is_act = (i == preset_idx)
+            b.configure(
+                fg_color="#007aff" if is_act else "#1a202c",
+                border_color="#ffffff",
+                border_width=2 if is_act else 0,
+                text_color=COLOR_TEXT_WHITE if is_act else COLOR_TEXT_MUTED_LIGHT
+            )
 
         cur_pil = self.raw_pil_by_idx.get(self.selected_card_idx)
         self._update_live_preview(cur_pil)
@@ -1017,6 +1032,8 @@ class CoverPickerDialog(BaseGlassDialog):
             is_act = (i == self._wp_preset_idx)
             b.configure(
                 fg_color="#007aff" if is_act else "#1a202c",
+                border_color="#ffffff",
+                border_width=2 if is_act else 0,
                 text_color=COLOR_TEXT_WHITE if is_act else ("#fca5a5" if i == 4 else "#cbd5e1")
             )
 

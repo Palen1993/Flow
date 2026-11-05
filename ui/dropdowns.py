@@ -163,9 +163,9 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             is_sel = (i == self.selected_index)
             if is_sel:
                 btn.configure(
-                    fg_color="#1a3d66",
-                    border_color=COLOR_CYAN_BORDER,
-                    border_width=1.4,
+                    fg_color="#0284c7",
+                    border_color="#ffffff",
+                    border_width=2,
                     text_color=COLOR_TEXT_WHITE
                 )
                 if auto_scroll and self._scroll_container:
@@ -175,7 +175,7 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                 is_cur = (i < len(self.values) and self.values[i] == self.current_value)
                 btn.configure(
                     fg_color="#102b4c" if is_cur else "transparent",
-                    border_width=1.0 if is_cur else 0,
+                    border_width=1 if is_cur else 0,
                     text_color="#38bdf8" if is_cur else "#f0f9ff"
                 )
 
@@ -472,9 +472,9 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         for idx, btn in enumerate(self.item_buttons):
             if idx == self.selected_index:
                 btn.configure(
-                    fg_color="#222838",
-                    border_color="#364057",
-                    border_width=1.0,
+                    fg_color="#0284c7",
+                    border_color="#ffffff",
+                    border_width=2,
                     text_color=COLOR_TEXT_WHITE
                 )
             else:

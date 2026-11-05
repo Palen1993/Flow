@@ -240,8 +240,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                 btn.configure(
                     fg_color=COLOR_IOS_BLUE,
                     text_color=COLOR_TEXT_WHITE,
-                    border_color=COLOR_IOS_BLUE_BORDER,
-                    border_width=1.2
+                    border_color="#ffffff",
+                    border_width=2
                 )
             else:
                 btn.configure(
@@ -429,9 +429,9 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         for i, b in enumerate(self._item_buttons):
             if i == self._selected_index:
                 b.configure(
-                    fg_color=COLOR_BG_INPUT_ACTIVE,
-                    border_color=COLOR_CYAN_ACCENT,
-                    border_width=1.2,
+                    fg_color="#1e3a5f",
+                    border_color="#00e5ff",
+                    border_width=3,
                     text_color=COLOR_TEXT_WHITE
                 )
                 if scroll:

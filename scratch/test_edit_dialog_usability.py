@@ -108,9 +108,10 @@ class TestEditDialogUsability(unittest.TestCase):
             dlg.handle_gamepad_input({"down": True}, {"down": False})
             self.assertEqual(dlg._focused_idx, del_idx)
             
-            # Verificar estilo de foco de peligro en btn_delete
-            self.assertEqual(dlg.btn_delete.cget("border_color"), "#ff453a")
-            self.assertEqual(dlg.btn_delete.cget("border_width"), 2.5)
+            # Verificar estilo de foco de peligro de alto contraste en btn_delete
+            self.assertEqual(dlg.btn_delete.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg.btn_delete.cget("border_width"), 3)
+            self.assertEqual(dlg.btn_delete.cget("fg_color"), "#ff1744")
 
             # Estando encima de btn_delete, presionar 'A' SÍ llama a confirm_delete
             with patch.object(dlg, "confirm_delete") as mock_confirm:
@@ -156,6 +157,76 @@ class TestEditDialogUsability(unittest.TestCase):
                 self.assertEqual(dlg.asset_mode, "cover")
             finally:
                 dlg.destroy()
+
+    def test_5_all_dialogs_high_contrast_focus(self):
+        """Verifica que todos los botones y controles en diálogos muestran un foco de alto contraste (3px blanco/cian + cambio LED de fondo)."""
+        from ui.dialogs.confirm_exit import ConfirmExitDialog
+        from ui.dialogs.glass_message_box import GlassMessageBox
+        from ui.dialogs.gamepad_config_dialog import GamepadConfigDialog
+
+        # 1. ConfirmExitDialog
+        dlg_exit = ConfirmExitDialog(self.app)
+        try:
+            # Inicialmente en btn_exit (index 1, danger)
+            self.assertEqual(dlg_exit._focused_btn, 1)
+            self.assertEqual(dlg_exit.btn_exit.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_exit.btn_exit.cget("border_width"), 3)
+            self.assertEqual(dlg_exit.btn_exit.cget("fg_color"), "#ff1744")
+            self.assertEqual(dlg_exit.btn_cancel.cget("border_width"), 1)
+            self.assertEqual(dlg_exit.btn_cancel.cget("fg_color"), "#1c212d")
+
+            # Cambiar a btn_cancel (index 0, secondary)
+            dlg_exit.handle_gamepad_input({"left": True}, {"left": False})
+            self.assertEqual(dlg_exit._focused_btn, 0)
+            self.assertEqual(dlg_exit.btn_cancel.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_exit.btn_cancel.cget("border_width"), 3)
+            self.assertEqual(dlg_exit.btn_cancel.cget("fg_color"), "#0284c7")
+            self.assertEqual(dlg_exit.btn_exit.cget("border_width"), 1)
+            self.assertEqual(dlg_exit.btn_exit.cget("fg_color"), "#7f1d1d")
+        finally:
+            dlg_exit.destroy()
+
+        # 2. GlassMessageBox (confirm)
+        dlg_msg = GlassMessageBox(self.app, "Test", "¿Confirmar acción?", kind="confirm")
+        try:
+            # Foco inicial en btn_confirm (index 1)
+            self.assertEqual(dlg_msg._focused_btn, 1)
+            self.assertEqual(dlg_msg.btn_confirm.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_msg.btn_confirm.cget("border_width"), 3)
+            self.assertEqual(dlg_msg.btn_confirm.cget("fg_color"), "#007aff")
+            self.assertEqual(dlg_msg.btn_cancel.cget("border_width"), 1)
+
+            dlg_msg.handle_gamepad_input({"left": True}, {"left": False})
+            self.assertEqual(dlg_msg._focused_btn, 0)
+            self.assertEqual(dlg_msg.btn_cancel.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_msg.btn_cancel.cget("border_width"), 3)
+            self.assertEqual(dlg_msg.btn_cancel.cget("fg_color"), "#0284c7")
+            self.assertEqual(dlg_msg.btn_confirm.cget("border_width"), 1)
+            self.assertEqual(dlg_msg.btn_confirm.cget("fg_color"), "#1e3a8a")
+        finally:
+            dlg_msg.destroy()
+
+        # 3. GamepadConfigDialog
+        dlg_gp = GamepadConfigDialog(self.app)
+        try:
+            # Mover al botón Guardar (índice 11)
+            dlg_gp._focused_idx = 11
+            dlg_gp._update_focus_highlight()
+            self.assertEqual(dlg_gp.btn_save.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_gp.btn_save.cget("border_width"), 3)
+            self.assertEqual(dlg_gp.btn_save.cget("fg_color"), "#007aff")
+            self.assertEqual(dlg_gp.btn_cancel.cget("border_width"), 1)
+
+            # Mover al botón Cancelar (índice 12)
+            dlg_gp._focused_idx = 12
+            dlg_gp._update_focus_highlight()
+            self.assertEqual(dlg_gp.btn_cancel.cget("border_color"), "#ffffff")
+            self.assertEqual(dlg_gp.btn_cancel.cget("border_width"), 3)
+            self.assertEqual(dlg_gp.btn_cancel.cget("fg_color"), "#0284c7")
+            self.assertEqual(dlg_gp.btn_save.cget("border_width"), 1)
+            self.assertEqual(dlg_gp.btn_save.cget("fg_color"), "#1e3a8a")
+        finally:
+            dlg_gp.destroy()
 
 
 if __name__ == "__main__":

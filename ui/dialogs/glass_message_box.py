@@ -3,7 +3,7 @@ import customtkinter as ctk
 from typing import Optional
 
 from ui.theme import (
-    font_button, font_body,
+    font_button, font_body, apply_gamepad_focus,
     COLOR_BG_CARD, COLOR_GLASS_BORDER, COLOR_TEXT_MAIN, COLOR_TEXT_WHITE,
     COLOR_TEXT_MUTED_LIGHT, COLOR_CYAN_ACCENT,
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
@@ -146,6 +146,7 @@ class GlassMessageBox(BaseGlassDialog):
             )
             self.btn_confirm.grid(row=0, column=1, padx=6, sticky="ew")
             self._btn_widgets = [self.btn_cancel, self.btn_confirm]
+            self._set_focus(self._focused_btn)
         else:
             # Modo informativo / alerta (botón único Aceptar)
             btn_col = COLOR_IOS_RED if self.kind == "error" else COLOR_IOS_BLUE
@@ -163,7 +164,7 @@ class GlassMessageBox(BaseGlassDialog):
                 fg_color=btn_col,
                 hover_color=btn_hov,
                 border_color=COLOR_TEXT_WHITE,
-                border_width=2.0,
+                border_width=3,
                 text_color=COLOR_TEXT_WHITE,
                 command=self._on_confirm
             )
@@ -206,15 +207,8 @@ class GlassMessageBox(BaseGlassDialog):
             return
         self._focused_btn = idx
         if hasattr(self, "btn_cancel") and hasattr(self, "btn_confirm"):
-            self.btn_cancel.configure(
-                border_color=COLOR_CYAN_ACCENT if idx == 0 else COLOR_BTN_SECONDARY_BORDER,
-                border_width=2.0 if idx == 0 else 1.0
-            )
-            conf_bor = COLOR_IOS_RED_BORDER if self.is_destructive else COLOR_IOS_BLUE_BORDER
-            self.btn_confirm.configure(
-                border_color=COLOR_TEXT_WHITE if idx == 1 else conf_bor,
-                border_width=2.0 if idx == 1 else 1.2
-            )
+            apply_gamepad_focus(self.btn_cancel, idx == 0, role="secondary")
+            apply_gamepad_focus(self.btn_confirm, idx == 1, role="danger" if self.is_destructive else "primary")
 
     def _activate_focused(self):
         if self.kind == "confirm":

@@ -236,9 +236,9 @@ class OnScreenKeyboardDialog(BaseGlassDialog):
 
             if is_foc:
                 btn.configure(
-                    border_color=COLOR_CYAN_ACCENT,
-                    border_width=2.5,
-                    fg_color="#1d283c" if key_text != "LISTO" else COLOR_IOS_BLUE_HOVER,
+                    border_color="#ffffff",
+                    border_width=3,
+                    fg_color="#ff1744" if key_text == "BORRAR" else ("#007aff" if key_text == "LISTO" else "#0284c7"),
                     text_color=COLOR_TEXT_WHITE
                 )
             else:

@@ -17,7 +17,7 @@ from ui.theme import (
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget
+    font_button, font_body, scroll_to_widget, apply_gamepad_focus
 )
 
 class SelectGameToEditDialog(BaseGlassDialog):
@@ -341,12 +341,14 @@ class SelectGameToEditDialog(BaseGlassDialog):
         self._selected_row_idx = row_idx
         for i, (card, _) in enumerate(rows):
             if card.winfo_exists():
-                if i == row_idx:
-                    card.configure(border_color=COLOR_IOS_BLUE, border_width=2.0, fg_color="#1d2536")
+                is_sel = (i == row_idx)
+                apply_gamepad_focus(card, is_sel, role="card")
+                btn_ed = getattr(card, "_btn_edit", None)
+                if btn_ed is not None:
+                    apply_gamepad_focus(btn_ed, is_sel, role="primary")
+                if is_sel:
                     edge = "top" if i == 0 else ("bottom" if i == len(rows) - 1 else None)
                     scroll_to_widget(self.scroll_frame, card, force_edge=edge)
-                else:
-                    card.configure(border_color=COLOR_BORDER_CARD, border_width=1.0, fg_color=COLOR_BG_CARD_SECONDARY)
 
     def _open_search_keyboard(self):
         from ui.dialogs.on_screen_keyboard import prompt_on_screen_keyboard
@@ -453,6 +455,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
             command=lambda i=orig_idx: self._select_game(i)
         )
         btn_edit.pack(side="right", padx=(8, 14), pady=8)
+        card._btn_edit = btn_edit
 
         # 2. Checkbox individual de prioridad alta
         is_hp = game.get("high_priority", True)

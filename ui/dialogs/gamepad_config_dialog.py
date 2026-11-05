@@ -17,7 +17,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget
+    font_button, font_body, scroll_to_widget, apply_gamepad_focus
 )
 
 class GamepadConfigDialog(BaseGlassDialog):
@@ -332,6 +332,7 @@ class GamepadConfigDialog(BaseGlassDialog):
             ("btn_cancel", self.btn_cancel, None),
         ]
         self._focused_idx = 0
+        self._update_focus_highlight()
         self.after(50, self._update_focus_highlight)
 
     def _on_toggle_mini_mode(self):
@@ -377,21 +378,21 @@ class GamepadConfigDialog(BaseGlassDialog):
             is_foc = (i == self._focused_idx)
             if kind == "dropdown":
                 self.card_dev.configure(
-                    border_color="#007aff" if is_foc else "#242c3d",
-                    border_width=2.0 if is_foc else 1.0
+                    border_color="#00e5ff" if is_foc else "#242c3d",
+                    border_width=3 if is_foc else 1
                 )
-                widget.configure(border_color="#38bdf8" if is_foc else "#343f55", border_width=1.8 if is_foc else 1.0)
+                apply_gamepad_focus(widget, is_foc, role="dropdown")
             elif kind == "switch":
-                widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
+                apply_gamepad_focus(widget, is_foc, role="switch")
             elif kind == "guide":
                 self.card_guide.configure(
-                    border_color="#007aff" if is_foc else "#242c3d",
-                    border_width=2.0 if is_foc else 1.0
+                    border_color="#00e5ff" if is_foc else "#242c3d",
+                    border_width=3 if is_foc else 1
                 )
             elif kind == "btn_save":
-                widget.configure(border_color=COLOR_CYAN_ACCENT if is_foc else COLOR_IOS_BLUE_BORDER, border_width=2.4 if is_foc else 1.2)
+                apply_gamepad_focus(widget, is_foc, role="primary")
             elif kind == "btn_cancel":
-                widget.configure(border_color=COLOR_IOS_BLUE if is_foc else COLOR_BTN_SECONDARY_BORDER, border_width=2.2 if is_foc else 1.0)
+                apply_gamepad_focus(widget, is_foc, role="secondary")
 
             if is_foc and scroll_target is not None and hasattr(self, "scroll"):
                 force_edge = "top" if i == 0 else ("bottom" if kind == "guide" else None)

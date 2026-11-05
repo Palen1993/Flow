@@ -5,7 +5,7 @@ from ui.theme import (
     COLOR_TEXT_MUTED_LIGHT, COLOR_CYAN_ACCENT,
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
-    font_button
+    font_button, apply_gamepad_focus
 )
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
@@ -86,15 +86,9 @@ class ConfirmExitDialog(BaseGlassDialog):
 
     def _update_focus(self):
         if hasattr(self, "btn_cancel") and self.btn_cancel.winfo_exists():
-            self.btn_cancel.configure(
-                border_color=COLOR_CYAN_ACCENT if self._focused_btn == 0 else COLOR_BTN_SECONDARY_BORDER,
-                border_width=2.0 if self._focused_btn == 0 else 1.0
-            )
+            apply_gamepad_focus(self.btn_cancel, self._focused_btn == 0, role="secondary")
         if hasattr(self, "btn_exit") and self.btn_exit.winfo_exists():
-            self.btn_exit.configure(
-                border_color=COLOR_TEXT_WHITE if self._focused_btn == 1 else COLOR_BTN_DANGER_BORDER,
-                border_width=2.0 if self._focused_btn == 1 else 1.2
-            )
+            apply_gamepad_focus(self.btn_exit, self._focused_btn == 1, role="danger")
 
     def _activate_focused(self):
         if self._focused_btn == 0:

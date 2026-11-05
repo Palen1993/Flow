@@ -15,7 +15,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG,
     COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_button, font_body, scroll_to_widget
+    font_button, font_body, scroll_to_widget, apply_gamepad_focus
 )
 
 class ScanResultsDialog(BaseGlassDialog):
@@ -195,6 +195,7 @@ class ScanResultsDialog(BaseGlassDialog):
             bottom_frame, text="＋  Añadir a la Biblioteca ", image=get_button_icon_ctk("start", self.family, size=20), compound="right",
             height=38,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
+            border_color="#ffffff", border_width=2,
             corner_radius=19, text_color=COLOR_TEXT_WHITE,
             font=font_button(13),
             command=self.import_selected
@@ -231,12 +232,11 @@ class ScanResultsDialog(BaseGlassDialog):
         self._focused_row_idx = idx
         for i, rf in enumerate(self._row_frames):
             if rf.winfo_exists():
-                if i == idx:
-                    rf.configure(border_color=COLOR_IOS_BLUE, border_width=2.0, fg_color="#1d2536")
+                is_sel = (i == idx)
+                apply_gamepad_focus(rf, is_sel, role="card")
+                if is_sel:
                     edge = "top" if i == 0 else ("bottom" if i == len(self._row_frames) - 1 else None)
                     scroll_to_widget(self.scroll_frame, rf, force_edge=edge)
-                else:
-                    rf.configure(border_color=COLOR_BORDER_CARD, border_width=1.0, fg_color=COLOR_BG_CARD_SECONDARY)
 
     def select_all(self, val: bool):
         for var, _, _ in self.items_vars:

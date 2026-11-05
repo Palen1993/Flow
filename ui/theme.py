@@ -288,3 +288,140 @@ def scroll_to_widget(scroll_frame, target_widget=None, force_edge: str = None):
         canvas.yview_moveto(clamped_px / float(content_h))
     except Exception:
         pass
+
+
+def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
+    """
+    Aplica un resaltado de alto contraste estilo consola (10-foot UI / Big Picture)
+    a cualquier botón, entrada, desplegable, checkbox o tarjeta cuando recibe el foco del mando.
+      - role in ('primary', 'secondary', 'danger', 'dropdown', 'entry', 'check', 'switch', 'card')
+    """
+    if not widget:
+        return
+    try:
+        if not widget.winfo_exists():
+            return
+    except Exception:
+        return
+
+    if role == "danger":
+        if is_focused:
+            widget.configure(
+                fg_color="#ff1744",
+                hover_color="#ff2d55",
+                border_color="#ffffff",
+                border_width=3,
+                text_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                fg_color="#7f1d1d",
+                hover_color="#991b1b",
+                border_color="#b91c1c",
+                border_width=1,
+                text_color="#fecaca"
+            )
+    elif role == "primary":
+        if is_focused:
+            widget.configure(
+                fg_color="#007aff",
+                hover_color="#0062cc",
+                border_color="#ffffff",
+                border_width=3,
+                text_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                fg_color="#1e3a8a",
+                hover_color="#1d4ed8",
+                border_color="#3b82f6",
+                border_width=1,
+                text_color="#dbeafe"
+            )
+    elif role == "secondary":
+        if is_focused:
+            widget.configure(
+                fg_color="#0284c7",
+                hover_color="#0369a1",
+                border_color="#ffffff",
+                border_width=3,
+                text_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                fg_color=COLOR_BTN_SECONDARY_BG,
+                hover_color=COLOR_BTN_SECONDARY_HOVER,
+                border_color=COLOR_BTN_SECONDARY_BORDER,
+                border_width=1,
+                text_color=COLOR_TEXT_MUTED_LIGHT
+            )
+    elif role == "dropdown":
+        if is_focused:
+            widget.configure(
+                fg_color="#0369a1",
+                hover_color="#0284c7",
+                border_color="#00e5ff",
+                border_width=3,
+                text_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                fg_color="#132338",
+                hover_color="#1a3556",
+                border_color="#2b4c7e",
+                border_width=1,
+                text_color="#cbd5e1"
+            )
+    elif role == "entry":
+        if is_focused:
+            widget.configure(
+                fg_color="#17253b",
+                border_color="#00e5ff",
+                border_width=3
+            )
+            try:
+                widget.focus_set()
+            except Exception:
+                pass
+        else:
+            widget.configure(
+                fg_color=COLOR_BG_DARK,
+                border_color="#2b3345",
+                border_width=1
+            )
+    elif role == "check":
+        if is_focused:
+            widget.configure(
+                text_color="#00e5ff",
+                border_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                text_color=COLOR_TEXT_MAIN,
+                border_color="#3a455c"
+            )
+    elif role == "switch":
+        if is_focused:
+            widget.configure(
+                text_color="#00e5ff",
+                button_color="#ffffff"
+            )
+        else:
+            widget.configure(
+                text_color=COLOR_TEXT_MAIN,
+                button_color="#cbd5e1"
+            )
+    elif role == "card":
+        if is_focused:
+            widget.configure(
+                fg_color="#1e3a5f",
+                border_color="#00e5ff",
+                border_width=3
+            )
+        else:
+            widget.configure(
+                fg_color=COLOR_BG_CARD_SECONDARY,
+                border_color=COLOR_BORDER_CARD,
+                border_width=1
+            )
+

@@ -20,7 +20,7 @@ from ui.theme import (
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED_LIGHT,
-    font_button, font_body
+    font_button, font_body, apply_gamepad_focus
 )
 
 class AddEditGameDialog(BaseGlassDialog):
@@ -264,6 +264,7 @@ class AddEditGameDialog(BaseGlassDialog):
         if self.btn_delete is not None:
             self._nav_controls.append(("btn", self.btn_delete, lambda: self.confirm_delete()))
         self._focused_idx = 0
+        self._update_focus_visuals()
         self.after(50, self._update_focus_visuals)
         
         if self.game_data:
@@ -395,28 +396,17 @@ class AddEditGameDialog(BaseGlassDialog):
                 continue
             is_foc = (i == self._focused_idx)
             if self.btn_delete is not None and widget == self.btn_delete:
-                widget.configure(
-                    border_color="#ff453a" if is_foc else COLOR_BTN_DANGER_BORDER,
-                    border_width=2.5 if is_foc else 1.2,
-                    fg_color="#ff2d55" if is_foc else COLOR_BTN_DANGER_BG
-                )
-            elif kind in ("btn", "dropdown"):
-                widget.configure(
-                    border_color="#38bdf8" if is_foc else "#343f55",
-                    border_width=2.2 if is_foc else 1.0
-                )
+                apply_gamepad_focus(widget, is_foc, role="danger")
+            elif widget in (self.btn_online, self.btn_save):
+                apply_gamepad_focus(widget, is_foc, role="primary")
+            elif kind == "dropdown":
+                apply_gamepad_focus(widget, is_foc, role="dropdown")
+            elif kind == "btn":
+                apply_gamepad_focus(widget, is_foc, role="secondary")
             elif kind == "entry":
-                widget.configure(
-                    border_color="#007aff" if is_foc else "#242a3a",
-                    border_width=2.0 if is_foc else 1.0
-                )
-                if is_foc:
-                    try:
-                        widget.focus_set()
-                    except Exception:
-                        pass
+                apply_gamepad_focus(widget, is_foc, role="entry")
             elif kind == "check":
-                widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
+                apply_gamepad_focus(widget, is_foc, role="check")
 
     def _get_nav_target(self, cur_idx: int, direction: str) -> int:
         """Navegación espacial 2D bidireccional optimizada para mando de consola."""
