@@ -261,6 +261,16 @@ class SelectGameToEditDialog(BaseGlassDialog):
         footer = ctk.CTkFrame(self.main_card, fg_color="transparent", height=48)
         footer.grid(row=4, column=0, sticky="ew", padx=16, pady=(4, 14))
         
+        btn_batch = ctk.CTkButton(
+            footer, text="🎨  Arte SteamGridDB (Todos)",
+            width=230, height=38,
+            fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER,
+            border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            corner_radius=19, text_color=COLOR_TEXT_WHITE,
+            font=font_button(12), command=self._open_batch_sgdb
+        )
+        btn_batch.pack(side="left", padx=4, pady=4)
+
         btn_close = ctk.CTkButton(
             footer, text="Cerrar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=128, height=38,
@@ -280,6 +290,15 @@ class SelectGameToEditDialog(BaseGlassDialog):
             font=font_button(12), command=self._open_search_keyboard
         )
         btn_search.pack(side="right", padx=6, pady=4)
+
+    def _open_batch_sgdb(self):
+        from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
+        def _on_done():
+            self._save_changes()
+            self.refresh_list()
+            if hasattr(self.master, "cover_stage") and self.master.cover_stage:
+                self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
+        BatchSteamGridDBDialog(self, self.games, on_complete_callback=_on_done)
 
     def refresh_list(self):
         for child in self.scroll_frame.winfo_children():

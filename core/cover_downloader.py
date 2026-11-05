@@ -840,3 +840,155 @@ def download_and_save_wallpaper(
 
     print(f"[CoverDownloader] Error descargando wallpaper desde {img_url}")
     return False
+
+
+def fetch_steamgriddb_best_assets(
+    raw_name: str,
+    exe_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Consulta la API pública oficial de SteamGridDB (0-config, sin requerir API key)
+    para encontrar la mejor carátula vertical (grid 600x900) y fondo horizontal (hero 1920x620 / 1080p).
+    """
+    if not raw_name or not raw_name.strip():
+        return None
+
+    clean = re.sub(r'[\(\)\[\]\{\}]', '', raw_name).strip()
+    simplified = re.sub(
+        r'\b(202\d|resynced|repack|pack|dlc|unreal|unity|edition|version|remake|remastered)\b',
+        '',
+        clean,
+        flags=re.IGNORECASE
+    ).strip()
+    simplified = re.sub(r'\s+', ' ', simplified)
+
+    queries_to_try = [clean]
+    if simplified and simplified.lower() != clean.lower():
+        queries_to_try.append(simplified)
+
+    # Si hay ruta de ejecutable, extraer también el nombre de la carpeta contenedora como fallback
+    if exe_path and os.path.exists(exe_path):
+        folder_name = os.path.basename(os.path.dirname(os.path.abspath(exe_path)))
+        if folder_name and folder_name.lower() not in ('binaries', 'win64', 'win32', 'x64', 'retail', 'game'):
+            folder_clean = re.sub(r'[\(\)\[\]\{\}]', '', folder_name).strip()
+            if folder_clean and folder_clean.lower() not in [q.lower() for q in queries_to_try]:
+                queries_to_try.append(folder_clean)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Referer": "https://www.steamgriddb.com/",
+        "Accept": "application/json, text/plain, */*"
+    }
+
+    game_id = None
+    matched_title = ""
+
+    for q in queries_to_try:
+        try:
+            q_enc = urllib.parse.quote(q)
+            url = f"https://www.steamgriddb.com/api/public/search/autocomplete?term={q_enc}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                items = data.get("data", [])
+                if items:
+                    game_id = items[0]["id"]
+                    matched_title = items[0]["name"]
+                    break
+        except Exception:
+            continue
+
+    if not game_id:
+        return None
+
+    try:
+        home_url = f"https://www.steamgriddb.com/api/public/game/{game_id}/home"
+        req = urllib.request.Request(home_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore")).get("data", {})
+            grids = data.get("grids", [])
+            heroes = data.get("heroes", [])
+
+            grid_url = None
+            for g in grids:
+                gw = g.get("width", 600)
+                gh = g.get("height", 900)
+                if gh >= gw and g.get("url"):
+                    grid_url = g["url"]
+                    break
+
+            hero_url = None
+            for h in heroes:
+                hw = h.get("width", 1920)
+                hh = h.get("height", 620)
+                if hw > hh and h.get("url"):
+                    hero_url = h["url"]
+                    break
+
+            return {
+                "game_id": game_id,
+                "matched_name": matched_title,
+                "grid_url": grid_url,
+                "hero_url": hero_url
+            }
+    except Exception:
+        return None
+
+
+def download_and_apply_steamgriddb_media(
+    game: Dict[str, Any],
+    download_cover: bool = True,
+    download_wallpaper: bool = True,
+    overwrite: bool = True
+) -> Dict[str, Any]:
+    """
+    Descarga y aplica automáticamente las carátulas y wallpapers oficiales de SteamGridDB
+    para un juego específico, adaptándolos a los estándares de visualización del lanzador.
+    """
+    name = game.get("name", "Juego")
+    path = game.get("path", "")
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+
+    assets = fetch_steamgriddb_best_assets(name, path)
+    if not assets:
+        return {
+            "success": False,
+            "error": "Juego no encontrado en SteamGridDB",
+            "matched_name": None,
+            "cover_applied": False,
+            "wallpaper_applied": False
+        }
+
+    matched_name = assets.get("matched_name") or name
+    cover_applied = False
+    wallpaper_applied = False
+
+    # 1. Carátula vertical 3D (Grid)
+    if download_cover and assets.get("grid_url"):
+        existing_cover = game.get("cover")
+        if overwrite or not existing_cover or not os.path.isfile(existing_cover):
+            target_cover = os.path.join(COVERS_DIR, f"{safe_name}.png")
+            if download_and_save_cover(assets["grid_url"], target_cover, fit_mode="auto"):
+                game["cover"] = target_cover
+                cover_applied = True
+
+    # 2. Wallpaper horizontal 16:9 (Hero)
+    if download_wallpaper and assets.get("hero_url"):
+        existing_wp = game.get("wallpaper")
+        if overwrite or not existing_wp or not os.path.isfile(existing_wp):
+            target_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
+            if download_and_save_wallpaper(assets["hero_url"], target_wp):
+                game["wallpaper"] = target_wp
+                if "wallpaper_opacity" not in game:
+                    game["wallpaper_opacity"] = 0.75
+                if "wallpaper_blur" not in game:
+                    game["wallpaper_blur"] = 0.0
+                wallpaper_applied = True
+
+    return {
+        "success": cover_applied or wallpaper_applied,
+        "matched_name": matched_name,
+        "cover_applied": cover_applied,
+        "wallpaper_applied": wallpaper_applied
+    }
+

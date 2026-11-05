@@ -48,7 +48,7 @@ from ui.dropdowns import FloatingGlassMenu
 from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
-    ExternalImportDialog,
+    ExternalImportDialog, BatchSteamGridDBDialog,
     show_info, show_error, ask_yes_no, browse_folder
 )
 from gamepad_manager import (
@@ -893,10 +893,40 @@ class App(ctk.CTk):
 
         items = [
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
+            ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
             ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),
             ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog),
         ]
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
+
+    def open_batch_steamgriddb_dialog(self):
+        self.close_active_menu()
+        if hasattr(self, "_batch_sgdb_dialog") and self._batch_sgdb_dialog and self._batch_sgdb_dialog.winfo_exists():
+            try:
+                self._batch_sgdb_dialog.lift()
+                self._batch_sgdb_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        if not self.games:
+            show_info(
+                "SteamGridDB",
+                "No hay juegos en la biblioteca para actualizar.\nUsa 'Importar Juegos...' primero.",
+                parent=self
+            )
+            return
+
+        def _on_batch_complete():
+            self.save_games()
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.update_ui_details(self.selected_index)
+            self.set_status(f"Arte actualizado con éxito desde SteamGridDB ({len(self.games)} juegos).")
+
+        self._batch_sgdb_dialog = BatchSteamGridDBDialog(
+            self,
+            self.games,
+            on_complete_callback=_on_batch_complete
+        )
 
     def _on_global_click(self, event):
         if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():

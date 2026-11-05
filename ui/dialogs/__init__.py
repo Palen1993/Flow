@@ -14,8 +14,10 @@ from ui.dialogs.glass_message_box import GlassMessageBox, show_info, show_warnin
 from ui.dialogs.glass_folder_browser import GlassFolderBrowserDialog, browse_folder, browse_file
 from ui.dialogs.on_screen_keyboard import OnScreenKeyboardDialog, prompt_on_screen_keyboard
 from ui.dialogs.external_import_dialog import ExternalImportDialog
+from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
 
 __all__ = [
+    "BatchSteamGridDBDialog",
     "ExternalImportDialog",
     "BaseGlassDialog",
     "register_modal_stack",
