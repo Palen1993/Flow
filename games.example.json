@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Ejemplo Juego 1",
+    "path": "C:\\Games\\Ejemplo1\\game.exe",
+    "monitor_index": 0,
+    "high_priority": false,
+    "cover": "",
+    "launch_args": "",
+    "wallpaper": "",
+    "wallpaper_opacity": 0.25,
+    "wallpaper_blur": 1.5,
+    "playtime_seconds": 0,
+    "last_played": 0
+  }
+]

@@ -55,6 +55,10 @@ def main():
         f.write("[]\n")
     print("  -> Generado games.json limpio (sin juegos personales)")
 
+    # 3.1 Añadir marcador portable
+    with open(os.path.join(dist_app, ".portable"), "w", encoding="utf-8") as f_port:
+        f_port.write("")
+
     # 4. Generar configuración de gamepad limpia con valores predeterminados
     default_gamepad_config = {
         "selected_controller_id": "xinput_all",

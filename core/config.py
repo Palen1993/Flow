@@ -151,22 +151,24 @@ def load_games_data() -> List[Dict[str, Any]]:
                             if isinstance(g, dict):
                                 if g.get("path"):
                                     g["path"] = os.path.normpath(g["path"])
-                                if g.get("cover") and not os.path.exists(g["cover"]):
+                                if g.get("cover"):
                                     cand = os.path.join(COVERS_DIR, os.path.basename(g["cover"]))
-                                    if not os.path.exists(cand) and STORAGE_DIR != BASE_DIR:
-                                        cand_base = os.path.join(BASE_DIR, "covers", os.path.basename(g["cover"]))
-                                        if os.path.exists(cand_base):
-                                            cand = cand_base
                                     if os.path.exists(cand):
                                         g["cover"] = cand
-                                if g.get("wallpaper") and not os.path.exists(g["wallpaper"]):
+                                    elif not os.path.exists(g["cover"]):
+                                        if STORAGE_DIR != BASE_DIR:
+                                            cand_base = os.path.join(BASE_DIR, "covers", os.path.basename(g["cover"]))
+                                            if os.path.exists(cand_base):
+                                                g["cover"] = cand_base
+                                if g.get("wallpaper"):
                                     cand = os.path.join(WALLPAPERS_DIR, os.path.basename(g["wallpaper"]))
-                                    if not os.path.exists(cand) and STORAGE_DIR != BASE_DIR:
-                                        cand_base = os.path.join(BASE_DIR, "wallpapers", os.path.basename(g["wallpaper"]))
-                                        if os.path.exists(cand_base):
-                                            cand = cand_base
                                     if os.path.exists(cand):
                                         g["wallpaper"] = cand
+                                    elif not os.path.exists(g["wallpaper"]):
+                                        if STORAGE_DIR != BASE_DIR:
+                                            cand_base = os.path.join(BASE_DIR, "wallpapers", os.path.basename(g["wallpaper"]))
+                                            if os.path.exists(cand_base):
+                                                g["wallpaper"] = cand_base
                         return data
             except Exception as e:
                 _get_logger().error(f"Error cargando {CONFIG_FILE}: {e}", exc_info=True)
