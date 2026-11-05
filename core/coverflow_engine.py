@@ -353,8 +353,8 @@ def compose_big_picture_wallpaper_bg(
 ) -> Image.Image:
     """
     Compone el escenario de fondo de Big Picture integrando el wallpaper apaisado del juego
-    de borde a borde de forma ultra rápida (acelerado por procesamiento a media escala),
-    con opacidad y desenfoque gaussiano ambiental configurable sin caídas de FPS.
+    de borde a borde a resolución nativa Full HD / 4K nítida,
+    con opacidad y desenfoque ambiental configurable sin artefactos ni pixelado.
     """
     w = max(60, int(w))
     h = max(60, int(h))
@@ -362,27 +362,21 @@ def compose_big_picture_wallpaper_bg(
     if not wallpaper_img:
         return Image.new('RGB', (w, h), base_dark_color)
 
-    # Optimización High-FPS: Si la resolución es HD/2K/4K, procesar el recorte, desenfoque y blend
-    # a una resolución intermedia óptima (máx 640px) y reescalar una sola vez al tamaño final.
-    # Para un fondo desenfocado y transparente, el resultado visual es 100% indistinguible y decenas de veces más rápido.
-    ds_w = min(w, 640)
-    ds_h = max(180, int(round(ds_w * (h / float(w)))))
-
-    wp_small = adapt_wallpaper_to_widescreen(
-        wallpaper_img, width=ds_w, height=ds_h, crop_offset=0.5, resample=Image.Resampling.BILINEAR
+    # 1. Adaptar el wallpaper a resolución nativa de pantalla (1080p/2K/4K) para máxima nitidez
+    wp_fitted = adapt_wallpaper_to_widescreen(
+        wallpaper_img, width=w, height=h, crop_offset=0.5, resample=Image.Resampling.BILINEAR
     )
+
+    # 2. Si el usuario configuró desenfoque ambiental (>0.05), aplicar filtro de alta calidad
+    # Si blur_radius <= 0.05 (modo 'Nítido'), no se aplica desenfoque manteniendo la imagen 100% nítida en 1080p
     blur_val = max(0.0, min(20.0, float(blur_radius)))
     if blur_val > 0.05:
-        scaled_blur = max(0.4, blur_val * (ds_w / float(w)))
-        wp_small = wp_small.filter(ImageFilter.BoxBlur(scaled_blur))
+        wp_fitted = wp_fitted.filter(ImageFilter.BoxBlur(blur_val))
 
+    # 3. Mezclar con el fondo oscuro cinematográfico respetando la opacidad configurada
     alpha_factor = max(0.04, min(0.90, float(opacity)))
-    base_dark_small = Image.new('RGB', (ds_w, ds_h), base_dark_color)
-    blended_small = Image.blend(base_dark_small, wp_small, alpha_factor)
-
-    if ds_w != w or ds_h != h:
-        return blended_small.resize((w, h), Image.Resampling.BILINEAR)
-    return blended_small
+    base_dark = Image.new('RGB', (w, h), base_dark_color)
+    return Image.blend(base_dark, wp_fitted, alpha_factor)
 
 def get_cached_jewel_case(
     cover_path: Optional[str],

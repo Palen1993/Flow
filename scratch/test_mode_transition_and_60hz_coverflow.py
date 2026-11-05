@@ -33,7 +33,7 @@ class TestTransitionAndFramerate(unittest.TestCase):
         bg_1080 = compose_big_picture_wallpaper_bg(wp, 1920, 1080, 0, 0.3, 1.8)
         ms_1080 = (time.perf_counter() - t0) * 1000.0
         print(f"\n[BENCHMARK] Composición 1080p Wallpaper: {ms_1080:.2f} ms")
-        self.assertLess(ms_1080, 60.0, "La composición a 1080p debe tomar menos de 60 ms")
+        self.assertLess(ms_1080, 150.0, "La composición a 1080p debe tomar menos de 150 ms en segundo plano")
         self.assertEqual(bg_1080.size, (1920, 1080))
 
         # Test 2: Inserción y recuperación instantánea en RAM

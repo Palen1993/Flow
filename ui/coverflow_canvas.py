@@ -115,9 +115,10 @@ class CoverFlowCanvas(tk.Canvas):
             try:
                 with Image.open(wp_path) as raw_wp:
                     wp_rgb = raw_wp.convert("RGB")
-                    if wp_rgb.width > 1280:
-                        ratio = 1280.0 / float(wp_rgb.width)
-                        wp_rgb = wp_rgb.resize((1280, max(1, int(wp_rgb.height * ratio))), Image.Resampling.BILINEAR)
+                    # Mantener resolución nativa Full HD / 2K para máxima nitidez (limitar solo si excede 2560px)
+                    if wp_rgb.width > 2560:
+                        ratio = 2560.0 / float(wp_rgb.width)
+                        wp_rgb = wp_rgb.resize((2560, max(1, int(wp_rgb.height * ratio))), Image.Resampling.BILINEAR)
                     self.raw_wallpapers[key] = wp_rgb
             except Exception:
                 self.raw_wallpapers.pop(key, None)
@@ -459,9 +460,12 @@ class CoverFlowCanvas(tk.Canvas):
         h = event.height
         if w < 60 or h < 60:
             return
-        if abs(w - self.last_w) < 4 and abs(h - self.last_h) < 4:
+        is_trans = getattr(self, "is_transparent_mode", False)
+        mode_changed = (getattr(self, "_last_mode_was_trans", None) != is_trans)
+        if not mode_changed and abs(w - self.last_w) < 4 and abs(h - self.last_h) < 4:
             return
             
+        self._last_mode_was_trans = is_trans
         self.last_w = w
         self.last_h = h
         
@@ -758,9 +762,12 @@ class CoverFlowCanvas(tk.Canvas):
         except Exception:
             pass
 
-    def redraw(self):
-        w = self.winfo_width()
-        h = self.winfo_height()
+    def redraw(self, force_w: Optional[int] = None, force_h: Optional[int] = None):
+        w = force_w or self.winfo_width()
+        h = force_h or self.winfo_height()
+        if (w < 50 or h < 50) and getattr(self, "last_w", 0) > 50:
+            w = self.last_w
+            h = self.last_h
         if w < 50 or h < 50:
             return
 
@@ -787,12 +794,16 @@ class CoverFlowCanvas(tk.Canvas):
         scale = getattr(self, "display_scale", 1.0)
         has_refl = not getattr(self, "is_transparent_mode", False)
         if has_refl:
-            refl_h = int(size * 0.44)
-            bottom_margin = max(100, int(round(140 * scale)))
-            floor_y = min(h - refl_h - bottom_margin, max(size + int(round(58 * scale)), int(h * 0.56)))
+            refl_h = int(size * 0.38)
+            # Centrado vertical estético: colocar el suelo de las carátulas al ~63% de la altura
+            # para que la caja 3D quede perfectamente centrada en la pantalla con su reflejo y no pegada arriba
+            target_floor = int(round(h * 0.63))
+            min_floor = size + int(round(36 * scale))
+            max_floor = h - refl_h - int(round(96 * scale))
+            floor_y = max(min_floor, min(max_floor, target_floor))
         else:
             refl_h = 0
-            floor_y = (h + size) // 2 + int(round(16 * scale))
+            floor_y = (h + size) // 2
 
         center_spacing = int(size * 0.82)
         stack_spacing = int(size * 0.22)

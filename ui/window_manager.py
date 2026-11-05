@@ -137,16 +137,23 @@ class WindowStateService:
         if cover_stage:
             cover_stage.last_w = win_w
             cover_stage.last_h = win_h
+            cover_stage._last_mode_was_trans = True
+            try:
+                cover_stage.configure(width=win_w, height=win_h)
+            except Exception:
+                pass
             cover_stage.base_size = max(180, min(int(win_h * 0.72), int(win_w * 0.42)))
             cover_stage._rebuild_background(win_w, win_h)
             cover_stage._rebuild_rendered_cache()
-            cover_stage.redraw()
+            cover_stage.redraw(force_w=win_w, force_h=win_h)
 
         try:
             self.app.deiconify()
             self.app.lift()
             self.app.focus_force()
             force_foreground_window(self.app.winfo_id(), keep_topmost=True)
+            if cover_stage:
+                self.app.after(30, cover_stage.redraw)
         except Exception:
             pass
 
@@ -208,17 +215,24 @@ class WindowStateService:
             ch = max(self.app.winfo_screenheight(), self.app.winfo_height())
             cover_stage.last_w = cw
             cover_stage.last_h = ch
+            cover_stage._last_mode_was_trans = False
+            try:
+                cover_stage.configure(width=cw, height=ch)
+            except Exception:
+                pass
             cover_stage.display_scale = max(0.75, min(2.5, ch / 1080.0))
             cover_stage.base_size = max(180, min(int(ch * 0.44), int(cw * 0.36)))
             cover_stage._rebuild_background(cw, ch)
             cover_stage._rebuild_rendered_cache()
-            cover_stage.redraw()
+            cover_stage.redraw(force_w=cw, force_h=ch)
 
         try:
             self.app.deiconify()
             self.app.lift()
             self.app.focus_force()
             force_foreground_window(self.app.winfo_id(), keep_topmost=False)
+            if cover_stage:
+                self.app.after(30, cover_stage.redraw)
         except Exception:
             pass
 
