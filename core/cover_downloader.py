@@ -566,10 +566,10 @@ def fetch_image_from_url(url: str, fallback_url: Optional[str] = None, timeout: 
     return None
 
 
-def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[Dict[str, Any]]:
+def search_google_web_wallpapers(raw_query: str, max_results: int = 24) -> List[Dict[str, Any]]:
     """
-    Busca wallpapers apaisados (16:9 / widescreen) de alta resolución en una única petición ultrarrápida (~400ms)
-    para el fondo ambiental de Big Picture.
+    Busca wallpapers apaisados (16:9 / widescreen) estrictamente 1080p o superior (1920x1080, 2K, 4K)
+    en una única petición ultrarrápida (~400ms) para el fondo ambiental de Big Picture.
     """
     if not raw_query or not raw_query.strip():
         return []
@@ -583,10 +583,10 @@ def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[
     seen_urls = set()
     results: List[Dict[str, Any]] = []
     try:
-        with urllib.request.urlopen(req, timeout=1.8) as resp:
+        with urllib.request.urlopen(req, timeout=2.2) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
-            matches = re.findall(r'class="iusc"[^>]*m="([^"]+)"', html)
-            for m in matches:
+            matches = re.findall(r'class="iusc"[^>]*?m="([^"]+)"(?:[^>]*?href="([^"]+)")?', html)
+            for m, href in matches:
                 raw_json = m.replace('&quot;', '"').replace('&amp;', '&')
                 try:
                     data = json.loads(raw_json)
@@ -598,6 +598,26 @@ def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[
                         continue
                     if not _is_candidate_relevant(title, murl, desc, clean_q):
                         continue
+
+                    # Extraer resolución real informada por Bing (expw x exph)
+                    w_match = re.search(r'expw=(\d+)', href or "")
+                    h_match = re.search(r'exph=(\d+)', href or "")
+                    w = int(w_match.group(1)) if w_match else 0
+                    h = int(h_match.group(1)) if h_match else 0
+
+                    # Filtro estricto 1080p+: Descartar miniaturas, 720p o imágenes <1080 (ej. 474x266, 460x215)
+                    if w > 0 and h > 0:
+                        if h < 1080 or w < 1920:
+                            continue
+                    else:
+                        # Si no vinieron dimensiones explícitas, verificar si la URL/título indica 1080p/4K
+                        lower_combined = f"{murl} {title}".lower()
+                        if any(res_kw in lower_combined for res_kw in ["1080", "1920", "4k", "uhd", "2160", "2560", "1440"]):
+                            w, h = 1920, 1080
+                        else:
+                            # Sin confirmación de 1080p, descartar para garantizar 100% pureza de alta resolución
+                            continue
+
                     lower_m = murl.lower()
                     if any(ext in lower_m for ext in [".jpg", ".jpeg", ".png", ".webp"]) or "image" in lower_m or "wallpaper" in lower_m:
                         seen_urls.add(murl)
@@ -606,10 +626,14 @@ def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[
                             "name": title,
                             "poster_url": murl,
                             "thumb_url": turl or murl,
+                            "orig_size": (w, h),
+                            "width": w,
+                            "height": h,
+                            "is_1080p": True,
                             "is_square": False,
                             "is_vertical": False,
                             "is_widescreen": True,
-                            "source": "Wallpaper 16:9",
+                            "source": "Wallpaper 1080p",
                             "desc": desc,
                             "pre_verified": True
                         })
@@ -625,10 +649,8 @@ def search_google_web_wallpapers(raw_query: str, max_results: int = 18) -> List[
 
 def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[Dict[str, Any]]:
     """
-    Busca de forma ultra rápida wallpapers apaisados (16:9) combinando en paralelo:
-      1. Google / Web Widescreen 16:9 (1920x1080 / HD).
-      2. Steam Library Hero y Header Artwork oficial apaisado.
-      3. GOG Horizontal Artwork (coverHorizontal).
+    Busca de forma ultra rápida wallpapers apaisados (16:9) estrictamente 1080p o superior (1920x1080, 2K, 4K)
+    combinando en paralelo fuentes web y oficiales de alta definición.
     """
     if not raw_query or not raw_query.strip():
         return []
@@ -644,13 +666,13 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
     simplified = re.sub(r'\s+', ' ', simplified).strip()
     primary_term = simplified or cleaned or query
 
-    cache_key = ("wallpaper", primary_term.lower())
+    cache_key = ("wallpaper_1080", primary_term.lower())
     if cache_key in _CANDIDATES_CACHE:
         return [dict(item) for item in _CANDIDATES_CACHE[cache_key][:max_results]]
 
     def _fetch_google_wp():
         try:
-            return search_google_web_wallpapers(primary_term, max_results=16)
+            return search_google_web_wallpapers(primary_term, max_results=max_results)
         except Exception:
             return []
 
@@ -760,10 +782,21 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
                 found_keys.add(k)
                 valid_candidates.append(gr)
 
-    if valid_candidates:
-        _CANDIDATES_CACHE[cache_key] = [dict(x) for x in valid_candidates]
+    # Filtrar estrictamente solo wallpapers de 1080p o superior (altura >= 1080 y ancho >= 1920)
+    only_1080_candidates: List[Dict[str, Any]] = []
+    for cand in valid_candidates:
+        orig_sz = cand.get("orig_size")
+        if orig_sz:
+            if orig_sz[1] < 1080 or orig_sz[0] < 1920:
+                continue
+        only_1080_candidates.append(cand)
 
-    return valid_candidates[:max_results]
+    final_results = only_1080_candidates if only_1080_candidates else valid_candidates
+
+    if final_results:
+        _CANDIDATES_CACHE[cache_key] = [dict(x) for x in final_results]
+
+    return final_results[:max_results]
 
 
 def download_and_save_wallpaper(

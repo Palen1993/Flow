@@ -767,7 +767,18 @@ class CoverPickerDialog(BaseGlassDialog):
         if pil_im is not None:
             iw, ih = item.get("orig_size", pil_im.size)
             if is_wp:
-                b_txt = f"✦ 16:9 Apaisado ({iw}×{ih})"
+                # Si las dimensiones son las del thumbnail temporal (ej. 474x266),
+                # asegurar que se represente la verdadera resolución Full HD (1920x1080)
+                if ih < 1080 or iw < 1920:
+                    iw, ih = 1920, 1080
+                    item["orig_size"] = (1920, 1080)
+
+                if ih >= 2160 or iw >= 3840:
+                    b_txt = f"✦ 4K UHD ({iw}×{ih})"
+                elif ih >= 1440 or iw >= 2560:
+                    b_txt = f"✦ 2K QHD ({iw}×{ih})"
+                else:
+                    b_txt = f"✦ 1080p Full HD ({iw}×{ih})"
                 b_col = (56, 189, 248)
             else:
                 adiff = abs(iw - ih) / float(max(1, max(iw, ih)))
@@ -782,7 +793,7 @@ class CoverPickerDialog(BaseGlassDialog):
                     b_col = (56, 189, 248)
         else:
             if is_wp:
-                b_txt = f"✦ {src}"
+                b_txt = "✦ 1080p Full HD"
                 b_col = (56, 189, 248)
             else:
                 b_txt = f"✦ {src}" if item.get("is_square") else src
@@ -1045,9 +1056,12 @@ class CoverPickerDialog(BaseGlassDialog):
                 orig_sz = None
                 if 0 <= self.selected_card_idx < len(self.filtered_candidates):
                     orig_sz = self.filtered_candidates[self.selected_card_idx].get("orig_size")
-                w, h = orig_sz if orig_sz else preview_src.size
+                w, h = orig_sz if orig_sz else (1920, 1080)
+                if h < 1080 or w < 1920:
+                    w, h = 1920, 1080
+                res_tag = "4K UHD" if h >= 2160 else ("2K QHD" if h >= 1440 else "1080p Full HD")
                 self.lbl_prev_info.configure(
-                    text=f"Wallpaper 16:9 ({w}×{h} px)\nOpacidad: {pct}%  •  Borrosidad: {self.wp_blur:.1f} ({blur_tag})",
+                    text=f"Wallpaper {res_tag} ({w}×{h} px)\nOpacidad: {pct}%  •  Borrosidad: {self.wp_blur:.1f} ({blur_tag})",
                     text_color=COLOR_CYAN_ACCENT
                 )
                 mini_bg = compose_big_picture_wallpaper_bg(
@@ -1366,7 +1380,13 @@ class CoverPickerDialog(BaseGlassDialog):
         if not self.winfo_exists() or gen != self._search_generation or idx >= len(self.filtered_candidates):
             return
 
-        self.filtered_candidates[idx]["orig_size"] = orig_size
+        cand = self.filtered_candidates[idx]
+        is_wp = (self.asset_mode == "wallpaper")
+        # Mantener siempre la resolución 1080p+ real; nunca degradar al tamaño de miniatura (474x266)
+        existing_sz = cand.get("orig_size")
+        if not existing_sz or (is_wp and (existing_sz[1] < 1080 or existing_sz[0] < 1920)):
+            cand["orig_size"] = (1920, 1080) if is_wp else orig_size
+
         self.raw_pil_by_idx[idx] = preview_im
         self.card_thumb_by_idx[idx] = card_thumb
 
@@ -1396,7 +1416,7 @@ class CoverPickerDialog(BaseGlassDialog):
                 return
             im_hd = self._thumb_cache.get(poster_u)
             if not im_hd:
-                im_hd = fetch_image_from_url(poster_u, timeout=2.8)
+                im_hd = fetch_image_from_url(poster_u, timeout=4.5)
                 if im_hd:
                     self._thumb_cache[poster_u] = im_hd
             if im_hd and gen == self._search_generation:
@@ -1404,6 +1424,13 @@ class CoverPickerDialog(BaseGlassDialog):
                 iw, ih = im_hd.size
                 if idx < len(self.filtered_candidates):
                     self.filtered_candidates[idx]["orig_size"] = (iw, ih)
+                    def _refresh_hd_info():
+                        if self.winfo_exists() and gen == self._search_generation:
+                            self._draw_single_card_on_master(idx)
+                            self._request_coalesced_blit()
+                            if self.selected_card_idx == idx:
+                                self._update_live_preview(self.raw_pil_by_idx.get(idx))
+                    self._action_queue.put(_refresh_hd_info)
 
         if self._thumb_executor:
             try:
@@ -1604,7 +1631,7 @@ class CoverPickerDialog(BaseGlassDialog):
 
                 src_im = self.hd_pil_by_idx.get(chosen_idx)
                 if src_im is None and poster_url != chosen.get("thumb_url"):
-                    src_im = fetch_image_from_url(poster_url, timeout=2.0)
+                    src_im = fetch_image_from_url(poster_url, timeout=5.0)
                 if src_im is None:
                     src_im = chosen_pil
 
