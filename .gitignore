@@ -23,6 +23,15 @@ __pycache__/
 dist/
 build/
 *.spec
+!gameflow.spec
+
+# User Personal Data & Custom Artwork (Untracked for clean distributions)
+games.json
+games.json.bak
+covers/*
+!covers/.gitkeep
+wallpapers/*
+!wallpapers/.gitkeep
 
 # IDE & OS Metadata
 .vscode/

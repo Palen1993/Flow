@@ -1,9 +1,12 @@
 """
 Script de compilación automatizado para GameFlow Launcher.
 Genera la suite de ejecutables en dist/GameFlow Launcher y crea un archivo .zip portátil listo para enviar.
+Limpia estrictamente cualquier dato personal (juegos, carátulas y fondos del desarrollador)
+para que la versión distribuida comience como una instalación limpia lista para cualquier usuario.
 """
 import os
 import sys
+import json
 import shutil
 import subprocess
 import zipfile
@@ -28,23 +31,57 @@ def main():
         print(f"Error: No se encontró el directorio generado: {dist_app}")
         sys.exit(1)
 
-    print("[2/4] Copiando carpetas de datos y configuraciones iniciales...")
-    # Asegurar que covers, wallpapers y assets existan en dist
-    for folder in ["covers", "wallpapers", "assets"]:
-        src = os.path.join(base_dir, folder)
-        dst = os.path.join(dist_app, folder)
-        if os.path.isdir(src):
-            if os.path.exists(dst):
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst)
+    print("[2/4] Preparando carpetas de distribución limpias (sin datos personales)...")
+    # 1. Copiar assets de la aplicación (iconos, mandos, fuentes, audio)
+    assets_src = os.path.join(base_dir, "assets")
+    assets_dst = os.path.join(dist_app, "assets")
+    if os.path.isdir(assets_src):
+        if os.path.exists(assets_dst):
+            shutil.rmtree(assets_dst)
+        shutil.copytree(assets_src, assets_dst)
+        print("  -> Copiada carpeta assets/")
 
-    # Copiar games.json y gamepad_config.json si existen
-    for f_name in ["games.json", "gamepad_config.json"]:
-        src_file = os.path.join(base_dir, f_name)
-        dst_file = os.path.join(dist_app, f_name)
-        if os.path.isfile(src_file):
-            shutil.copy2(src_file, dst_file)
-            print(f"  -> Copiado {f_name}")
+    # 2. Asegurar que covers y wallpapers se creen totalmente vacías
+    for folder in ["covers", "wallpapers"]:
+        dst = os.path.join(dist_app, folder)
+        if os.path.exists(dst):
+            shutil.rmtree(dst)
+        os.makedirs(dst, exist_ok=True)
+        print(f"  -> Creada carpeta limpia y vacía: {folder}/")
+
+    # 3. Generar un games.json inicial limpio (biblioteca vacía)
+    dst_games = os.path.join(dist_app, "games.json")
+    with open(dst_games, "w", encoding="utf-8") as f:
+        f.write("[]\n")
+    print("  -> Generado games.json limpio (sin juegos personales)")
+
+    # 4. Generar configuración de gamepad limpia con valores predeterminados
+    default_gamepad_config = {
+        "selected_controller_id": "xinput_all",
+        "selected_controller_name": "🎮 Mandos Xbox / XInput (Inalámbrico o USB)",
+        "auto_launch_on_connect": True,
+        "close_on_game_launch": True,
+        "launch_on_xbox_button": True,
+        "start_in_mini_mode": True,
+        "auto_fullscreen": False,
+        "enable_controller_nav": True,
+        "enable_haptics": True,
+        "enable_sound_fx": True,
+        "start_with_windows": False
+    }
+    dst_gamepad = os.path.join(dist_app, "gamepad_config.json")
+    with open(dst_gamepad, "w", encoding="utf-8") as f:
+        json.dump(default_gamepad_config, f, indent=4)
+    print("  -> Generado gamepad_config.json con valores estándar")
+
+    # 5. Limpieza de archivos de log, temporales o cachés residuales en dist_app
+    for root, dirs, files in os.walk(dist_app):
+        for f in files:
+            if f.endswith((".log", ".tmp", ".bak")) or f.startswith(".perm_test"):
+                try:
+                    os.remove(os.path.join(root, f))
+                except Exception:
+                    pass
 
     print("[3/4] Creando paquete comprimido portable (.zip)...")
     zip_path = os.path.join(base_dir, "dist", "GameFlow_Launcher_Portable.zip")
@@ -61,7 +98,7 @@ def main():
     size_mb = os.path.getsize(zip_path) / (1024 * 1024)
     print(f"[4/4] ¡COMPILACIÓN COMPLETADA CON ÉXITO!")
     print(f"  Carpeta ejecutable: {dist_app}")
-    print(f"  Archivo para tu amigo: {zip_path} ({size_mb:.1f} MB)")
+    print(f"  Archivo para distribución/amigos: {zip_path} ({size_mb:.1f} MB)")
 
 if __name__ == "__main__":
     main()

@@ -20,8 +20,55 @@ from ui.theme import (
     font_button, font_body, scroll_to_widget, apply_gamepad_focus
 )
 
+# Caché global en memoria de miniaturas para evitar lecturas de disco y reescalados LANCZOS redundantes
+_GLOBAL_THUMB_CACHE: Dict[str, ctk.CTkImage] = {}
+
+def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage:
+    """Retorna una miniatura CTkImage pre-escalada desde caché en memoria para máximo rendimiento con >100 juegos."""
+    cover_p = game.get("cover")
+    name = game.get("name", "Juego")
+    mtime = 0.0
+    if cover_p and os.path.isfile(cover_p):
+        try:
+            mtime = os.path.getmtime(cover_p)
+        except Exception:
+            mtime = 0.0
+    cache_key = f"{cover_p or name}_{size}_{mtime}"
+    cached = _GLOBAL_THUMB_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    thumb_img = None
+    try:
+        actual_path = cover_p or resolve_game_cover(game)
+        if actual_path and os.path.isfile(actual_path):
+            with Image.open(actual_path) as raw_im:
+                scaled = raw_im.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+            thumb_img = ctk.CTkImage(light_image=scaled, dark_image=scaled, size=(size, size))
+    except Exception:
+        pass
+
+    if thumb_img is None:
+        proc = create_procedural_album(name, size=size)
+        thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(size, size))
+
+    _GLOBAL_THUMB_CACHE[cache_key] = thumb_img
+    return thumb_img
+
+def invalidate_thumb_cache(cover_path: Optional[str] = None):
+    """Invalida la caché de miniaturas de carátula cuando se cambia el arte de un juego."""
+    if cover_path:
+        for k in list(_GLOBAL_THUMB_CACHE.keys()):
+            if cover_path in k:
+                _GLOBAL_THUMB_CACHE.pop(k, None)
+    else:
+        _GLOBAL_THUMB_CACHE.clear()
+
+
 class SelectGameToEditDialog(BaseGlassDialog):
-    """Panel de gestión rápida, filtrado y edición masiva / individual de juegos."""
+    """Panel de gestión rápida, filtrado y edición masiva / individual de juegos altamente optimizado para bibliotecas masivas (100+ juegos)."""
+    CHUNK_SIZE = 20
+
     def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0):
         super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=26)
         self.games = games
@@ -38,9 +85,14 @@ class SelectGameToEditDialog(BaseGlassDialog):
         if not self.monitor_options:
             self.monitor_options = ["Monitor 0 - Predeterminado"]
             
-        self.thumb_refs = {}
+        self._card_rows = []
+        self._current_matches = []
+        self._search_timer = None
+        self._chunk_timer = None
+        self._render_token = 0
+
         self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", lambda *args: self.refresh_list())
+        self.search_var.trace_add("write", self._on_search_entry_changed)
         
         self.create_widgets()
         self.refresh_list()
@@ -49,6 +101,15 @@ class SelectGameToEditDialog(BaseGlassDialog):
         self.bind("<Return>", lambda e: self._activate_selected_row())
 
     _center_window = BaseGlassDialog.center_window
+
+    def _on_search_entry_changed(self, *args):
+        """Aplica un debouncing de 140ms al teclear en la búsqueda para evitar congelaciones de UI innecesarias."""
+        if hasattr(self, "_search_timer") and self._search_timer is not None:
+            try:
+                self.after_cancel(self._search_timer)
+            except Exception:
+                pass
+        self._search_timer = self.after(140, self.refresh_list)
 
     def _start_drag(self, event):
         if hasattr(self, "global_monitor_menu") and getattr(self.global_monitor_menu, "_active_dropdown", None):
@@ -60,6 +121,18 @@ class SelectGameToEditDialog(BaseGlassDialog):
         super()._start_drag(event)
 
     def destroy(self):
+        if hasattr(self, "_chunk_timer") and self._chunk_timer is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+        if hasattr(self, "_search_timer") and self._search_timer is not None:
+            try:
+                self.after_cancel(self._search_timer)
+            except Exception:
+                pass
+            self._search_timer = None
         if hasattr(self, "global_monitor_menu") and getattr(self.global_monitor_menu, "_active_dropdown", None):
             try:
                 self.global_monitor_menu._active_dropdown.destroy()
@@ -91,13 +164,18 @@ class SelectGameToEditDialog(BaseGlassDialog):
         for g in self.games:
             g["high_priority"] = val
         self._save_changes()
-        self.refresh_list()
+        # Actualización granular in-place de las filas ya creadas sin recrear la lista
+        for card, _ in getattr(self, "_card_rows", []):
+            if hasattr(card, "_hp_var"):
+                card._hp_var.set(val)
 
-    def _on_toggle_single_priority(self, orig_idx: int, val: bool):
+    def _on_toggle_single_priority(self, orig_idx: int, val: bool, card=None):
         if 0 <= orig_idx < len(self.games):
             self.games[orig_idx]["high_priority"] = val
             self._save_changes()
             self._update_top_priority_state()
+            if card and hasattr(card, "_hp_var"):
+                card._hp_var.set(val)
 
     def _update_top_monitor_state(self):
         if not hasattr(self, "global_monitor_menu") or not self.games:
@@ -130,7 +208,10 @@ class SelectGameToEditDialog(BaseGlassDialog):
             g["monitor"] = target_id
             
         self._save_changes()
-        self.refresh_list()
+        # Actualización granular in-place de las etiquetas de monitor sin destruir widgets
+        for card, _ in getattr(self, "_card_rows", []):
+            if hasattr(card, "_lbl_mon"):
+                card._lbl_mon.configure(text=f"🖥  Mon {target_id} ")
         try:
             self.lift()
             self.focus_force()
@@ -256,6 +337,10 @@ class SelectGameToEditDialog(BaseGlassDialog):
         self.scroll_frame = ctk.CTkScrollableFrame(self.main_card, fg_color="transparent")
         self.scroll_frame.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 8))
         self.scroll_frame.grid_columnconfigure(0, weight=1)
+        canvas = getattr(self.scroll_frame, "_parent_canvas", None)
+        if canvas:
+            canvas.bind("<MouseWheel>", self._on_scroll_check, add="+")
+            canvas.bind("<Configure>", self._on_scroll_check, add="+")
         
         # 5. Pie de página
         footer = ctk.CTkFrame(self.main_card, fg_color="transparent", height=48)
@@ -294,6 +379,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
     def _open_batch_sgdb(self):
         from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
         def _on_done():
+            invalidate_thumb_cache()
             self._save_changes()
             self.refresh_list()
             if hasattr(self.master, "cover_stage") and self.master.cover_stage:
@@ -301,9 +387,20 @@ class SelectGameToEditDialog(BaseGlassDialog):
         BatchSteamGridDBDialog(self, self.games, on_complete_callback=_on_done)
 
     def refresh_list(self):
+        """Renderizado progresivo / streaming de la lista de juegos para fluidez garantizada a 60 FPS."""
+        if hasattr(self, "_chunk_timer") and self._chunk_timer is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+
+        self._render_token = getattr(self, "_render_token", 0) + 1
+        current_token = self._render_token
+
         for child in self.scroll_frame.winfo_children():
             child.destroy()
-        self.thumb_refs.clear()
+            
         self._card_rows = []
         target_foc = getattr(self, "_initial_target_idx", 0)
         self._selected_row_idx = target_foc if 0 <= target_foc < len(self.games) else 0
@@ -316,6 +413,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
             path = g.get("path", "")
             if not query or query in name.lower() or query in path.lower():
                 matches.append((idx, g))
+        self._current_matches = matches
                 
         self.lbl_count.configure(text=f"{len(matches)} de {len(self.games)} juegos" if query else f"{len(self.games)} juegos")
         
@@ -327,18 +425,56 @@ class SelectGameToEditDialog(BaseGlassDialog):
             )
             lbl_empty.pack(pady=40)
         else:
-            for orig_idx, game in matches:
+            # 1. Renderizado síncrono del bloque inicial visible (20 tarjetas, apertura inmediata <400ms)
+            initial_count = min(len(matches), self.CHUNK_SIZE)
+            for i in range(initial_count):
+                orig_idx, game = matches[i]
                 self._create_game_card(orig_idx, game)
             self._highlight_row(self._selected_row_idx)
                 
         self._update_top_priority_state()
         self._update_top_monitor_state()
 
+    def _on_scroll_check(self, event=None):
+        """Carga automáticamente más filas cuando el scroll se acerca al 70% del fondo."""
+        canvas = getattr(self.scroll_frame, "_parent_canvas", None)
+        if canvas:
+            try:
+                _, y_bot = canvas.yview()
+                if y_bot > 0.70:
+                    self._load_more_rows()
+            except Exception:
+                pass
+
+    def _load_more_rows(self, count: int = None) -> bool:
+        """Carga más tarjetas bajo demanda cuando el usuario se aproxima al final de la lista visible."""
+        if count is None:
+            count = self.CHUNK_SIZE
+        matches = getattr(self, "_current_matches", [])
+        start = len(self._card_rows)
+        if start >= len(matches):
+            return False
+        end = min(start + count, len(matches))
+        for k in range(start, end):
+            o_idx, g_data = matches[k]
+            self._create_game_card(o_idx, g_data)
+        return True
+
     def _step_row(self, delta: int):
         rows = getattr(self, "_card_rows", [])
+        matches = getattr(self, "_current_matches", [])
         if not rows:
             return
-        new_idx = max(0, min(len(rows) - 1, self._selected_row_idx + delta))
+            
+        target_idx = self._selected_row_idx + delta
+        # Si el usuario navega hacia abajo más allá de los elementos cargados hasta ahora,
+        # cargamos inmediatamente el siguiente bloque bajo demanda
+        while target_idx >= len(self._card_rows) and len(self._card_rows) < len(matches):
+            if not self._load_more_rows():
+                break
+            rows = self._card_rows
+
+        new_idx = max(0, min(len(rows) - 1, target_idx))
         if new_idx != self._selected_row_idx:
             self._highlight_row(new_idx)
             try:
@@ -357,17 +493,27 @@ class SelectGameToEditDialog(BaseGlassDialog):
         rows = getattr(self, "_card_rows", [])
         if not rows or row_idx < 0 or row_idx >= len(rows):
             return
-        self._selected_row_idx = row_idx
-        for i, (card, _) in enumerate(rows):
-            if card.winfo_exists():
-                is_sel = (i == row_idx)
-                apply_gamepad_focus(card, is_sel, role="card")
-                btn_ed = getattr(card, "_btn_edit", None)
+        
+        prev_idx = getattr(self, "_selected_row_idx", -1)
+        # Desenfocar la fila anterior sólo si cambió
+        if prev_idx != row_idx and 0 <= prev_idx < len(rows):
+            old_card, _ = rows[prev_idx]
+            if old_card.winfo_exists():
+                apply_gamepad_focus(old_card, False, role="card")
+                btn_ed = getattr(old_card, "_btn_edit", None)
                 if btn_ed is not None:
-                    apply_gamepad_focus(btn_ed, is_sel, role="primary")
-                if is_sel:
-                    edge = "top" if i == 0 else ("bottom" if i == len(rows) - 1 else None)
-                    scroll_to_widget(self.scroll_frame, card, force_edge=edge)
+                    apply_gamepad_focus(btn_ed, False, role="primary")
+
+        # Enfocar la nueva fila seleccionada
+        self._selected_row_idx = row_idx
+        card, _ = rows[row_idx]
+        if card.winfo_exists():
+            apply_gamepad_focus(card, True, role="card")
+            btn_ed = getattr(card, "_btn_edit", None)
+            if btn_ed is not None:
+                apply_gamepad_focus(btn_ed, True, role="primary")
+            edge = "top" if row_idx == 0 else ("bottom" if row_idx == len(rows) - 1 else None)
+            scroll_to_widget(self.scroll_frame, card, force_edge=edge)
 
     def _open_search_keyboard(self):
         from ui.dialogs.on_screen_keyboard import prompt_on_screen_keyboard
@@ -409,34 +555,33 @@ class SelectGameToEditDialog(BaseGlassDialog):
             self._step_row(1)
             return True
         if inputs.get("x", False) and not prev_inputs.get("x", False):
-            # Alternar prioridad alta del juego seleccionado
+            # Alternar prioridad alta del juego seleccionado in-place sin recargar la lista
             if 0 <= self._selected_row_idx < len(rows):
-                _, orig_idx = rows[self._selected_row_idx]
+                card, orig_idx = rows[self._selected_row_idx]
                 cur_hp = self.games[orig_idx].get("high_priority", True)
-                self._on_toggle_single_priority(orig_idx, not cur_hp)
-                saved_row = self._selected_row_idx
-                self.refresh_list()
-                self._highlight_row(min(saved_row, len(self._card_rows) - 1))
+                new_hp = not cur_hp
+                self._on_toggle_single_priority(orig_idx, new_hp, card=card)
             return True
         if inputs.get("y", False) and not prev_inputs.get("y", False):
-            # Alternar monitor asignado al juego seleccionado
+            # Alternar monitor asignado al juego seleccionado in-place sin recargar la lista
             if 0 <= self._selected_row_idx < len(rows) and self.monitors:
-                _, orig_idx = rows[self._selected_row_idx]
-                self._on_cycle_single_monitor(orig_idx)
+                card, orig_idx = rows[self._selected_row_idx]
+                self._on_cycle_single_monitor(orig_idx, card=card)
             return True
         return False
 
-    def _on_cycle_single_monitor(self, orig_idx: int):
-        """Alterna el monitor asignado para un juego específico y actualiza la lista."""
+    def _on_cycle_single_monitor(self, orig_idx: int, card=None):
+        """Alterna el monitor asignado para un juego específico y actualiza la fila in-place."""
         if 0 <= orig_idx < len(self.games) and self.monitors:
             cur_m = self.games[orig_idx].get("monitor", 0)
             mon_ids = [m["id"] for m in self.monitors]
             next_i = (mon_ids.index(cur_m) + 1) % len(mon_ids) if cur_m in mon_ids else 0
-            self.games[orig_idx]["monitor"] = mon_ids[next_i]
+            new_m = mon_ids[next_i]
+            self.games[orig_idx]["monitor"] = new_m
             self._save_changes()
-            saved_row = self._selected_row_idx
-            self.refresh_list()
-            self._highlight_row(min(saved_row, len(self._card_rows) - 1))
+            self._update_top_monitor_state()
+            if card and hasattr(card, "_lbl_mon"):
+                card._lbl_mon.configure(text=f"🖥  Mon {new_m} ")
             try:
                 from core.feedback import feedback_click
                 feedback_click()
@@ -447,19 +592,8 @@ class SelectGameToEditDialog(BaseGlassDialog):
         card = ctk.CTkFrame(self.scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
         card.pack(fill="x", pady=4, padx=2)
         
-        # Miniatura de carátula (extremo izquierdo)
-        thumb_img = self.thumb_refs.get(orig_idx)
-        if thumb_img is None:
-            cover_path = resolve_game_cover(game)
-            try:
-                with Image.open(cover_path) as raw_im:
-                    scaled = raw_im.copy().resize((48, 48), Image.Resampling.LANCZOS)
-                thumb_img = ctk.CTkImage(light_image=scaled, dark_image=scaled, size=(48, 48))
-            except Exception:
-                proc = create_procedural_album(game.get("name", "Juego"), size=48)
-                thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(48, 48))
-            self.thumb_refs[orig_idx] = thumb_img
-            
+        # Miniatura de carátula pre-escalada con caché instantáneo
+        thumb_img = get_game_thumbnail_ctk(game, size=48)
         lbl_thumb = ctk.CTkLabel(card, image=thumb_img, text="", width=48, height=48)
         lbl_thumb.pack(side="left", padx=(12, 14), pady=8)
         
@@ -493,9 +627,11 @@ class SelectGameToEditDialog(BaseGlassDialog):
             border_color="#3a455c",
             border_width=1.5,
             corner_radius=4,
-            command=lambda i=orig_idx, v=hp_var: self._on_toggle_single_priority(i, v.get())
+            command=lambda i=orig_idx, v=hp_var, c=card: self._on_toggle_single_priority(i, v.get(), card=c)
         )
         chk_hp.pack(side="right", padx=(8, 12), pady=8)
+        card._hp_var = hp_var
+        card._chk_hp = chk_hp
 
         # 3. Badge indicador interactivo del monitor asignado (Píldora cristal + botón real Y / △)
         cur_mon = game.get("monitor", 0)
@@ -516,8 +652,9 @@ class SelectGameToEditDialog(BaseGlassDialog):
         )
         lbl_mon._img_ref = mon_icon
         lbl_mon.pack(side="right", padx=(8, 12), pady=8)
-        lbl_mon.bind("<Button-1>", lambda e, i=orig_idx: self._on_cycle_single_monitor(i))
+        lbl_mon.bind("<Button-1>", lambda e, i=orig_idx, c=card: self._on_cycle_single_monitor(i, card=c))
         lbl_mon.configure(cursor="hand2")
+        card._lbl_mon = lbl_mon
 
         # Centro: Información de texto (ocupa todo el espacio restante disponible sin apretar nada)
         info_box = ctk.CTkFrame(card, fg_color="transparent")
@@ -569,6 +706,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
                 self.destroy()
                 return
             self.games = current_games
+            invalidate_thumb_cache()
             self.deiconify()
             self.lift()
             self.focus_force()

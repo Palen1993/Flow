@@ -261,7 +261,6 @@ def scroll_to_widget(scroll_frame, target_widget=None, force_edge: str = None):
         if not canvas or not canvas.winfo_exists():
             return
 
-        scroll_frame.update_idletasks()
         if force_edge == "top":
             canvas.yview_moveto(0.0)
             return
@@ -272,7 +271,11 @@ def scroll_to_widget(scroll_frame, target_widget=None, force_edge: str = None):
         if not target_widget or not target_widget.winfo_exists():
             return
 
-        content_h = max(1, scroll_frame.winfo_height())
+        content_h = scroll_frame.winfo_height()
+        if content_h <= 1:
+            scroll_frame.update_idletasks()
+            content_h = scroll_frame.winfo_height()
+        content_h = max(1, content_h)
         viewport_h = max(1, canvas.winfo_height())
         if content_h <= viewport_h:
             canvas.yview_moveto(0.0)

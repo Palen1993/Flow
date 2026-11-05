@@ -135,6 +135,13 @@ def get_games_file_mtime() -> float:
 def load_games_data() -> List[Dict[str, Any]]:
     """Carga la lista de juegos desde games.json con soporte de restauración automática de respaldo y sincronización segura."""
     with config_lock():
+        if not os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'w', encoding='utf-8') as f_init:
+                    f_init.write('[]\n')
+            except Exception:
+                pass
+            return []
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:

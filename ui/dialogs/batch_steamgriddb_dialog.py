@@ -11,6 +11,7 @@ from core.cover_resolver import resolve_game_cover
 from core.coverflow_engine import create_procedural_album
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
+from ui.dialogs.select_game_to_edit import get_game_thumbnail_ctk
 from ui.theme import (
     COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
     COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
@@ -41,6 +42,19 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
         self.create_widgets()
         self._bind_events()
         self.after(50, self._poll_queue)
+
+    def destroy(self):
+        if hasattr(self, "_chunk_timer") and self._chunk_timer is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        super().destroy()
 
     _center_window = BaseGlassDialog.center_window
 
@@ -179,8 +193,25 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
 
         self._game_rows = []
         self._thumb_refs = {}
-        for idx, g in enumerate(self.games):
-            self._create_game_row(idx, g)
+        self._chunk_timer = None
+        initial_count = min(len(self.games), 25)
+        for idx in range(initial_count):
+            self._create_game_row(idx, self.games[idx])
+
+        # Transmisión en diferido si hay más de 25 juegos para no bloquear la UI
+        if initial_count < len(self.games):
+            def _stream_batch_rows(start_idx: int):
+                if not self.winfo_exists():
+                    return
+                end_idx = min(start_idx + 25, len(self.games))
+                for k in range(start_idx, end_idx):
+                    self._create_game_row(k, self.games[k])
+                if end_idx < len(self.games):
+                    self._chunk_timer = self.after(15, lambda: _stream_batch_rows(end_idx))
+                else:
+                    self._chunk_timer = None
+
+            self._chunk_timer = self.after(15, lambda: _stream_batch_rows(initial_count))
 
         # 5. Pie de página con botones de acción
         footer = ctk.CTkFrame(self.main_card, fg_color="transparent", height=48)
@@ -243,19 +274,8 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
         )
         card.pack(fill="x", pady=3, padx=2)
 
-        # Miniatura de carátula actual
-        cover_p = resolve_game_cover(game)
-        thumb_im = None
-        try:
-            if cover_p and os.path.isfile(cover_p):
-                with Image.open(cover_p) as raw_im:
-                    scaled = raw_im.copy().resize((44, 44), Image.Resampling.LANCZOS)
-                thumb_im = ctk.CTkImage(light_image=scaled, dark_image=scaled, size=(44, 44))
-        except Exception:
-            pass
-        if not thumb_im:
-            proc = create_procedural_album(game.get("name", "Juego"), size=44)
-            thumb_im = ctk.CTkImage(light_image=proc, dark_image=proc, size=(44, 44))
+        # Miniatura de carátula actual con caché en memoria ultra rápido
+        thumb_im = get_game_thumbnail_ctk(game, size=44)
         self._thumb_refs[idx] = thumb_im
 
         lbl_icon = ctk.CTkLabel(card, image=thumb_im, text="", width=44, height=44)
