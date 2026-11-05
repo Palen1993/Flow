@@ -38,8 +38,9 @@
         "high_priority": true,
         "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\LEGO Harry Potter 2024 Collection.png",
         "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\LEGO Harry Potter 2024 Collection_wallpaper.png",
-        "wallpaper_opacity": 0.75,
-        "wallpaper_blur": 0.0
+        "wallpaper_opacity": 0.85,
+        "wallpaper_blur": 0.0,
+        "launch_args": ""
     },
     {
         "name": "Metal Gear Solid Snake Eater 2025",
@@ -59,7 +60,8 @@
         "cover": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\covers\\Split Fiction.png",
         "wallpaper": "C:\\Users\\jorge\\Documents\\Programas\\Lanzador\\wallpapers\\Split Fiction_wallpaper.png",
         "wallpaper_opacity": 0.75,
-        "wallpaper_blur": 0.0
+        "wallpaper_blur": 0.0,
+        "launch_args": ""
     },
     {
         "name": "Viewfinder",

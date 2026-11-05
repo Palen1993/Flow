@@ -121,21 +121,21 @@ class AddEditGameDialog(BaseGlassDialog):
         ctk.CTkLabel(left_frame, text="Clic para cambiar arte", font=font_body(10), text_color="#64748b").pack(pady=(0, 4))
 
         self.btn_online = ctk.CTkButton(
-            left_frame, text="🎨 Cambiar Arte / Wallpaper ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
-            width=190, height=34,
+            left_frame, text="🎨 Arte / Wallpaper ", image=get_button_icon_ctk("x", self.family, size=18), compound="right",
+            width=180, height=34,
             fg_color=COLOR_IOS_BLUE, hover_color=COLOR_IOS_BLUE_HOVER, border_color=COLOR_IOS_BLUE_BORDER, border_width=1.0,
             corner_radius=17, text_color=COLOR_TEXT_WHITE, font=font_button(11),
             command=self.download_online_hd_cover
         )
-        self.btn_online.pack(pady=4)
+        self.btn_online.pack(pady=(4, 4))
 
         self.btn_cover = ctk.CTkButton(
-            left_frame, text="📁 Archivo local...", width=140, height=28,
+            left_frame, text="📁 Archivo local... ", width=180, height=32,
             fg_color="#1e2434", hover_color="#2a3348", border_color="#333d52", border_width=1.0,
-            corner_radius=14, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_body(11),
+            corner_radius=16, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_button(11),
             command=self.browse_cover
         )
-        self.btn_cover.pack(pady=4)
+        self.btn_cover.pack(pady=(2, 6))
 
         # Panel derecho: Configuración del juego
         right_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
@@ -250,19 +250,19 @@ class AddEditGameDialog(BaseGlassDialog):
         self.btn_save.pack(side="right")
 
         self._nav_controls = [
-            ("btn", self.btn_online, self.download_online_hd_cover),
-            ("btn", self.btn_cover, self.browse_cover),
+            ("btn", self.btn_online, lambda: self.download_online_hd_cover()),
+            ("btn", self.btn_cover, lambda: self.browse_cover()),
             ("entry", self.name_entry, lambda: self._open_keyboard_for_entry(self.name_entry, "Nombre del Juego")),
             ("entry", self.path_entry, lambda: self._open_keyboard_for_entry(self.path_entry, "Ruta del Ejecutable")),
-            ("btn", self.btn_browse_exe, self.browse_exe),
+            ("btn", self.btn_browse_exe, lambda: self.browse_exe()),
             ("entry", self.args_entry, lambda: self._open_keyboard_for_entry(self.args_entry, "Parámetros de Ejecución")),
-            ("dropdown", self.monitor_dropdown, self.monitor_dropdown._toggle_dropdown),
-            ("check", self.priority_check, self.priority_check.toggle),
-            ("btn", self.btn_save, self.save),
-            ("btn", self.btn_cancel, self.destroy),
+            ("dropdown", self.monitor_dropdown, lambda: self.monitor_dropdown._toggle_dropdown()),
+            ("check", self.priority_check, lambda: self.priority_check.toggle()),
+            ("btn", self.btn_save, lambda: self.save()),
+            ("btn", self.btn_cancel, lambda: self.destroy()),
         ]
         if self.btn_delete is not None:
-            self._nav_controls.append(("btn", self.btn_delete, self.confirm_delete))
+            self._nav_controls.append(("btn", self.btn_delete, lambda: self.confirm_delete()))
         self._focused_idx = 0
         self.after(50, self._update_focus_visuals)
         
@@ -394,7 +394,13 @@ class AddEditGameDialog(BaseGlassDialog):
             if not widget or not widget.winfo_exists():
                 continue
             is_foc = (i == self._focused_idx)
-            if kind in ("btn", "dropdown"):
+            if self.btn_delete is not None and widget == self.btn_delete:
+                widget.configure(
+                    border_color="#ff453a" if is_foc else COLOR_BTN_DANGER_BORDER,
+                    border_width=2.5 if is_foc else 1.2,
+                    fg_color="#ff2d55" if is_foc else COLOR_BTN_DANGER_BG
+                )
+            elif kind in ("btn", "dropdown"):
                 widget.configure(
                     border_color="#38bdf8" if is_foc else "#343f55",
                     border_width=2.2 if is_foc else 1.0
@@ -411,6 +417,93 @@ class AddEditGameDialog(BaseGlassDialog):
                         pass
             elif kind == "check":
                 widget.configure(text_color=COLOR_CYAN_ACCENT if is_foc else COLOR_TEXT_MAIN)
+
+    def _get_nav_target(self, cur_idx: int, direction: str) -> int:
+        """Navegación espacial 2D bidireccional optimizada para mando de consola."""
+        has_del = (self.btn_delete is not None)
+        del_idx = 10 if has_del else -1
+
+        if direction == "up":
+            if cur_idx == 0:
+                return del_idx if has_del else 8
+            elif cur_idx == 1:
+                return 0
+            elif cur_idx == 2:
+                return 8
+            elif cur_idx == 3:
+                return 2
+            elif cur_idx == 4:
+                return 3
+            elif cur_idx == 5:
+                return 4
+            elif cur_idx == 6:
+                return 5
+            elif cur_idx == 7:
+                return 6
+            elif cur_idx == 8:
+                return 7
+            elif cur_idx == 9:
+                return 7
+            elif cur_idx == 10:
+                return 1
+
+        elif direction == "down":
+            if cur_idx == 0:
+                return 1
+            elif cur_idx == 1:
+                return del_idx if has_del else 8
+            elif cur_idx == 2:
+                return 3
+            elif cur_idx == 3:
+                return 4
+            elif cur_idx == 4:
+                return 5
+            elif cur_idx == 5:
+                return 6
+            elif cur_idx == 6:
+                return 7
+            elif cur_idx == 7:
+                return 8
+            elif cur_idx == 8:
+                return 2
+            elif cur_idx == 9:
+                return 2
+            elif cur_idx == 10:
+                return 0
+
+        elif direction == "left":
+            if cur_idx == 0:
+                return 0
+            elif cur_idx == 1:
+                return 1
+            elif cur_idx == 2:
+                return 0
+            elif cur_idx in (3, 4, 5, 6):
+                return 1
+            elif cur_idx == 7:
+                return del_idx if has_del else 1
+            elif cur_idx == 8:
+                return del_idx if has_del else 1
+            elif cur_idx == 9:
+                return 8
+            elif cur_idx == 10:
+                return 10
+
+        elif direction == "right":
+            if cur_idx == 0:
+                return 2
+            elif cur_idx == 1:
+                return 3
+            elif cur_idx in (2, 3, 4, 5, 6, 7):
+                return cur_idx
+            elif cur_idx == 8:
+                return 9
+            elif cur_idx == 9:
+                return 9
+            elif cur_idx == 10:
+                return 8
+
+        return cur_idx
 
     def handle_gamepad_input(self, inputs: Dict[str, Any], prev_inputs: Dict[str, Any]) -> bool:
         if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
@@ -432,26 +525,31 @@ class AddEditGameDialog(BaseGlassDialog):
         if not controls:
             return False
 
-        if (inputs.get("up", False) and not prev_inputs.get("up", False)) or \
-           (inputs.get("left", False) and not prev_inputs.get("left", False)):
-            self._focused_idx = (self._focused_idx - 1) % len(controls)
-            self._update_focus_visuals()
-            try:
-                from core.feedback import feedback_click
-                feedback_click()
-            except Exception:
-                pass
-            return True
+        moved = False
+        new_idx = self._focused_idx
 
-        if (inputs.get("down", False) and not prev_inputs.get("down", False)) or \
-           (inputs.get("right", False) and not prev_inputs.get("right", False)):
-            self._focused_idx = (self._focused_idx + 1) % len(controls)
-            self._update_focus_visuals()
-            try:
-                from core.feedback import feedback_click
-                feedback_click()
-            except Exception:
-                pass
+        if inputs.get("up", False) and not prev_inputs.get("up", False):
+            new_idx = self._get_nav_target(self._focused_idx, "up")
+            moved = True
+        elif inputs.get("down", False) and not prev_inputs.get("down", False):
+            new_idx = self._get_nav_target(self._focused_idx, "down")
+            moved = True
+        elif inputs.get("left", False) and not prev_inputs.get("left", False):
+            new_idx = self._get_nav_target(self._focused_idx, "left")
+            moved = True
+        elif inputs.get("right", False) and not prev_inputs.get("right", False):
+            new_idx = self._get_nav_target(self._focused_idx, "right")
+            moved = True
+
+        if moved:
+            if 0 <= new_idx < len(controls):
+                self._focused_idx = new_idx
+                self._update_focus_visuals()
+                try:
+                    from core.feedback import feedback_click
+                    feedback_click()
+                except Exception:
+                    pass
             return True
 
         if inputs.get("a", False) and not prev_inputs.get("a", False):

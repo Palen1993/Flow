@@ -25,7 +25,7 @@ def _load_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
 def _draw_button_glyph(draw: ImageDraw.ImageDraw, btn_key: str, family: str, cx: int, cy: int, r: int):
     """
     Dibuja un único botón físico real del mando en coordenadas (cx, cy) con radio r (en escala 2x):
-      - btn_key in ('a', 'b', 'x', 'y', 'start', 'select', 'lb', 'rb')
+      - btn_key in ('a', 'b', 'x', 'y', 'start', 'select', 'lb', 'rb', 'lt', 'rt')
       - family in ('xbox', 'playstation')
     """
     key = btn_key.lower()
@@ -131,8 +131,13 @@ def _draw_button_glyph(draw: ImageDraw.ImageDraw, btn_key: str, family: str, cx:
             draw.rounded_rectangle([x2 - 2, y2 - 2, x2 + sq + 2, y2 + sq + 2], radius=3, fill=(32, 40, 56, 255))
             draw.rounded_rectangle([x2, y2, x2 + sq, y2 + sq], radius=3, outline=(248, 250, 252, 255), width=3)
 
-    elif key in ("lb", "rb"):
-        lbl = ("L1" if key == "lb" else "R1") if fam == "playstation" else key.upper()
+    elif key in ("lb", "rb", "lt", "rt", "l1", "r1", "l2", "r2"):
+        if fam == "playstation":
+            ps_map = {"lb": "L1", "rb": "R1", "l1": "L1", "r1": "R1", "lt": "L2", "rt": "R2", "l2": "L2", "r2": "R2"}
+            lbl = ps_map.get(key, key.upper())
+        else:
+            xb_map = {"l1": "LB", "r1": "RB", "l2": "LT", "r2": "RT"}
+            lbl = xb_map.get(key, key.upper())
         bw = int(r * 2.1)
         bh = int(r * 1.45)
         draw.rounded_rectangle(
@@ -147,7 +152,7 @@ def _draw_button_glyph(draw: ImageDraw.ImageDraw, btn_key: str, family: str, cx:
 
 def render_button_icon_pil(btn_key: str, family: Optional[str] = None, size: int = 22) -> Image.Image:
     """
-    Genera una imagen RGBA (supersampling 2x) de un botón individual del mando ('a', 'b', 'x', 'y', 'start', 'select', 'lb', 'rb')
+    Genera una imagen RGBA (supersampling 2x) de un botón individual del mando ('a', 'b', 'x', 'y', 'start', 'select', 'lb', 'rb', 'lt', 'rt')
     adaptada automáticamente al mando conectado (Xbox vs PlayStation).
     """
     if family is None:
@@ -160,7 +165,7 @@ def render_button_icon_pil(btn_key: str, family: Optional[str] = None, size: int
 
     scale = 2
     h2 = size * scale
-    w2 = int(size * 1.25 * scale) if k in ("lb", "rb") else h2
+    w2 = int(size * 1.25 * scale) if k in ("lb", "rb", "lt", "rt", "l1", "r1", "l2", "r2") else h2
     canvas = Image.new("RGBA", (w2, h2), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 

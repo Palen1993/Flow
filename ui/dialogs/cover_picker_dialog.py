@@ -225,9 +225,11 @@ class CoverPickerDialog(BaseGlassDialog):
 
         self.btn_mode_cover = ctk.CTkButton(
             mode_switch_frame,
-            text="💿 Carátula (Caja 3D)",
+            text=" Carátula (Caja 3D)",
+            image=get_button_icon_ctk("lt", self.family, size=18),
+            compound="left",
             height=28,
-            width=152,
+            width=175,
             corner_radius=11,
             font=("Segoe UI Semibold", 11),
             fg_color="#007aff",
@@ -239,11 +241,11 @@ class CoverPickerDialog(BaseGlassDialog):
 
         self.btn_mode_wallpaper = ctk.CTkButton(
             mode_switch_frame,
-            text="🖼 Wallpaper 16:9 ",
-            image=get_button_icon_ctk("select", size=17),
+            text="Wallpaper 16:9 ",
+            image=get_button_icon_ctk("rt", self.family, size=18),
             compound="right",
             height=28,
-            width=168,
+            width=175,
             corner_radius=11,
             font=("Segoe UI Semibold", 11),
             fg_color="transparent",
@@ -580,7 +582,7 @@ class CoverPickerDialog(BaseGlassDialog):
             pct_op = int(round(self.wp_opacity * 100))
             blur_tag = "Nítido" if self.wp_blur < 0.3 else ("Suave" if self.wp_blur <= 2.5 else "Borroso")
             self.lbl_sl.configure(text=f"Opacidad del fondo (LB / RB): {pct_op}%")
-            self.lbl_blur_sl.configure(text=f"Borrosidad / Desenfoque (LT / RT): {self.wp_blur:.1f} ({blur_tag})")
+            self.lbl_blur_sl.configure(text=f"Desenfoque: {self.wp_blur:.1f} ({blur_tag}) — Presets con (Y)")
             self.blur_slider_frame.pack(padx=16, pady=(2, 4), fill="x")
             self.btn_confirm.configure(text="✓ Aplicar Wallpaper 16:9 ")
 
@@ -1513,6 +1515,21 @@ class CoverPickerDialog(BaseGlassDialog):
             self.destroy()
             return True
 
+        # Alternar o seleccionar entre Carátula (Caja 3D) con LT y Wallpaper 16:9 con RT
+        if inputs.get("lt", False) and not prev_inputs.get("lt", False):
+            if self.asset_mode != "cover":
+                self._switch_asset_mode("cover")
+            else:
+                self._switch_asset_mode("wallpaper")
+            return True
+
+        if inputs.get("rt", False) and not prev_inputs.get("rt", False):
+            if self.asset_mode != "wallpaper":
+                self._switch_asset_mode("wallpaper")
+            else:
+                self._switch_asset_mode("cover")
+            return True
+
         # Botón Select / Share: Alternar entre Carátula (Caja 3D) y Wallpaper 16:9 (Fondo Big Picture)
         if (inputs.get("select", False) and not prev_inputs.get("select", False)) or \
            (inputs.get("back", False) and not prev_inputs.get("back", False)):
@@ -1535,7 +1552,7 @@ class CoverPickerDialog(BaseGlassDialog):
             return True
 
         if self.asset_mode == "wallpaper":
-            # En modo Wallpaper: LB / RB ajusta Opacidad, LT / RT ajusta Borrosidad / Desenfoque
+            # En modo Wallpaper: LB / RB ajusta Opacidad suavemente
             if inputs.get("lb", False) and not prev_inputs.get("lb", False):
                 cur_val = float(self.offset_slider.get())
                 new_val = max(0.0, cur_val - 0.08)
@@ -1548,30 +1565,16 @@ class CoverPickerDialog(BaseGlassDialog):
                 self.offset_slider.set(new_val)
                 self._on_offset_slider_changed(new_val)
                 return True
-            if inputs.get("lt", False) and not prev_inputs.get("lt", False):
-                cur_b = float(self.blur_slider.get())
-                new_b = max(0.0, cur_b - 0.08)
-                self.blur_slider.set(new_b)
-                self._on_blur_slider_changed(new_b)
-                return True
-            if inputs.get("rt", False) and not prev_inputs.get("rt", False):
-                cur_b = float(self.blur_slider.get())
-                new_b = min(1.0, cur_b + 0.08)
-                self.blur_slider.set(new_b)
-                self._on_blur_slider_changed(new_b)
-                return True
         else:
-            # En modo Carátula: LB / RB o LT / RT ajusta el deslizador de encuadre
-            if (inputs.get("lb", False) and not prev_inputs.get("lb", False)) or \
-               (inputs.get("lt", False) and not prev_inputs.get("lt", False)):
+            # En modo Carátula: LB / RB ajusta el deslizador de encuadre
+            if inputs.get("lb", False) and not prev_inputs.get("lb", False):
                 cur_val = float(self.offset_slider.get())
                 new_val = max(0.0, cur_val - 0.08)
                 self.offset_slider.set(new_val)
                 self._on_offset_slider_changed(new_val)
                 return True
 
-            if (inputs.get("rb", False) and not prev_inputs.get("rb", False)) or \
-               (inputs.get("rt", False) and not prev_inputs.get("rt", False)):
+            if inputs.get("rb", False) and not prev_inputs.get("rb", False):
                 cur_val = float(self.offset_slider.get())
                 new_val = min(1.0, cur_val + 0.08)
                 self.offset_slider.set(new_val)
