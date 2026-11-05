@@ -36,6 +36,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.flat_covers: Dict[str, Tuple[Image.Image, int, int]] = {}
         self.rendered_cache: Dict[str, Dict[float, Tuple[Image.Image, int]]] = {}
         self._cache_generation = 0
+        self._library_load_id = 0
 
         # Estado del HUD superpuesto sin barras grises en modo Big Picture
         self.ui_title = ""
@@ -170,8 +171,18 @@ class CoverFlowCanvas(tk.Canvas):
 
     def set_games(self, games: List[Dict[str, Any]], target_index: int = 0):
         self.games = games
-        self.raw_jewels.clear()
-        self.raw_wallpapers.clear()
+        self._library_load_id = getattr(self, "_library_load_id", 0) + 1
+        current_load_id = self._library_load_id
+
+        # Conservar en memoria las imágenes raw de los juegos que siguen existiendo (evita re-lectura innecesaria de disco)
+        valid_keys = {self._get_key(g) for g in self.games}
+        for k in list(self.raw_jewels.keys()):
+            if k not in valid_keys:
+                self.raw_jewels.pop(k, None)
+        for k in list(self.raw_wallpapers.keys()):
+            if k not in valid_keys:
+                self.raw_wallpapers.pop(k, None)
+
         self.wallpaper_bg_cache.clear()
         self.flat_covers.clear()
         self.rendered_cache.clear()
@@ -185,13 +196,15 @@ class CoverFlowCanvas(tk.Canvas):
             self.current_pos = 0.0
 
         target_int = int(round(self.target_pos))
-        # Fase 1: Carga inmediata y ultrarrápida del viewport visible (target +/- 3)
+        # Fase 1: Carga inmediata del viewport visible prioritario (target +/- 3)
         visible_indices = set(range(max(0, target_int - 3), min(n, target_int + 4)))
         for idx in visible_indices:
             g = self.games[idx]
             key = self._get_key(g)
-            self.raw_jewels[key] = self._get_or_create_jewel_case(g)
-            self._load_wallpaper_for_game(g)
+            if key not in self.raw_jewels:
+                self.raw_jewels[key] = self._get_or_create_jewel_case(g)
+            if key not in self.raw_wallpapers:
+                self._load_wallpaper_for_game(g)
 
         self._rebuild_rendered_cache()
         cw = max(60, self.winfo_width())
@@ -201,13 +214,12 @@ class CoverFlowCanvas(tk.Canvas):
         if self.on_selection_changed and n > 0:
             self.on_selection_changed(target_int)
 
-        # Fase 2: Carga perezosa (Lazy Loading) del resto de juegos en segundo plano
+        # Fase 2: Carga en segundo plano para el resto de juegos (inmune a redimensionamiento de ventana)
         remaining_indices = [i for i in range(n) if i not in visible_indices]
         if remaining_indices:
-            loader_gen = self._cache_generation
             def _bg_loader():
                 for i in remaining_indices:
-                    if self._cache_generation != loader_gen or i >= len(self.games):
+                    if self._library_load_id != current_load_id or i >= len(self.games):
                         return
                     g = self.games[i]
                     key = self._get_key(g)
@@ -215,7 +227,22 @@ class CoverFlowCanvas(tk.Canvas):
                         self.raw_jewels[key] = self._get_or_create_jewel_case(g)
                     if key not in self.raw_wallpapers:
                         self._load_wallpaper_for_game(g)
-                if self._cache_generation != loader_gen:
+
+                    # Si este juego ya tiene jewel pero aún no tiene flat cover, generarlo
+                    jewel = self.raw_jewels.get(key)
+                    if jewel and key not in self.flat_covers:
+                        has_refl = not getattr(self, "is_transparent_mode", False)
+                        flat_cover, sz, tot_h = prepare_flat_cover(jewel, self.base_size, has_reflection=has_refl)
+                        self.flat_covers[key] = (flat_cover, sz, tot_h)
+                        if key not in self.rendered_cache:
+                            w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
+                            w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
+                            self.rendered_cache[key] = {
+                                -1.0: (w_left, w_lw),
+                                0.0: (flat_cover, sz),
+                                1.0: (w_right, w_rw)
+                            }
+                if self._library_load_id != current_load_id:
                     return
                 # Pre-componer fondos para todos los juegos recién cargados
                 cur_w = max(60, self.winfo_width())
@@ -224,6 +251,11 @@ class CoverFlowCanvas(tk.Canvas):
                 q = getattr(self.master, "_action_queue", None)
                 if q is not None:
                     q.put(("callable", self.redraw))
+                else:
+                    try:
+                        self.after(10, self.redraw)
+                    except Exception:
+                        pass
             threading.Thread(target=_bg_loader, daemon=True).start()
 
     def _rebuild_rendered_cache(self):
@@ -248,6 +280,9 @@ class CoverFlowCanvas(tk.Canvas):
             g = self.games[idx]
             key = self._get_key(g)
             jewel = self.raw_jewels.get(key)
+            if not jewel:
+                jewel = self._get_or_create_jewel_case(g)
+                self.raw_jewels[key] = jewel
             if not jewel:
                 continue
             flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
@@ -296,6 +331,9 @@ class CoverFlowCanvas(tk.Canvas):
                 key = self._get_key(g)
                 jewel = self.raw_jewels.get(key)
                 if not jewel:
+                    jewel = self._get_or_create_jewel_case(g)
+                    self.raw_jewels[key] = jewel
+                if not jewel:
                     continue
                 if key not in self.flat_covers:
                     flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
@@ -318,6 +356,11 @@ class CoverFlowCanvas(tk.Canvas):
                     if af not in g_cache:
                         w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, af, has_reflection=has_refl)
                         g_cache[af] = (w_img, tw)
+
+            if self._cache_generation == current_gen:
+                q = getattr(self.master, "_action_queue", None)
+                if q is not None:
+                    q.put(("callable", self.redraw))
                         
         threading.Thread(target=_bg_precompute, daemon=True).start()
 
@@ -352,6 +395,11 @@ class CoverFlowCanvas(tk.Canvas):
         flat_data = self.flat_covers.get(game_key)
         if not flat_data:
             jewel = self.raw_jewels.get(game_key)
+            if not jewel:
+                g = next((gm for gm in self.games if self._get_key(gm) == game_key), None)
+                if g:
+                    jewel = self._get_or_create_jewel_case(g)
+                    self.raw_jewels[game_key] = jewel
             if jewel:
                 has_refl = not getattr(self, "is_transparent_mode", False)
                 size = self.base_size
@@ -405,6 +453,9 @@ class CoverFlowCanvas(tk.Canvas):
                 key = self._get_key(g)
                 wp_img = self.raw_wallpapers.get(key)
                 if not wp_img:
+                    self._load_wallpaper_for_game(g)
+                    wp_img = self.raw_wallpapers.get(key)
+                if not wp_img:
                     continue
                 opacity = round(float(g.get("wallpaper_opacity", 0.30)), 2)
                 blur_rad = round(float(g.get("wallpaper_blur", 1.8)), 2)
@@ -428,6 +479,9 @@ class CoverFlowCanvas(tk.Canvas):
 
         key = self._get_key(g)
         wp_img = self.raw_wallpapers.get(key)
+        if not wp_img:
+            self._load_wallpaper_for_game(g)
+            wp_img = self.raw_wallpapers.get(key)
         if not wp_img:
             return self.bg_cache
 
