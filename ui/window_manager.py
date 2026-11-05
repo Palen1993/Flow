@@ -61,7 +61,7 @@ class WindowStateService:
             logger.debug(f"Aviso configurando icono: {e}")
 
     def set_mini_mode(self, cover_stage, top_bar=None, bottom_panel=None) -> None:
-        """Activa el modo widget pequeño y flotante: UI 100% transparente sin marco ni reflejo."""
+        """Activa el modo widget pequeño y flotante: UI 100% transparente sin marco, sin reflejos ni fondos (solo carátulas)."""
         self.is_mini_mode = True
         self.is_fullscreen = False
         self.is_minimized = False
@@ -71,13 +71,22 @@ class WindowStateService:
         if bottom_panel:
             bottom_panel.grid_remove()
 
-        # Desactivar pantalla completa si estaba activa
+        if cover_stage:
+            cover_stage.is_transparent_mode = True
+            cover_stage.configure(bg=COLOR_TRANS_KEY)
+
+        # Para eliminar al 100% el glitch y parpadeo de Windows DWM al alternar fullscreen y overrideredirect:
+        # Se retira la ventana brevemente del compositor visual mientras se reconfigura y reubica
+        try:
+            self.app.withdraw()
+        except Exception:
+            pass
+
         try:
             self.app.attributes("-fullscreen", False)
         except Exception:
             pass
 
-        # Ventana flotante pura sin bordes ni barra de título
         try:
             self.app.overrideredirect(True)
         except Exception:
@@ -88,16 +97,11 @@ class WindowStateService:
         except Exception:
             pass
 
-        # Clave de transparencia en Windows
         try:
             self.app.configure(fg_color=COLOR_TRANS_KEY)
             self.app.wm_attributes("-transparentcolor", COLOR_TRANS_KEY)
         except Exception:
             pass
-
-        if cover_stage:
-            cover_stage.configure(bg=COLOR_TRANS_KEY)
-            cover_stage.is_transparent_mode = True
 
         self.app.minsize(400, 200)
 
@@ -131,23 +135,33 @@ class WindowStateService:
         self.app.update_idletasks()
 
         if cover_stage:
-            cover_stage.last_w = 0
-            cover_stage.last_h = 0
+            cover_stage.last_w = win_w
+            cover_stage.last_h = win_h
+            cover_stage.base_size = max(180, min(int(win_h * 0.72), int(win_w * 0.42)))
+            cover_stage._rebuild_background(win_w, win_h)
             cover_stage._rebuild_rendered_cache()
-            cw = cover_stage.winfo_width()
-            ch = cover_stage.winfo_height()
-            if cw > 60 and ch > 60:
-                cover_stage._on_resize(type("Event", (), {"width": cw, "height": ch})())
-            else:
-                cover_stage.redraw()
+            cover_stage.redraw()
 
-        logger.debug("Modo Mini Widget Transparente aplicado")
+        try:
+            self.app.deiconify()
+            self.app.lift()
+            self.app.focus_force()
+            force_foreground_window(self.app.winfo_id(), keep_topmost=True)
+        except Exception:
+            pass
+
+        logger.debug("Modo Mini Widget Transparente aplicado limpiamente")
 
     def set_full_mode(self, cover_stage, top_bar=None, bottom_panel=None) -> None:
-        """Restaura el modo pantalla completa con UI y fondo cinematográfico."""
+        """Restaura el modo pantalla completa cinematográfico sin parpadeos visuales."""
         self.is_mini_mode = False
         self.is_fullscreen = True
         self.is_minimized = False
+
+        try:
+            self.app.withdraw()
+        except Exception:
+            pass
 
         try:
             self.app.wm_attributes("-transparentcolor", "")
@@ -164,7 +178,13 @@ class WindowStateService:
         except Exception:
             pass
 
-        self.app.configure(fg_color=COLOR_BG_DARK)
+        try:
+            self.app.configure(fg_color=COLOR_BG_DARK)
+        except Exception:
+            try:
+                self.app.configure(bg=COLOR_BG_DARK)
+            except Exception:
+                pass
 
         if top_bar:
             top_bar.grid_remove()
@@ -184,17 +204,25 @@ class WindowStateService:
         self.app.update_idletasks()
 
         if cover_stage:
-            cover_stage.last_w = 0
-            cover_stage.last_h = 0
+            cw = max(self.app.winfo_screenwidth(), self.app.winfo_width())
+            ch = max(self.app.winfo_screenheight(), self.app.winfo_height())
+            cover_stage.last_w = cw
+            cover_stage.last_h = ch
+            cover_stage.display_scale = max(0.75, min(2.5, ch / 1080.0))
+            cover_stage.base_size = max(180, min(int(ch * 0.44), int(cw * 0.36)))
+            cover_stage._rebuild_background(cw, ch)
             cover_stage._rebuild_rendered_cache()
-            cw = cover_stage.winfo_width()
-            ch = cover_stage.winfo_height()
-            if cw > 60 and ch > 60:
-                cover_stage._on_resize(type("Event", (), {"width": cw, "height": ch})())
-            else:
-                cover_stage.redraw()
+            cover_stage.redraw()
 
-        logger.debug("Modo Pantalla Completa Big Picture aplicado")
+        try:
+            self.app.deiconify()
+            self.app.lift()
+            self.app.focus_force()
+            force_foreground_window(self.app.winfo_id(), keep_topmost=False)
+        except Exception:
+            pass
+
+        logger.debug("Modo Pantalla Completa Big Picture aplicado limpiamente")
 
     def toggle_size_mode(self, cover_stage, top_bar=None, bottom_panel=None) -> None:
         """Alterna entre Modo Mini Transparente y Modo Grande Pantalla Completa."""

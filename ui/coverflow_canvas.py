@@ -193,6 +193,9 @@ class CoverFlowCanvas(tk.Canvas):
             self._load_wallpaper_for_game(g)
 
         self._rebuild_rendered_cache()
+        cw = max(60, self.winfo_width())
+        ch = max(60, self.winfo_height())
+        self._precache_wallpapers_async(cw, ch, getattr(self, "floor_y", 0))
         self.redraw()
         if self.on_selection_changed and n > 0:
             self.on_selection_changed(target_int)
@@ -213,6 +216,10 @@ class CoverFlowCanvas(tk.Canvas):
                         self._load_wallpaper_for_game(g)
                 if self._cache_generation != loader_gen:
                     return
+                # Pre-componer fondos para todos los juegos recién cargados
+                cur_w = max(60, self.winfo_width())
+                cur_h = max(60, self.winfo_height())
+                self._precache_wallpapers_async(cur_w, cur_h, getattr(self, "floor_y", 0))
                 q = getattr(self.master, "_action_queue", None)
                 if q is not None:
                     q.put(("callable", self.redraw))
@@ -261,6 +268,7 @@ class CoverFlowCanvas(tk.Canvas):
                 -0.875, -0.75, -0.625, -0.5, -0.375, -0.25, -0.125,
                 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875
             ]
+            # Primero procesar el vecindario activo
             for idx in active_Indices_sorted:
                 if self._cache_generation != current_gen or idx >= len(self.games):
                     return
@@ -277,14 +285,43 @@ class CoverFlowCanvas(tk.Canvas):
                     g_cache = self.rendered_cache.get(key)
                     if g_cache is not None:
                         g_cache[af] = (w_img, tw)
+
+            # A continuación procesar el resto de la biblioteca en segundo plano para scroll infinito sin tirones
+            other_indices = [i for i in range(n) if i not in active_indices]
+            for idx in other_indices:
+                if self._cache_generation != current_gen or idx >= len(self.games):
+                    return
+                g = self.games[idx]
+                key = self._get_key(g)
+                jewel = self.raw_jewels.get(key)
+                if not jewel:
+                    continue
+                if key not in self.flat_covers:
+                    flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+                    self.flat_covers[key] = (flat_cover, sz, tot_h)
+                else:
+                    flat_cover, sz, _ = self.flat_covers[key]
+
+                if key not in self.rendered_cache:
+                    w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
+                    w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
+                    self.rendered_cache[key] = {
+                        -1.0: (w_left, w_lw),
+                        0.0: (flat_cover, sz),
+                        1.0: (w_right, w_rw)
+                    }
+                g_cache = self.rendered_cache[key]
+                for af in intermediate_angles:
+                    if self._cache_generation != current_gen:
+                        return
+                    if af not in g_cache:
+                        w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, af, has_reflection=has_refl)
+                        g_cache[af] = (w_img, tw)
                         
         threading.Thread(target=_bg_precompute, daemon=True).start()
 
-    def _prune_rendered_cache(self, max_games: int = 15):
-        """Política LRU: Acota la memoria eliminando los juegos más lejanos al índice visible."""
-        if len(self.wallpaper_bg_cache) > 8:
-            for old_wp_k in list(self.wallpaper_bg_cache.keys())[:-6]:
-                self.wallpaper_bg_cache.pop(old_wp_k, None)
+    def _prune_rendered_cache(self, max_games: int = 40):
+        """Política LRU: Acota la memoria eliminando las carátulas 3D de los juegos más lejanos al índice visible."""
         if len(self.rendered_cache) <= max_games:
             return
         center_idx = int(round(getattr(self, "target_pos", 0.0)))
@@ -356,10 +393,34 @@ class CoverFlowCanvas(tk.Canvas):
         self.wallpaper_bg_cache.clear()
         self._bottom_overlay_cache.clear()
 
+    def _precache_wallpapers_async(self, w: int, h: int, floor_y: int):
+        """Pre-compone en segundo plano todos los wallpapers de la biblioteca para pase a 60 FPS con 0 ms de latencia."""
+        if getattr(self, "is_transparent_mode", False) or not self.games:
+            return
+        games_list = list(self.games)
+        
+        def _worker():
+            for g in games_list:
+                key = self._get_key(g)
+                wp_img = self.raw_wallpapers.get(key)
+                if not wp_img:
+                    continue
+                opacity = round(float(g.get("wallpaper_opacity", 0.30)), 2)
+                blur_rad = round(float(g.get("wallpaper_blur", 1.8)), 2)
+                cache_key = (key, w, h, opacity, blur_rad)
+                if cache_key not in self.wallpaper_bg_cache:
+                    composed = compose_big_picture_wallpaper_bg(
+                        wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
+                    )
+                    self.wallpaper_bg_cache[cache_key] = composed
+        
+        threading.Thread(target=_worker, daemon=True).start()
+
     def get_background_for_game(self, g: Optional[Dict[str, Any]], w: int, h: int, floor_y: int) -> Image.Image:
         """
         Retorna el fondo RGB para el juego seleccionado en modo Big Picture.
-        Si tiene wallpaper apaisado, retorna su versión compuesta en caché con la opacidad y desenfoque configurados.
+        Utiliza la caché en RAM instantánea (0 ms); si aún no se ha generado, devuelve de inmediato
+        el fondo ambiental oscuro para no provocar caídas de frames en la animación y lanza la carga en segundo plano.
         """
         if getattr(self, "is_transparent_mode", False) or not g:
             return self.bg_cache
@@ -376,19 +437,22 @@ class CoverFlowCanvas(tk.Canvas):
         if cached is not None:
             return cached
 
-        composed = compose_big_picture_wallpaper_bg(
-            wp_img,
-            w=w,
-            h=h,
-            floor_y=floor_y,
-            opacity=opacity,
-            blur_radius=blur_rad
-        )
-        # Mantener caché acotado
-        if len(self.wallpaper_bg_cache) > 24:
-            self.wallpaper_bg_cache.clear()
-        self.wallpaper_bg_cache[cache_key] = composed
-        return composed
+        # Si estamos en plena animación física o arrastre, devolver el fondo base para mantener 60 FPS fijos
+        # y generar el wallpaper en segundo plano para que esté listo al detenerse
+        def _bg_generate():
+            if cache_key not in self.wallpaper_bg_cache:
+                composed = compose_big_picture_wallpaper_bg(
+                    wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
+                )
+                self.wallpaper_bg_cache[cache_key] = composed
+                # Si el usuario sigue posicionado en este juego, actualizar suavemente
+                if not self.is_animating and not self.is_dragging:
+                    center_int = int(round(self.current_pos))
+                    if 0 <= center_int < len(self.games) and self._get_key(self.games[center_int]) == key:
+                        self.after(10, self.redraw)
+
+        threading.Thread(target=_bg_generate, daemon=True).start()
+        return self.bg_cache
 
     def _on_resize(self, event):
         w = event.width
@@ -431,6 +495,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.base_size = new_base_size
         
         self._rebuild_background(w, h)
+        self._precache_wallpapers_async(w, h, getattr(self, "floor_y", 0))
         if size_changed or refl_changed or not self.rendered_cache:
             self._rebuild_rendered_cache()
             
@@ -601,19 +666,8 @@ class CoverFlowCanvas(tk.Canvas):
         scale = getattr(self, "display_scale", 1.0)
 
         if getattr(self, "is_transparent_mode", False):
-            try:
-                strip_h = max(24, int(round(32 * scale)))
-                strip_gap = max(3, int(round(4 * scale)))
-                strip, rel_boxes = render_controller_hud_strip(family=fam, height=strip_h, gap=strip_gap)
-                hud_x = max(10, w - strip.width - int(18 * scale))
-                hud_y = int(10 * scale)
-                bg.paste(strip, (hud_x, hud_y), strip)
-                self.hud_hitboxes = [
-                    (hud_x + bx1, hud_y + by1, hud_x + bx2, hud_y + by2, act)
-                    for (bx1, by1, bx2, by2, act) in rel_boxes
-                ]
-            except Exception:
-                self.hud_hitboxes = []
+            # En modo normal / transparente flotante: ocultar todo el modo Big Picture y mostrar únicamente las carátulas 3D
+            self.hud_hitboxes = []
             return
 
         # 1. Modo Big Picture: Botones flotantes arriba a la derecha (wallpaper visible hasta y=0 detrás)
