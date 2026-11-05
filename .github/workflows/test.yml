@@ -1,0 +1,37 @@
+name: CI Test Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Regression and Audit Tests
+      run: |
+        python scratch/mega_audit_test_suite.py
+        python scratch/test_gamepad_folder_and_manual_add.py
+        python scratch/test_gamepad_buttons_interactive.py
+        python scratch/test_select_game_layout.py
+        python scratch/test_ux_streamlining.py
+        python scratch/test_resolution_scaling.py
+        python scratch/test_live_bugfixes_3.py
