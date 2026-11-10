@@ -5,10 +5,7 @@ import json
 import subprocess
 import ctypes
 from ctypes import wintypes
-try:
-    import winreg
-except ImportError:
-    winreg = None
+from core.platform_layer import winreg, is_windows
 from typing import Tuple, Dict, Any, List, Optional
 
 # -------------------------------------------------------------

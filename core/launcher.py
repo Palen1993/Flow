@@ -8,8 +8,7 @@ from typing import Optional
 import re
 import psutil
 import threading
-import win32gui
-import win32con
+from core.platform_layer import win32gui, win32con, is_windows
 try:
     from core.logger import get_logger
     logger = get_logger("Launcher")

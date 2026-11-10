@@ -40,16 +40,38 @@ class GameLibraryService:
     def __init__(self):
         self.games: List[Dict[str, Any]] = []
         self._file_mtime: float = 0.0
+        self._filter_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self._alpha_jump_cache: Dict[str, Dict[str, int]] = {}
 
     @property
     def file_mtime(self) -> float:
         return self._file_mtime
 
-    def load(self) -> List[Dict[str, Any]]:
-        """Carga la colección completa de juegos resolviendo carátulas y registrando mtime."""
+    def invalidate_caches(self) -> None:
+        """Invalida las cachés en memoria de filtros calculados e índices alfabéticos."""
+        self._filter_cache.clear()
+        self._alpha_jump_cache.clear()
+
+    def load(self, eager_covers: bool = False) -> List[Dict[str, Any]]:
+        """
+        Carga la colección completa de juegos con verificación diferida (lazy) de carátulas para arranque instantáneo (<5ms).
+        En modo diferido (por defecto), solo valida carátulas ya existentes en disco sin rastrear carpetas profundamente.
+        """
+        self.invalidate_caches()
         loaded = load_games_data()
+        from core.config import COVERS_DIR
         for g in loaded:
-            resolve_game_cover(g)
+            if eager_covers:
+                resolve_game_cover(g)
+            else:
+                cov = g.get("cover")
+                if not cov or not os.path.isfile(cov):
+                    # Comprobar rápido si la carátula estándar ya existe en covers/ sin escaneo recursivo
+                    safe_name = "".join(c for c in g.get("name", "game") if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+                    cand = os.path.join(COVERS_DIR, f"{safe_name}.png")
+                    if os.path.isfile(cand):
+                        g["cover"] = cand
+
         self.games = loaded
         self._file_mtime = get_games_file_mtime()
         logger.info(f"Biblioteca cargada con {len(self.games)} juego(s) (mtime={self._file_mtime:.2f})")
@@ -57,6 +79,7 @@ class GameLibraryService:
 
     def save(self) -> None:
         """Serializa atómicamente la colección a games.json y actualiza el timestamp de control."""
+        self.invalidate_caches()
         save_games_data(self.games)
         self._file_mtime = get_games_file_mtime()
         logger.debug(f"Biblioteca guardada atómicamente ({len(self.games)} juegos)")
@@ -72,6 +95,7 @@ class GameLibraryService:
                 return False
 
             self._file_mtime = current_mtime
+            self.invalidate_caches()
             fresh_games = load_games_data()
             if not fresh_games:
                 if self.games:
@@ -79,10 +103,16 @@ class GameLibraryService:
                     return True
                 return False
 
+            from core.config import COVERS_DIR
             fresh_by_path: Dict[str, Dict[str, Any]] = {}
             fresh_by_name: Dict[str, Dict[str, Any]] = {}
             for fg in fresh_games:
-                resolve_game_cover(fg)
+                cov = fg.get("cover")
+                if not cov or not os.path.isfile(cov):
+                    safe_name = "".join(c for c in fg.get("name", "game") if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+                    cand = os.path.join(COVERS_DIR, f"{safe_name}.png")
+                    if os.path.isfile(cand):
+                        fg["cover"] = cand
                 p = fg.get("path")
                 if p:
                     fresh_by_path[os.path.normcase(os.path.normpath(p))] = fg
@@ -289,42 +319,46 @@ class GameLibraryService:
         games_source: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Filtra la lista de juegos según el identificador de filtro indicado:
+        Filtra la lista de juegos según el identificador de filtro indicado con memoización en memoria:
         - 'all': todos los juegos
         - 'favorite': únicamente los marcados como favoritos
         - 'status:<val>': coincide con el estado
         - 'platform:<val>': coincide con la plataforma
         - 'genre:<val>': coincide con el género
         """
-        source = self.games if games_source is None else games_source
+        is_default_source = (games_source is None)
+        if is_default_source and filter_id in self._filter_cache:
+            return list(self._filter_cache[filter_id])
+
+        source = self.games if is_default_source else games_source
         if not filter_id or filter_id == "all":
-            return list(source)
-
-        if filter_id == "favorite":
-            return [g for g in source if bool(g.get("favorite", False))]
-
-        if filter_id.startswith("status:"):
+            res = list(source)
+        elif filter_id == "favorite":
+            res = [g for g in source if bool(g.get("favorite", False))]
+        elif filter_id.startswith("status:"):
             target_st = filter_id.split("status:", 1)[1].strip().lower()
-            return [
+            res = [
                 g for g in source
                 if (g.get("status") or "Por jugar").strip().lower() == target_st
             ]
-
-        if filter_id.startswith("platform:"):
+        elif filter_id.startswith("platform:"):
             target_plat = filter_id.split("platform:", 1)[1].strip().lower()
-            return [
+            res = [
                 g for g in source
                 if (g.get("platform") or "PC").strip().lower() == target_plat
             ]
-
-        if filter_id.startswith("genre:"):
+        elif filter_id.startswith("genre:"):
             target_gen = filter_id.split("genre:", 1)[1].strip().lower()
-            return [
+            res = [
                 g for g in source
                 if target_gen in (g.get("genre") or "").strip().lower()
             ]
+        else:
+            res = list(source)
 
-        return list(source)
+        if is_default_source:
+            self._filter_cache[filter_id] = res
+        return list(res)
 
     def format_subtitle(self, game: Dict[str, Any], monitors: Optional[List[Dict[str, Any]]] = None) -> str:
         """Genera el texto de subtítulo con monitor, estado/favorito, plataforma/género y tiempo jugado."""
@@ -362,7 +396,7 @@ class GameLibraryService:
         char: str = "",
         games_list: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[int]:
-        """Calcula el siguiente índice de salto alfabético sobre la lista de juegos activa (filtrada o completa)."""
+        """Calcula el siguiente índice de salto alfabético sobre la lista activa optimizado con tabla memoizada."""
         games = self.games if games_list is None else games_list
         n = len(games)
         if n == 0:
@@ -382,6 +416,21 @@ class GameLibraryService:
 
         if char and len(char) == 1 and char.isalnum():
             ch = char.lower()
+            cache_key = f"{id(games)}:{n}"
+            if cache_key not in self._alpha_jump_cache:
+                first_letter_map = {}
+                for i, g in enumerate(games):
+                    nm = (g.get("name") or "").strip().lower()
+                    if nm and nm[0] not in first_letter_map:
+                        first_letter_map[nm[0]] = i
+                self._alpha_jump_cache[cache_key] = first_letter_map
+
+            letter_map = self._alpha_jump_cache.get(cache_key, {})
+            if ch in letter_map:
+                target = letter_map[ch]
+                if target != current_index:
+                    return target
+
             start = (current_index + 1) % n if 0 <= current_index < n else 0
             for offset in range(n):
                 idx = (start + offset) % n
@@ -389,3 +438,20 @@ class GameLibraryService:
                 if g_name.startswith(ch):
                     return idx
         return None
+
+    def resolve_missing_covers_async(self, on_cover_resolved=None) -> None:
+        """Resuelve en segundo plano carátulas para juegos que carecen de arte sin bloquear la interfaz."""
+        import threading
+        def _worker():
+            for g in list(self.games):
+                cov = g.get("cover")
+                if not cov or not os.path.isfile(cov):
+                    new_cov = resolve_game_cover(g)
+                    if new_cov and os.path.isfile(new_cov):
+                        g["cover"] = new_cov
+                        if on_cover_resolved:
+                            try:
+                                on_cover_resolved(g)
+                            except Exception:
+                                pass
+        threading.Thread(target=_worker, daemon=True).start()

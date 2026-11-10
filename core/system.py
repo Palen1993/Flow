@@ -6,16 +6,15 @@ import json
 import ctypes
 from typing import List, Dict, Any, Tuple
 import psutil
-try:
-    import win32gui
-    import win32api
-    import win32process
-    import win32con
-except ImportError:
-    win32gui = None
-    win32api = None
-    win32process = None
-    win32con = None
+from core.platform_layer import (
+    win32gui,
+    win32api,
+    win32process,
+    win32con,
+    winreg,
+    is_windows,
+    safe_set_dpi_awareness,
+)
 
 try:
     from core.logger import get_logger
@@ -34,20 +33,15 @@ except Exception:
     pass
 
 # Configurar conciencia DPI por monitor (Per-Monitor DPI Aware)
-# Esto garantiza que las coordenadas del escritorio coincidan 1:1 con los píxeles reales de Windows
-try:
-    # 2 = PROCESS_PER_MONITOR_DPI_AWARE
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except Exception:
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
+safe_set_dpi_awareness()
 
 def is_admin() -> bool:
     """Comprueba si el proceso actual tiene permisos de Administrador."""
     try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
+        windll = getattr(ctypes, "windll", None)
+        if windll and hasattr(windll, "shell32"):
+            return bool(windll.shell32.IsUserAnAdmin())
+        return os.getuid() == 0 if hasattr(os, "getuid") else False
     except Exception:
         return False
 

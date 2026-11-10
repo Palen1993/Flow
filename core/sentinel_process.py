@@ -10,7 +10,7 @@ import time
 import argparse
 import logging
 import psutil
-import win32gui
+from core.platform_layer import win32gui, is_windows
 
 # Añadir raíz del proyecto a sys.path
 if getattr(sys, 'frozen', False):

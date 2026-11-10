@@ -7,10 +7,7 @@ import time
 import ctypes
 from ctypes import wintypes
 import threading
-try:
-    import winsound
-except ImportError:
-    winsound = None
+from core.platform_layer import winsound, is_windows, safe_play_sound
 from typing import Optional
 
 if getattr(sys, 'frozen', False):

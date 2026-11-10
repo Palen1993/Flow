@@ -14,11 +14,8 @@ import ctypes
 from typing import List, Dict, Any, Optional
 import customtkinter as ctk
 
-# Asignar AppUserModelID explícito para que Windows muestre el icono en la barra de tareas
-try:
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("gameflow.launcher.liquidglass.v1")
-except Exception:
-    pass
+from core.platform_layer import safe_set_app_user_model_id, is_windows
+safe_set_app_user_model_id("gameflow.launcher.liquidglass.v1")
 
 from core.logger import get_logger
 logger = get_logger("App")

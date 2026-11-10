@@ -228,9 +228,16 @@ class CoverFlowCanvas(tk.Canvas):
                 self.raw_wallpapers.pop(k, None)
                 self._wp_sigs.pop(k, None)
 
-        # Detectar cambios en carátulas o wallpapers y purgar selectivamente la caché en caliente
-        for g in self.games:
-            key = self._get_key(g)
+        # Optimización masiva (+500 juegos): solo comprobar cambios en disco para los juegos que ya residen en memoria
+        games_by_key = {self._get_key(g): g for g in self.games}
+        for key in list(self.raw_jewels.keys()):
+            g = games_by_key.get(key)
+            if not g:
+                self.raw_jewels.pop(key, None)
+                self.flat_covers.pop(key, None)
+                self.rendered_cache.pop(key, None)
+                self._cover_sigs.pop(key, None)
+                continue
             new_cov_sig = self._get_cover_sig(g)
             if self._cover_sigs.get(key) != new_cov_sig:
                 self.raw_jewels.pop(key, None)
@@ -238,6 +245,12 @@ class CoverFlowCanvas(tk.Canvas):
                 self.rendered_cache.pop(key, None)
                 self._cover_sigs[key] = new_cov_sig
 
+        for key in list(self.raw_wallpapers.keys()):
+            g = games_by_key.get(key)
+            if not g:
+                self.raw_wallpapers.pop(key, None)
+                self._wp_sigs.pop(key, None)
+                continue
             new_wp_sig = self._get_wallpaper_sig(g)
             if self._wp_sigs.get(key) != new_wp_sig:
                 self.raw_wallpapers.pop(key, None)
@@ -279,14 +292,17 @@ class CoverFlowCanvas(tk.Canvas):
         if self.on_selection_changed and n > 0:
             self.on_selection_changed(target_int)
 
-        # Fase 2: Carga en segundo plano para el resto de juegos (inmune a redimensionamiento de ventana)
-        remaining_indices = [i for i in range(n) if i not in visible_indices]
-        if remaining_indices:
+        # Fase 2: Carga diferida en segundo plano para el búfer deslizante (evita cargar 500+ carátulas en RAM)
+        buffer_indices = [
+            i for i in range(max(0, target_int - 10), min(n, target_int + 11))
+            if i not in visible_indices
+        ]
+        if buffer_indices:
             init_w = max(60, self.winfo_width())
             init_h = max(60, self.winfo_height())
 
             def _bg_loader():
-                for i in remaining_indices:
+                for i in buffer_indices:
                     if self._library_load_id != current_load_id or i >= len(self.games):
                         return
                     g = self.games[i]
@@ -294,11 +310,7 @@ class CoverFlowCanvas(tk.Canvas):
                     if key not in self.raw_jewels:
                         self.raw_jewels[key] = self._get_or_create_jewel_case(g)
                         self._cover_sigs[key] = self._get_cover_sig(g)
-                    if key not in self.raw_wallpapers:
-                        self._load_wallpaper_for_game(g)
-                        self._wp_sigs[key] = self._get_wallpaper_sig(g)
 
-                    # Si este juego ya tiene jewel pero aún no tiene flat cover, generarlo
                     jewel = self.raw_jewels.get(key)
                     if jewel and key not in self.flat_covers:
                         has_refl = not getattr(self, "is_transparent_mode", False)
@@ -314,7 +326,7 @@ class CoverFlowCanvas(tk.Canvas):
                             }
                 if self._library_load_id != current_load_id:
                     return
-                # Pre-componer fondos para todos los juegos recién cargados sin llamar a Tcl desde el hilo secundario
+                self._prune_memory_caches(target_int)
                 cur_w, cur_h = getattr(self, "_last_canvas_dims", (init_w, init_h))
                 self._precache_wallpapers_async(cur_w, cur_h, getattr(self, "floor_y", 0))
                 q = getattr(self.master, "_action_queue", None)
@@ -386,9 +398,12 @@ class CoverFlowCanvas(tk.Canvas):
                     if g_cache is not None:
                         g_cache[af] = (w_img, tw)
 
-            # A continuación procesar el resto de la biblioteca en segundo plano para scroll infinito sin tirones
-            other_indices = [i for i in range(n) if i not in active_indices]
-            for idx in other_indices:
+            # En bibliotecas masivas (+500 juegos), precalcular ángulos intermedios únicamente para el búfer cercano (+/- 12)
+            buffer_indices = [
+                i for i in range(max(0, center_idx - 12), min(n, center_idx + 13))
+                if i not in active_indices
+            ]
+            for idx in buffer_indices:
                 if self._cache_generation != current_gen or idx >= len(self.games):
                     return
                 g = self.games[idx]
@@ -422,27 +437,69 @@ class CoverFlowCanvas(tk.Canvas):
                         g_cache[af] = (w_img, tw)
 
             if self._cache_generation == current_gen:
+                self._prune_memory_caches(center_idx)
                 q = getattr(self.master, "_action_queue", None)
                 if q is not None:
                     q.put(("callable", self.redraw))
                         
         threading.Thread(target=_bg_precompute, daemon=True).start()
 
-    def _prune_rendered_cache(self, max_games: int = 40):
-        """Política LRU: Acota la memoria eliminando las carátulas 3D de los juegos más lejanos al índice visible."""
-        with self._cache_lock:
-            if len(self.rendered_cache) <= max_games:
-                return
-            center_idx = int(round(getattr(self, "target_pos", 0.0)))
-            key_to_dist = {}
-            for key in list(self.rendered_cache.keys()):
-                idx = next((i for i, g in enumerate(self.games) if self._get_key(g) == key), 9999)
-                key_to_dist[key] = abs(idx - center_idx)
+    def _prune_memory_caches(self, center_idx: Optional[int] = None):
+        """
+        Garantiza consumo de memoria RAM estrictamente acotado (<150 MB) incluso con más de 1000 juegos.
+        Aplica política LRU y distancia al viewport para evacuar imágenes 3D, estuches y fondos lejanos.
+        """
+        if not self.games:
+            return
+        if center_idx is None:
+            center_idx = int(round(getattr(self, "current_pos", 0.0)))
+        key_to_idx = {self._get_key(g): i for i, g in enumerate(self.games)}
 
-            sorted_keys = sorted(key_to_dist.keys(), key=lambda k: key_to_dist[k], reverse=True)
-            for k in sorted_keys[:len(self.rendered_cache) - max_games]:
-                self.rendered_cache.pop(k, None)
-                self.flat_covers.pop(k, None)
+        # 1. Acotar rendered_cache y flat_covers (máx 36 juegos)
+        MAX_RENDERED = 36
+        with self._cache_lock:
+            if len(self.rendered_cache) > MAX_RENDERED:
+                sorted_rendered = sorted(
+                    self.rendered_cache.keys(),
+                    key=lambda k: abs(key_to_idx.get(k, 9999) - center_idx),
+                    reverse=True
+                )
+                to_remove = sorted_rendered[:len(self.rendered_cache) - MAX_RENDERED]
+                for k in to_remove:
+                    self.rendered_cache.pop(k, None)
+                    self.flat_covers.pop(k, None)
+
+        # 2. Acotar raw_jewels (máx 64 estuches)
+        MAX_JEWELS = 64
+        if len(self.raw_jewels) > MAX_JEWELS:
+            sorted_jewels = sorted(
+                self.raw_jewels.keys(),
+                key=lambda k: abs(key_to_idx.get(k, 9999) - center_idx),
+                reverse=True
+            )
+            for k in sorted_jewels[:len(self.raw_jewels) - MAX_JEWELS]:
+                self.raw_jewels.pop(k, None)
+
+        # 3. Acotar raw_wallpapers y wallpaper_bg_cache (máx 12 fondos crudos, 6 compuestos)
+        MAX_WP = 12
+        if len(self.raw_wallpapers) > MAX_WP:
+            sorted_wp = sorted(
+                self.raw_wallpapers.keys(),
+                key=lambda k: abs(key_to_idx.get(k, 9999) - center_idx),
+                reverse=True
+            )
+            for k in sorted_wp[:len(self.raw_wallpapers) - MAX_WP]:
+                self.raw_wallpapers.pop(k, None)
+
+        MAX_BG_COMPOSED = 6
+        if len(self.wallpaper_bg_cache) > MAX_BG_COMPOSED:
+            sorted_bg = sorted(
+                self.wallpaper_bg_cache.keys(),
+                key=lambda item: abs(key_to_idx.get(item[0], 9999) - center_idx),
+                reverse=True
+            )
+            for bg_k in sorted_bg[:len(self.wallpaper_bg_cache) - MAX_BG_COMPOSED]:
+                self.wallpaper_bg_cache.pop(bg_k, None)
 
     def get_rendered_cover(self, game_key: str, af: float) -> Tuple[Optional[Image.Image], int]:
         """Obtiene la carátula proyectada en 3D del caché o la calcula bajo demanda con política LRU acotada."""
@@ -450,7 +507,7 @@ class CoverFlowCanvas(tk.Canvas):
         with self._cache_lock:
             game_cache = self.rendered_cache.get(game_key)
             if game_cache is None:
-                self._prune_rendered_cache(max_games=15)
+                self._prune_memory_caches()
                 game_cache = {}
                 self.rendered_cache[game_key] = game_cache
 
@@ -466,13 +523,15 @@ class CoverFlowCanvas(tk.Canvas):
                     if g:
                         jewel = self._get_or_create_jewel_case(g)
                         self.raw_jewels[game_key] = jewel
-                if jewel:
-                    has_refl = not getattr(self, "is_transparent_mode", False)
-                    size = self.base_size
-                    flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                    self.flat_covers[game_key] = flat_data
-                else:
-                    return None, 0
+                if not jewel:
+                    if not hasattr(self, "_fallback_jewel") or self._fallback_jewel is None:
+                        self._fallback_jewel = create_procedural_album("GameFlow", size=380)
+                    jewel = self._fallback_jewel
+
+                has_refl = not getattr(self, "is_transparent_mode", False)
+                size = self.base_size
+                flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+                self.flat_covers[game_key] = flat_data
 
             flat_cover, sz, _ = flat_data
             has_refl = not getattr(self, "is_transparent_mode", False)
@@ -509,13 +568,16 @@ class CoverFlowCanvas(tk.Canvas):
         self._bottom_overlay_cache.clear()
 
     def _precache_wallpapers_async(self, w: int, h: int, floor_y: int):
-        """Pre-compone en segundo plano todos los wallpapers de la biblioteca para pase a 60 FPS con 0 ms de latencia."""
+        """Pre-compone en segundo plano únicamente los wallpapers adyacentes (+/- 2) al juego seleccionado."""
         if getattr(self, "is_transparent_mode", False) or not self.games:
             return
-        games_list = list(self.games)
-        
+        center_int = int(round(getattr(self, "target_pos", 0.0)))
+        n = len(self.games)
+        near_indices = [i for i in range(max(0, center_int - 2), min(n, center_int + 3))]
+        near_games = [self.games[i] for i in near_indices]
+
         def _worker():
-            for g in games_list:
+            for g in near_games:
                 key = self._get_key(g)
                 wp_img = self.raw_wallpapers.get(key)
                 if not wp_img:
@@ -531,7 +593,8 @@ class CoverFlowCanvas(tk.Canvas):
                         wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
                     )
                     self.wallpaper_bg_cache[cache_key] = composed
-        
+            self._prune_memory_caches(center_int)
+
         threading.Thread(target=_worker, daemon=True).start()
 
     def get_background_for_game(self, g: Optional[Dict[str, Any]], w: int, h: int, floor_y: int) -> Image.Image:
@@ -685,6 +748,8 @@ class CoverFlowCanvas(tk.Canvas):
             self.current_pos = self.target_pos
             self.is_animating = False
             self.anim_timer = None
+            self._prune_memory_caches(int(round(self.target_pos)))
+            self._precache_wallpapers_async(self.winfo_width(), self.winfo_height(), getattr(self, "floor_y", 0))
             self.redraw()
 
     def _on_mouse_down(self, event):

@@ -1,8 +1,7 @@
 import os
 import sys
 import customtkinter as ctk
-import win32api
-import win32con
+from core.platform_layer import win32api, win32con, is_windows
 
 from ui.theme import COLOR_BG_DARK, COLOR_BG_CANVAS, COLOR_TRANS_KEY
 from gamepad_manager import force_foreground_window

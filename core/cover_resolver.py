@@ -2,30 +2,28 @@ import os
 import ctypes
 from typing import Optional, Dict, Any
 from PIL import Image
-try:
-    import win32gui
-    import win32ui
-except ImportError:
-    win32gui = None
-    win32ui = None
+from core.platform_layer import win32gui, win32ui, is_windows
 
 from core.config import COVERS_DIR
 from core.coverflow_engine import create_procedural_album
 
 def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
     """Extrae el icono de máxima resolución integrado en un .exe liberando todos los recursos GDI."""
+    if not is_windows():
+        return None
+    windll = getattr(ctypes, "windll", None)
+    if not windll or not hasattr(windll, "user32"):
+        return None
     hicon = ctypes.c_void_p()
     desktop_dc = 0
     hdc = None
     hdc_mem = None
     hbmp = None
-    if win32gui is None or win32ui is None:
-        return None
     try:
         ico_x = size
         ico_y = size
         icon_id = ctypes.c_uint()
-        res = ctypes.windll.user32.PrivateExtractIconsW(
+        res = windll.user32.PrivateExtractIconsW(
             exe_path, 0, ico_x, ico_y, ctypes.byref(hicon), ctypes.byref(icon_id), 1, 0
         )
         if res > 0 and hicon.value:
@@ -47,7 +45,7 @@ def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
         # 1) Deseleccionar HBITMAP del DC de memoria, 2) Eliminar DC de memoria, 3) Eliminar HBITMAP, 4) Liberar DC de escritorio
         if hicon.value:
             try:
-                ctypes.windll.user32.DestroyIcon(hicon.value)
+                windll.user32.DestroyIcon(hicon.value)
             except Exception:
                 pass
         if hdc_mem is not None:

@@ -72,18 +72,9 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         self.focus_set()
 
     def _detect_logical_drives(self) -> List[str]:
-        drives = []
-        try:
-            import win32api
-            drives = [d for d in win32api.GetLogicalDriveStrings().split('\x00') if d]
-        except Exception:
-            pass
-        if not drives:
-            for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
-                candidate = f"{letter}:\\"
-                if os.path.exists(candidate):
-                    drives.append(candidate)
-        return drives if drives else ["C:\\"]
+        from core.platform_layer import get_system_drives
+        drives = get_system_drives()
+        return drives if drives else ["/"]
 
     def _build_ui(self, title: str):
         pad = max(6, int(10 * self.scale_factor))
