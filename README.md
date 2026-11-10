@@ -78,6 +78,23 @@
   * **Guía y Notas del Juego**: Bloc de notas integrado para guardar códigos, combinaciones de puertas, builds de personajes o misiones secundarias.
 * Persistencia atómica y fusión inteligente resistente a cierres o ejecuciones en segundo plano.
 
+### 💾 9. Copias de Seguridad de Partidas Guardadas (Save Backup)
+* Accesible con tecla **C**, atajo **Ctrl+B** o desde el menú de opciones `(X)`:
+  * **Detección Automática de Carpetas de Guardado**: Escaneo inteligente de rutas estándar en Windows:
+    * `%USERPROFILE%/Saved Games`
+    * `%LOCALAPPDATA%` (incluyendo jerarquías Unreal Engine `Saved/SaveGames`)
+    * `%APPDATA%` (Roaming) y `%USERPROFILE%/AppData/LocalLow` (motores Unity e indie)
+    * `%USERPROFILE%/Documents/My Games` y `%USERPROFILE%/Documents`
+    * Subcarpetas de guardado locales de la instalación (`saves/`, `SaveData/`, `userdata/`).
+  * **Backups Automáticos y Manuales en .zip**:
+    * Creación de copias comprimidas con fecha y hora (`<Juego>_Save_YYYYMMDD_HHMMSS.zip`) con `manifest.json` interno de metadatos.
+    * Ejecución automática en segundo plano al terminar cada partida sin congelar la interfaz.
+    * Política de retención automática (conserva las últimas 10 copias por juego).
+  * **Restauración Segura con Protección Preventiva**:
+    * Restaura cualquier punto anterior con un solo clic o pulsación de mando.
+    * Genera automáticamente una copia de seguridad de protección (*pre-restore safety backup*) antes de sobrescribir archivos para garantizar que nunca pierdas datos.
+  * **Selector de Carpeta Personalizada**: Posibilidad de indicar o cambiar la carpeta de guardado manualmente mediante el explorador OSD.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
@@ -150,9 +167,10 @@ GameFlow/
 │   ├── external_launchers.py# Parsers de Steam, Epic Games, GOG y ROMs
 │   ├── library_service.py  # Gestión atómica y caché lazy-loading de games.json
 │   ├── platform_layer.py   # Capa de abstracción y mocks multiplataforma Windows/Linux/CI
+│   ├── save_backup_service.py# Detección de carpetas de guardado, compresión zip y retención
 │   └── stats_service.py    # Métricas de tiempo, agregaciones semanales/mensuales y metas
 ├── ui/
-│   ├── dialogs/            # Diálogos Glassmorphism (GameStats, InGameOverlay, Options, etc.)
+│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, GameStats, InGameOverlay, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI

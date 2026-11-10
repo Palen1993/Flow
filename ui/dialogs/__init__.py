@@ -18,8 +18,10 @@ from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
 from ui.dialogs.collections_dialog import CollectionsFilterDialog
 from ui.dialogs.in_game_overlay import InGameOverlayDialog
 from ui.dialogs.game_stats_dialog import GameStatsDialog
+from ui.dialogs.save_backup_dialog import SaveBackupDialog
 
 __all__ = [
+    "SaveBackupDialog",
     "GameStatsDialog",
     "InGameOverlayDialog",
     "CollectionsFilterDialog",

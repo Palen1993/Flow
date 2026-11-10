@@ -294,14 +294,36 @@ class GameStatsDialog(BaseGlassDialog):
         self.chart_canvas.pack(fill="both", expand=True, padx=12, pady=10)
         self.chart_canvas.bind("<Configure>", lambda e: self._draw_chart())
 
-        # Pie de resumen del período
+        # Pie de resumen del período y botón de copias de seguridad
+        tab0_footer = ctk.CTkFrame(self.frame_tab0, fg_color="transparent")
+        tab0_footer.pack(fill="x", pady=(0, 2))
+
         self.lbl_period_summary = ctk.CTkLabel(
-            self.frame_tab0,
+            tab0_footer,
             text="",
             font=font_body(11),
             text_color=COLOR_TEXT_DIM
         )
-        self.lbl_period_summary.pack(anchor="w", pady=(0, 2))
+        self.lbl_period_summary.pack(side="left")
+
+        btn_open_backup = ctk.CTkButton(
+            tab0_footer,
+            text="💾  Copias de Seguridad...",
+            width=175,
+            height=26,
+            font=font_button(11),
+            fg_color=COLOR_BTN_SECONDARY_BG,
+            hover_color=COLOR_BTN_SECONDARY_HOVER,
+            border_color=COLOR_BTN_SECONDARY_BORDER,
+            border_width=1,
+            corner_radius=8,
+            command=self._open_save_backup_dialog
+        )
+        btn_open_backup.pack(side="right")
+
+    def _open_save_backup_dialog(self):
+        from ui.dialogs.save_backup_dialog import SaveBackupDialog
+        SaveBackupDialog(self, self.game, on_game_updated=self.on_game_updated)
 
     def _set_chart_mode(self, mode: str):
         if self.chart_mode == mode:

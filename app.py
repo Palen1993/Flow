@@ -291,6 +291,34 @@ class App(ctk.CTk):
             on_game_updated=_on_updated
         )
 
+    def open_save_backup_dialog(self):
+        """Abre la pantalla de copias de seguridad y restauración de partidas guardadas para el juego actual."""
+        self.close_active_menu()
+        if hasattr(self, "_backup_dialog") and self._backup_dialog and self._backup_dialog.winfo_exists():
+            try:
+                self._backup_dialog.lift()
+                self._backup_dialog.focus_force()
+            except Exception:
+                pass
+            return
+
+        if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
+            return
+
+        game = self.games[self.selected_index]
+        from ui.dialogs.save_backup_dialog import SaveBackupDialog
+
+        def _on_updated(updated_game):
+            self.save_games()
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.update_ui_details(self.selected_index)
+
+        self._backup_dialog = SaveBackupDialog(
+            parent=self,
+            game=game,
+            on_game_updated=_on_updated
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -499,6 +527,9 @@ class App(ctk.CTk):
         self.bind("<F>", lambda e: self.toggle_current_game_favorite())
         self.bind("<s>", lambda e: self.open_game_stats_dialog())
         self.bind("<S>", lambda e: self.open_game_stats_dialog())
+        self.bind("<c>", lambda e: self.open_save_backup_dialog())
+        self.bind("<C>", lambda e: self.open_save_backup_dialog())
+        self.bind("<Control-b>", lambda e: self.open_save_backup_dialog())
         self.bind("<o>", lambda e: self.open_in_game_overlay())
         self.bind("<O>", lambda e: self.open_in_game_overlay())
         self.bind("<F1>", lambda e: self.open_in_game_overlay())
@@ -1072,6 +1103,7 @@ class App(ctk.CTk):
         items = [
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
+            ("💾", "Copias de Seguridad (Save Backup)...", self.open_save_backup_dialog),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
             ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),

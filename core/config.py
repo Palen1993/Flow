@@ -77,12 +77,14 @@ WALLPAPERS_DIR = os.path.join(STORAGE_DIR, "wallpapers")
 GAMEPAD_CONFIG_FILE = os.path.join(STORAGE_DIR, "gamepad_config.json")
 CACHE_DIR = os.path.join(STORAGE_DIR, ".cache")
 JEWELS_CACHE_DIR = os.path.join(CACHE_DIR, "jewels")
+BACKUPS_DIR = os.path.join(STORAGE_DIR, "backups")
 
 # Asegurar carpetas persistentes
 try:
     os.makedirs(COVERS_DIR, exist_ok=True)
     os.makedirs(WALLPAPERS_DIR, exist_ok=True)
     os.makedirs(JEWELS_CACHE_DIR, exist_ok=True)
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
 except Exception:
     pass
 
@@ -285,6 +287,11 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
                                 g["goals"] = match["goals"]
                             if match.get("notes") and not g.get("notes"):
                                 g["notes"] = match["notes"]
+                            # Preservar ruta de guardado personalizada y último backup
+                            if match.get("save_path") and not g.get("save_path"):
+                                g["save_path"] = match["save_path"]
+                            if match.get("last_backup") and not g.get("last_backup"):
+                                g["last_backup"] = match["last_backup"]
             except Exception as e:
                 _get_logger().warning(f"Aviso en merge de playtime: {e}")
 
@@ -315,7 +322,7 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
 def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base: str = "") -> bool:
     """
     Registra atómicamente el tiempo de juego transcurrido, fecha de última sesión,
-    conteo de partidas e historial diario en games.json.
+    conteo de partidas e historial diario en games.json, y dispara el auto-backup de partidas.
     Diseñado para ser invocado por el centinela independiente o hilos de monitorización.
     """
     if not game_path_or_exe and not exe_base:
@@ -329,6 +336,7 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
         today_str = time.strftime("%Y-%m-%d %H:%M")
         date_today = time.strftime("%Y-%m-%d")
         updated = False
+        matched_game = None
 
         target_norm = os.path.normcase(os.path.normpath(game_path_or_exe)) if game_path_or_exe else ""
         target_base = (exe_base or os.path.basename(game_path_or_exe) or "").lower()
@@ -357,6 +365,7 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
                 if gp and os.path.normcase(os.path.normpath(gp)) == target_norm:
                     _apply_stats(g)
                     updated = True
+                    matched_game = g
                     break
 
         # 2. Respaldo por nombre base de ejecutable
@@ -366,10 +375,18 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
                 if gp and os.path.basename(gp).lower() == target_base:
                     _apply_stats(g)
                     updated = True
+                    matched_game = g
                     break
 
         if updated:
-            return save_games_data(games, merge_existing_playtime=False)
+            ok = save_games_data(games, merge_existing_playtime=False)
+            if ok and matched_game:
+                try:
+                    from core.save_backup_service import run_auto_save_backup_async
+                    run_auto_save_backup_async(matched_game)
+                except Exception:
+                    pass
+            return ok
         return False
 
 def increment_game_launch_count_atomic(game_path_or_name: str) -> bool:

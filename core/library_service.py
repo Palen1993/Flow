@@ -134,7 +134,8 @@ class GameLibraryService:
                         "cover", "wallpaper", "wallpaper_opacity", "wallpaper_blur",
                         "monitor", "high_priority", "launch_args",
                         "favorite", "status", "genre", "platform",
-                        "play_count", "date_added", "daily_playtime", "goals", "notes"
+                        "play_count", "date_added", "daily_playtime", "goals", "notes",
+                        "save_path", "last_backup"
                     ):
                         if field in fg:
                             g[field] = fg[field]
