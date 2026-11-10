@@ -568,3 +568,108 @@ def render_launch_button_pill(
     downscaled = canvas.resize((width, height), Image.Resampling.LANCZOS)
     _LAUNCH_PILL_CACHE[key] = downscaled
     return downscaled
+
+
+_FILTER_CAPSULE_CACHE: Dict[Tuple[str, int, str, int], Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]] = {}
+
+def render_filter_capsule(
+    filter_label: str,
+    count: int,
+    family: str = "xbox",
+    height: int = 36
+) -> Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]:
+    """
+    Renderiza la píldora superior izquierda de Colecciones y Filtros en RGBA estilo Glassmorphism:
+      [ (LB/L1) ‹  FAVORITOS (4)  › (RB/R1) ]
+    Con zonas interactivas para clic con ratón:
+      - Izquierda (LB / ‹): acción 'filter_prev'
+      - Centro (Texto): acción 'filter_menu'
+      - Derecha (› / RB): acción 'filter_next'
+    """
+    family_norm = "playstation" if family == "playstation" else "xbox"
+    clean_lbl = (
+        filter_label
+        .replace("⭐", "★")
+        .replace("🎮", "")
+        .replace("⏳", "")
+        .replace("🔥", "")
+        .replace("🏆", "")
+        .replace("🕹️", "")
+        .replace("🏷️", "")
+        .replace("💤", "")
+        .strip()
+    )
+    cache_key = (clean_lbl, count, family_norm, height)
+    if cache_key in _FILTER_CAPSULE_CACHE:
+        return _FILTER_CAPSULE_CACHE[cache_key]
+
+    scale = 2
+    h2 = height * scale
+    cy = h2 // 2
+    font_lbl = _load_font(int(h2 * 0.33), bold=True)
+    font_arr = _load_font(int(h2 * 0.38), bold=True)
+
+    dummy = Image.new("RGBA", (10, 10))
+    ddraw = ImageDraw.Draw(dummy)
+
+    disp_text = f"{clean_lbl.upper()} ({count})"
+    tw = int(ddraw.textlength(disp_text, font=font_lbl))
+    arr_w = int(ddraw.textlength("‹", font=font_arr))
+
+    icon_r = int(h2 * 0.28)
+    bumper_w = int(icon_r * 2.1)
+    pad_x = int(h2 * 0.30)
+    gap = int(h2 * 0.20)
+
+    tot_w2 = pad_x + bumper_w + gap + arr_w + gap + tw + gap + arr_w + gap + bumper_w + pad_x
+    canvas = Image.new("RGBA", (tot_w2, h2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+
+    # Cápsula de cristal translúcida
+    draw.rounded_rectangle(
+        [2, 2, tot_w2 - 3, h2 - 3],
+        radius=(h2 // 2) - 2,
+        fill=(20, 23, 34, 240),
+        outline=(43, 51, 69, 255),
+        width=3
+    )
+
+    # 1. Bumper Izquierdo (LB / L1)
+    bx_left = pad_x + (bumper_w // 2)
+    _draw_button_glyph(draw, "lb", family_norm, bx_left, cy, icon_r)
+
+    # 2. Flecha izquierda ‹
+    arr1_x = pad_x + bumper_w + gap + (arr_w // 2)
+    draw.text((arr1_x, cy - 1), "‹", font=font_arr, fill=(148, 163, 184, 255), anchor="mm")
+
+    # 3. Texto central de la colección
+    tx = arr1_x + (arr_w // 2) + gap + (tw // 2)
+    txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl else (248, 250, 252, 255)
+    draw.text((tx, cy - 1), disp_text, font=font_lbl, fill=txt_col, anchor="mm")
+
+    # 4. Flecha derecha ›
+    arr2_x = tx + (tw // 2) + gap + (arr_w // 2)
+    draw.text((arr2_x, cy - 1), "›", font=font_arr, fill=(148, 163, 184, 255), anchor="mm")
+
+    # 5. Bumper Derecho (RB / R1)
+    bx_right = arr2_x + (arr_w // 2) + gap + (bumper_w // 2)
+    _draw_button_glyph(draw, "rb", family_norm, bx_right, cy, icon_r)
+
+    downscaled = canvas.resize((tot_w2 // scale, height), Image.Resampling.LANCZOS)
+    w_final = tot_w2 // scale
+
+    # Hitboxes para clic
+    left_bound = (pad_x + bumper_w + gap + arr_w) // scale
+    right_bound = (tot_w2 - pad_x - bumper_w - gap - arr_w) // scale
+    boxes = [
+        (0, 0, left_bound, height, "filter_prev"),
+        (left_bound, 0, right_bound, height, "filter_menu"),
+        (right_bound, 0, w_final, height, "filter_next"),
+    ]
+
+    res = (downscaled, boxes)
+    if len(_FILTER_CAPSULE_CACHE) > 32:
+        _FILTER_CAPSULE_CACHE.clear()
+    _FILTER_CAPSULE_CACHE[cache_key] = res
+    return res
+

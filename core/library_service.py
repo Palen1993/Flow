@@ -100,7 +100,11 @@ class GameLibraryService:
                     existing_keys.add(norm_p or g.get("name", "").strip().lower())
                     g["playtime_minutes"] = fg.get("playtime_minutes", g.get("playtime_minutes", 0))
                     g["last_played"] = fg.get("last_played", g.get("last_played"))
-                    for field in ("cover", "wallpaper", "wallpaper_opacity", "wallpaper_blur", "monitor", "high_priority", "launch_args"):
+                    for field in (
+                        "cover", "wallpaper", "wallpaper_opacity", "wallpaper_blur",
+                        "monitor", "high_priority", "launch_args",
+                        "favorite", "status", "genre", "platform"
+                    ):
                         if field in fg:
                             g[field] = fg[field]
 
@@ -124,7 +128,11 @@ class GameLibraryService:
         launch_args: str = "",
         wallpaper: Optional[str] = None,
         wallpaper_opacity: Optional[float] = None,
-        wallpaper_blur: Optional[float] = None
+        wallpaper_blur: Optional[float] = None,
+        favorite: bool = False,
+        status: str = "Por jugar",
+        genre: str = "",
+        platform: str = "PC"
     ) -> int:
         """Añade un nuevo juego a la colección y persiste en disco. Devuelve el índice del nuevo juego."""
         new_game = {
@@ -132,7 +140,11 @@ class GameLibraryService:
             "path": path,
             "monitor": monitor,
             "high_priority": high_priority,
-            "cover": cover
+            "cover": cover,
+            "favorite": bool(favorite),
+            "status": status or "Por jugar",
+            "genre": genre or "",
+            "platform": platform or "PC"
         }
         if launch_args:
             new_game["launch_args"] = launch_args
@@ -157,7 +169,11 @@ class GameLibraryService:
         launch_args: str = "",
         wallpaper: Optional[str] = None,
         wallpaper_opacity: Optional[float] = None,
-        wallpaper_blur: Optional[float] = None
+        wallpaper_blur: Optional[float] = None,
+        favorite: Optional[bool] = None,
+        status: Optional[str] = None,
+        genre: Optional[str] = None,
+        platform: Optional[str] = None
     ) -> bool:
         """Actualiza los metadatos de un juego existente y guarda en disco."""
         if 0 <= index < len(self.games):
@@ -179,7 +195,32 @@ class GameLibraryService:
                 existing["wallpaper_opacity"] = round(float(wallpaper_opacity), 2)
             if wallpaper_blur is not None:
                 existing["wallpaper_blur"] = round(float(wallpaper_blur), 1)
+            if favorite is not None:
+                existing["favorite"] = bool(favorite)
+            if status is not None:
+                existing["status"] = status
+            if genre is not None:
+                existing["genre"] = genre
+            if platform is not None:
+                existing["platform"] = platform
             self.games[index] = existing
+            self.save()
+            return True
+        return False
+
+    def toggle_favorite(self, index: int) -> bool:
+        """Alterna el estado favorito de un juego y persiste en disco. Devuelve el nuevo estado."""
+        if 0 <= index < len(self.games):
+            cur = bool(self.games[index].get("favorite", False))
+            self.games[index]["favorite"] = not cur
+            self.save()
+            return not cur
+        return False
+
+    def set_game_status(self, index: int, status: str) -> bool:
+        """Establece el estado de un juego ('Por jugar', 'Jugando', 'Completado', 'Abandonado') y persiste."""
+        if 0 <= index < len(self.games):
+            self.games[index]["status"] = status
             self.save()
             return True
         return False
@@ -192,10 +233,117 @@ class GameLibraryService:
             return max(0, min(len(self.games) - 1, index))
         return 0
 
+    def get_available_filters(self) -> List[Dict[str, Any]]:
+        """
+        Calcula dinámicamente la lista de colecciones y filtros disponibles con conteo de juegos:
+        - Todos
+        - Favoritos
+        - Por Jugar, Jugando, Completados
+        - Plataformas presentes en la biblioteca (Steam, Epic, GOG, PC...)
+        - Géneros presentes en la biblioteca (Acción, RPG, etc.)
+        """
+        filters: List[Dict[str, Any]] = []
+        total = len(self.games)
+        fav_count = sum(1 for g in self.games if g.get("favorite", False))
+        pj_count = sum(1 for g in self.games if (g.get("status") or "Por jugar").strip().lower() == "por jugar")
+        jg_count = sum(1 for g in self.games if (g.get("status") or "").strip().lower() == "jugando")
+        comp_count = sum(1 for g in self.games if (g.get("status") or "").strip().lower() in ("completado", "completados"))
+        aband_count = sum(1 for g in self.games if (g.get("status") or "").strip().lower() in ("abandonado", "abandonados"))
+
+        filters.append({"id": "all", "label": "Todos", "icon": "🎮", "category": "general", "count": total})
+        filters.append({"id": "favorite", "label": "Favoritos", "icon": "⭐", "category": "favorite", "count": fav_count})
+        filters.append({"id": "status:Por jugar", "label": "Por Jugar", "icon": "⏳", "category": "status", "count": pj_count})
+        if jg_count > 0:
+            filters.append({"id": "status:Jugando", "label": "Jugando", "icon": "🔥", "category": "status", "count": jg_count})
+        filters.append({"id": "status:Completado", "label": "Completados", "icon": "🏆", "category": "status", "count": comp_count})
+        if aband_count > 0:
+            filters.append({"id": "status:Abandonado", "label": "Abandonados", "icon": "💤", "category": "status", "count": aband_count})
+
+        # Plataformas presentes (Steam, Epic Games, GOG, PC, Emuladores...)
+        platforms: Dict[str, int] = {}
+        for g in self.games:
+            p = (g.get("platform") or "PC").strip()
+            if p:
+                platforms[p] = platforms.get(p, 0) + 1
+        for p, count in sorted(platforms.items(), key=lambda x: -x[1]):
+            if count > 0:
+                filters.append({"id": f"platform:{p}", "label": p, "icon": "🕹️", "category": "platform", "count": count})
+
+        # Géneros presentes (separados por comas si hay varios)
+        genres: Dict[str, int] = {}
+        for g in self.games:
+            raw_gen = g.get("genre") or ""
+            for piece in raw_gen.replace("/", ",").split(","):
+                piece_clean = piece.strip()
+                if piece_clean:
+                    genres[piece_clean] = genres.get(piece_clean, 0) + 1
+        for gen, count in sorted(genres.items(), key=lambda x: -x[1]):
+            if count > 0:
+                filters.append({"id": f"genre:{gen}", "label": gen, "icon": "🏷️", "category": "genre", "count": count})
+
+        return filters
+
+    def filter_games(
+        self,
+        filter_id: str,
+        games_source: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Filtra la lista de juegos según el identificador de filtro indicado:
+        - 'all': todos los juegos
+        - 'favorite': únicamente los marcados como favoritos
+        - 'status:<val>': coincide con el estado
+        - 'platform:<val>': coincide con la plataforma
+        - 'genre:<val>': coincide con el género
+        """
+        source = self.games if games_source is None else games_source
+        if not filter_id or filter_id == "all":
+            return list(source)
+
+        if filter_id == "favorite":
+            return [g for g in source if bool(g.get("favorite", False))]
+
+        if filter_id.startswith("status:"):
+            target_st = filter_id.split("status:", 1)[1].strip().lower()
+            return [
+                g for g in source
+                if (g.get("status") or "Por jugar").strip().lower() == target_st
+            ]
+
+        if filter_id.startswith("platform:"):
+            target_plat = filter_id.split("platform:", 1)[1].strip().lower()
+            return [
+                g for g in source
+                if (g.get("platform") or "PC").strip().lower() == target_plat
+            ]
+
+        if filter_id.startswith("genre:"):
+            target_gen = filter_id.split("genre:", 1)[1].strip().lower()
+            return [
+                g for g in source
+                if target_gen in (g.get("genre") or "").strip().lower()
+            ]
+
+        return list(source)
+
     def format_subtitle(self, game: Dict[str, Any], monitors: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Genera el texto de subtítulo con monitor asignado, horas jugadas y última sesión."""
+        """Genera el texto de subtítulo con monitor, estado/favorito, plataforma/género y tiempo jugado."""
         mon_idx = int(game.get("monitor", 0) or 0)
         parts = [format_monitor_label(mon_idx, monitors)]
+
+        # Estado y Favorito
+        if bool(game.get("favorite", False)):
+            parts.append("★ Favorito")
+        st = (game.get("status") or "").strip()
+        if st and st.lower() != "por jugar":
+            parts.append(st)
+        plat = (game.get("platform") or "").strip()
+        if plat and plat != "PC":
+            parts.append(plat)
+        gen = (game.get("genre") or "").strip()
+        if gen:
+            parts.append(gen)
+
         mins = int(game.get("playtime_minutes", 0) or 0)
         if mins >= 60:
             hours = mins / 60.0
@@ -211,20 +359,22 @@ class GameLibraryService:
         self,
         current_index: int,
         direction: int = 0,
-        char: str = ""
+        char: str = "",
+        games_list: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[int]:
-        """Calcula el siguiente índice de salto alfabético (por letra o por gatillo LT/RT)."""
-        n = len(self.games)
+        """Calcula el siguiente índice de salto alfabético sobre la lista de juegos activa (filtrada o completa)."""
+        games = self.games if games_list is None else games_list
+        n = len(games)
         if n == 0:
             return None
 
         if direction != 0:
-            cur_name = (self.games[current_index].get("name") or "").strip().lower()
+            cur_name = (games[current_index].get("name") or "").strip().lower() if 0 <= current_index < n else ""
             cur_initial = cur_name[0] if cur_name else ""
             step = 1 if direction > 0 else -1
             for offset in range(1, n):
                 idx = (current_index + offset * step) % n
-                cand_name = (self.games[idx].get("name") or "").strip().lower()
+                cand_name = (games[idx].get("name") or "").strip().lower()
                 cand_initial = cand_name[0] if cand_name else ""
                 if cand_initial != cur_initial:
                     return idx
@@ -232,10 +382,10 @@ class GameLibraryService:
 
         if char and len(char) == 1 and char.isalnum():
             ch = char.lower()
-            start = (current_index + 1) % n
+            start = (current_index + 1) % n if 0 <= current_index < n else 0
             for offset in range(n):
                 idx = (start + offset) % n
-                g_name = (self.games[idx].get("name") or "").strip().lower()
+                g_name = (games[idx].get("name") or "").strip().lower()
                 if g_name.startswith(ch):
                     return idx
         return None

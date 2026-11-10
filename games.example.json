@@ -10,6 +10,10 @@
     "wallpaper_opacity": 0.25,
     "wallpaper_blur": 1.5,
     "playtime_minutes": 0,
-    "last_played": 0
+    "last_played": 0,
+    "favorite": false,
+    "status": "Por jugar",
+    "genre": "Acción / Aventura",
+    "platform": "PC"
   }
 ]

@@ -26,7 +26,7 @@ from ui.theme import (
 class AddEditGameDialog(BaseGlassDialog):
     def __init__(self, parent, monitors: List[Dict[str, Any]], game_data: Optional[Dict[str, Any]] = None, callback=None, delete_callback=None, on_close_callback=None):
         title = "Editar Juego" if game_data else "Agregar Juego"
-        super().__init__(parent, title=title, width=650, height=560, corner_radius=26)
+        super().__init__(parent, title=title, width=680, height=640, corner_radius=26)
         self.callback = callback
         self.delete_callback = delete_callback
         self.on_close_callback = on_close_callback
@@ -38,6 +38,10 @@ class AddEditGameDialog(BaseGlassDialog):
         self.current_wallpaper_path = game_data.get("wallpaper", "") if game_data else ""
         self.current_wallpaper_opacity = float(game_data.get("wallpaper_opacity", 0.25)) if game_data else 0.25
         self.current_wallpaper_blur = float(game_data.get("wallpaper_blur", 1.5)) if game_data else 1.5
+        self.current_favorite = bool(game_data.get("favorite", False)) if game_data else False
+        self.current_status = str(game_data.get("status", "Por jugar") or "Por jugar") if game_data else "Por jugar"
+        self.current_platform = str(game_data.get("platform", "PC") or "PC") if game_data else "PC"
+        self.current_genre = str(game_data.get("genre", "") or "") if game_data else ""
         self.preview_image_ref = None
         
         self.create_widgets()
@@ -45,22 +49,24 @@ class AddEditGameDialog(BaseGlassDialog):
     _center_window = BaseGlassDialog.center_window
 
     def _start_drag(self, event):
-        if hasattr(self, "monitor_dropdown") and getattr(self.monitor_dropdown, "_active_dropdown", None):
-            try:
-                self.monitor_dropdown._active_dropdown.destroy()
-                self.monitor_dropdown._active_dropdown = None
-            except Exception:
-                pass
+        for dd_name in ("monitor_dropdown", "status_dropdown"):
+            if hasattr(self, dd_name) and getattr(getattr(self, dd_name), "_active_dropdown", None):
+                try:
+                    getattr(self, dd_name)._active_dropdown.destroy()
+                    getattr(self, dd_name)._active_dropdown = None
+                except Exception:
+                    pass
         super()._start_drag(event)
 
     def destroy(self):
         self._cleanup_temp_preview()
-        if hasattr(self, "monitor_dropdown") and getattr(self.monitor_dropdown, "_active_dropdown", None):
-            try:
-                self.monitor_dropdown._active_dropdown.destroy()
-                self.monitor_dropdown._active_dropdown = None
-            except Exception:
-                pass
+        for dd_name in ("monitor_dropdown", "status_dropdown"):
+            if hasattr(self, dd_name) and getattr(getattr(self, dd_name), "_active_dropdown", None):
+                try:
+                    getattr(self, dd_name)._active_dropdown.destroy()
+                    getattr(self, dd_name)._active_dropdown = None
+                except Exception:
+                    pass
         try:
             self.grab_release()
         except Exception:
@@ -211,14 +217,55 @@ class AddEditGameDialog(BaseGlassDialog):
         )
         self.monitor_dropdown.grid(row=4, column=1, padx=(0, 12), pady=8, sticky="ew")
         
-        # Prioridad alta
+        # Estado del juego
+        ctk.CTkLabel(right_frame, text="Estado:").grid(row=5, column=0, padx=12, pady=5, sticky="w")
+        status_options = ["Por jugar", "Jugando", "Completado", "Abandonado"]
+        init_st = self.current_status if self.current_status in status_options else "Por jugar"
+        self.status_var = ctk.StringVar(value=init_st)
+        self.status_dropdown = GlassDropdownButton(
+            right_frame,
+            values=status_options,
+            variable=self.status_var,
+            width=240,
+            height=30,
+            item_icon="⏳  "
+        )
+        self.status_dropdown.grid(row=5, column=1, padx=(0, 12), pady=5, sticky="ew")
+
+        # Género del juego
+        ctk.CTkLabel(right_frame, text="Género:").grid(row=6, column=0, padx=12, pady=5, sticky="w")
+        self.genre_entry = ctk.CTkEntry(
+            right_frame, placeholder_text="Ej. Acción, RPG, Aventura...",
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
+        )
+        if self.current_genre:
+            self.genre_entry.insert(0, self.current_genre)
+        self.genre_entry.grid(row=6, column=1, padx=(0, 12), pady=5, sticky="ew")
+
+        # Plataforma del juego
+        ctk.CTkLabel(right_frame, text="Plataforma:").grid(row=7, column=0, padx=12, pady=5, sticky="w")
+        self.platform_entry = ctk.CTkEntry(
+            right_frame, placeholder_text="Ej. PC, Steam, Epic, GOG...",
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
+        )
+        self.platform_entry.insert(0, self.current_platform or "PC")
+        self.platform_entry.grid(row=7, column=1, padx=(0, 12), pady=5, sticky="ew")
+
+        # Opciones y Favorito
+        check_box = ctk.CTkFrame(right_frame, fg_color="transparent")
+        check_box.grid(row=8, column=0, columnspan=2, padx=12, pady=6, sticky="w")
+
+        self.favorite_var = ctk.BooleanVar(value=self.current_favorite)
+        self.favorite_check = ctk.CTkCheckBox(check_box, text="⭐ Favorito", variable=self.favorite_var)
+        self.favorite_check.pack(side="left", padx=(0, 16))
+
         self.priority_var = ctk.BooleanVar(value=self.game_data.get("high_priority", True) if self.game_data else True)
-        self.priority_check = ctk.CTkCheckBox(right_frame, text="Asignar prioridad 'Alta' en Windows", variable=self.priority_var)
-        self.priority_check.grid(row=5, column=0, columnspan=2, padx=12, pady=10, sticky="w")
+        self.priority_check = ctk.CTkCheckBox(check_box, text="Prioridad 'Alta' (Win32)", variable=self.priority_var)
+        self.priority_check.pack(side="left")
         
         # Botones inferiores Glassmorphism (Píldoras iOS emblemáticas)
         btn_frame = ctk.CTkFrame(self.main_card, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=20, pady=(12, 22))
+        btn_frame.pack(fill="x", padx=20, pady=(8, 18))
         
         self.btn_delete = None
         if self.game_data and self.delete_callback:
@@ -257,6 +304,10 @@ class AddEditGameDialog(BaseGlassDialog):
             ("btn", self.btn_browse_exe, lambda: self.browse_exe()),
             ("entry", self.args_entry, lambda: self._open_keyboard_for_entry(self.args_entry, "Parámetros de Ejecución")),
             ("dropdown", self.monitor_dropdown, lambda: self.monitor_dropdown._toggle_dropdown()),
+            ("dropdown", self.status_dropdown, lambda: self.status_dropdown._toggle_dropdown()),
+            ("entry", self.genre_entry, lambda: self._open_keyboard_for_entry(self.genre_entry, "Género del Juego")),
+            ("entry", self.platform_entry, lambda: self._open_keyboard_for_entry(self.platform_entry, "Plataforma")),
+            ("check", self.favorite_check, lambda: self.favorite_check.toggle()),
             ("check", self.priority_check, lambda: self.priority_check.toggle()),
             ("btn", self.btn_save, lambda: self.save()),
             ("btn", self.btn_cancel, lambda: self.destroy()),
@@ -411,87 +462,62 @@ class AddEditGameDialog(BaseGlassDialog):
     def _get_nav_target(self, cur_idx: int, direction: str) -> int:
         """Navegación espacial 2D bidireccional optimizada para mando de consola."""
         has_del = (self.btn_delete is not None)
-        del_idx = 10 if has_del else -1
+        save_idx = 12
+        cancel_idx = 13
+        del_idx = 14 if has_del else -1
+        last_right = 11
 
         if direction == "up":
             if cur_idx == 0:
-                return del_idx if has_del else 8
+                return del_idx if has_del else cancel_idx
             elif cur_idx == 1:
                 return 0
             elif cur_idx == 2:
-                return 8
-            elif cur_idx == 3:
-                return 2
-            elif cur_idx == 4:
-                return 3
-            elif cur_idx == 5:
-                return 4
-            elif cur_idx == 6:
-                return 5
-            elif cur_idx == 7:
-                return 6
-            elif cur_idx == 8:
-                return 7
-            elif cur_idx == 9:
-                return 7
-            elif cur_idx == 10:
-                return 1
+                return save_idx
+            elif 3 <= cur_idx <= last_right:
+                return cur_idx - 1
+            elif cur_idx in (save_idx, cancel_idx, del_idx):
+                return last_right
 
         elif direction == "down":
             if cur_idx == 0:
                 return 1
             elif cur_idx == 1:
-                return del_idx if has_del else 8
-            elif cur_idx == 2:
-                return 3
-            elif cur_idx == 3:
-                return 4
-            elif cur_idx == 4:
-                return 5
-            elif cur_idx == 5:
-                return 6
-            elif cur_idx == 6:
-                return 7
-            elif cur_idx == 7:
-                return 8
-            elif cur_idx == 8:
+                return del_idx if has_del else cancel_idx
+            elif 2 <= cur_idx < last_right:
+                return cur_idx + 1
+            elif cur_idx == last_right:
+                return save_idx
+            elif cur_idx in (save_idx, cancel_idx, del_idx):
                 return 2
-            elif cur_idx == 9:
-                return 2
-            elif cur_idx == 10:
-                return 0
 
         elif direction == "left":
-            if cur_idx == 0:
+            if cur_idx in (0, 1):
+                return cur_idx
+            elif 2 <= cur_idx <= 4:
                 return 0
-            elif cur_idx == 1:
+            elif 5 <= cur_idx <= last_right:
                 return 1
-            elif cur_idx == 2:
-                return 0
-            elif cur_idx in (3, 4, 5, 6):
-                return 1
-            elif cur_idx == 7:
+            elif cur_idx == save_idx:
                 return del_idx if has_del else 1
-            elif cur_idx == 8:
-                return del_idx if has_del else 1
-            elif cur_idx == 9:
-                return 8
-            elif cur_idx == 10:
-                return 10
+            elif cur_idx == cancel_idx:
+                return save_idx
+            elif cur_idx == del_idx:
+                return del_idx
 
         elif direction == "right":
             if cur_idx == 0:
                 return 2
             elif cur_idx == 1:
-                return 3
-            elif cur_idx in (2, 3, 4, 5, 6, 7):
+                return 5
+            elif 2 <= cur_idx <= last_right:
                 return cur_idx
-            elif cur_idx == 8:
-                return 9
-            elif cur_idx == 9:
-                return 9
-            elif cur_idx == 10:
-                return 8
+            elif cur_idx == save_idx:
+                return cancel_idx
+            elif cur_idx == cancel_idx:
+                return cancel_idx
+            elif cur_idx == del_idx:
+                return save_idx
 
         return cur_idx
 
@@ -627,17 +653,29 @@ class AddEditGameDialog(BaseGlassDialog):
                 except Exception:
                     pass
             
+        fav_val = bool(self.favorite_var.get()) if hasattr(self, "favorite_var") else False
+        st_val = self.status_var.get().strip() if hasattr(self, "status_var") else "Por jugar"
+        gen_val = self.genre_entry.get().strip() if hasattr(self, "genre_entry") else ""
+        plat_val = self.platform_entry.get().strip() if hasattr(self, "platform_entry") else "PC"
+
         if self.callback:
             try:
                 self.callback(
                     name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
-                    self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur
+                    self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur,
+                    fav_val, st_val, gen_val, plat_val
                 )
             except TypeError:
                 try:
-                    self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                    self.callback(
+                        name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
+                        self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur
+                    )
                 except TypeError:
-                    self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
+                    try:
+                        self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                    except TypeError:
+                        self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
         self.destroy()
 
     def confirm_delete(self):

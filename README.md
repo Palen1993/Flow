@@ -49,6 +49,16 @@
   * **ROMs de emuladores** (RetroArch, PCSX2, etc.)
 * Modo de ejecución prioritario en Windows y centinela de procesos en segundo plano.
 
+### 🏷️ 6. Sistema de Colecciones y Filtros Instantáneos (LB / RB)
+* Navegación fluida entre colecciones pulsando los botones superiores **LB / RB** (o **L1 / R1** en PlayStation) o teclas **Q / E**:
+  * **Todos**: Catálogo completo unificado.
+  * **⭐ Favoritos**: Acceso directo a tus títulos predilectos (alternable con `F` o menú de opciones).
+  * **Por Estado**: Clasificación en *Por jugar*, *Jugando*, *Completados* y *Abandonados*.
+  * **Por Plataforma**: Detección de fuentes (*Steam*, *Epic Games*, *GOG*, *PC*, emuladores...).
+  * **Por Género**: Filtro por categoría (*Acción*, *RPG*, *Aventura*, *Estrategia*, etc.).
+* Píldora HUD superior izquierda en estilo Glassmorphism con indicador interactivo de colección, conteo de títulos y glifos adaptativos.
+* Diálogo modal accesible desde el menú de opciones `(X)` para seleccionar directamente cualquier colección.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
@@ -61,8 +71,8 @@
 | **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Atrás |
 | **X** | **Cuadrado** | Abrir menú de opciones | Abrir teclado OSD / Marcar todo |
 | **Y** | **Triángulo** | Confirmar salida del lanzador | Salto rápido a carpeta Juegos / Cambiar monitor |
-| **LB / RB** | **L1 / R1** | Salto alfabético rápido en biblioteca | Cambiar de disco / Ajustar opacidad |
-| **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD | Ajustar borrosidad / desenfoque |
+| **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** (Favoritos, Estado, Plataforma, Género) | Cambiar de disco / Ajustar opacidad |
+| **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD (A-Z) | Ajustar borrosidad / desenfoque |
 | **Start** | **Options** | Alternar Pantalla Completa / Mini Dock | Seleccionar carpeta o guardar |
 | **Select / Back** | **Share / Touchpad** | Minimizar a la bandeja del sistema | Alternar Carátula 3D vs Wallpaper 16:9 |
 | **Guía / Xbox** | **PS Button** | Restaurar ventana y traer al frente | Restaurar foco |

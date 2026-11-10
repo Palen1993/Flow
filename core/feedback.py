@@ -7,7 +7,10 @@ import time
 import ctypes
 from ctypes import wintypes
 import threading
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 from typing import Optional
 
 if getattr(sys, 'frozen', False):
@@ -207,7 +210,7 @@ def play_feedback_sound(name: str):
     if not os.path.isfile(sound_file):
         ensure_sound_assets()
 
-    if os.path.isfile(sound_file):
+    if os.path.isfile(sound_file) and winsound:
         try:
             winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except Exception:

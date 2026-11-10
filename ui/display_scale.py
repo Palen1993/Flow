@@ -7,8 +7,12 @@ import sys
 import ctypes
 from typing import Tuple, Optional
 import tkinter as tk
-import win32api
-import win32con
+try:
+    import win32api
+    import win32con
+except ImportError:
+    win32api = None
+    win32con = None
 
 # Línea base de diseño de referencia: Full HD (1920x1080 @ 96 DPI)
 BASE_RES_W = 1920

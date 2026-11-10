@@ -1,7 +1,10 @@
 import os
 import re
 import json
-import winreg
+try:
+    import winreg
+except ImportError:
+    winreg = None
 from typing import List, Dict, Any, Optional, Set
 
 from core.scanner import find_executables_in_dir, score_candidate_exe, clean_game_name

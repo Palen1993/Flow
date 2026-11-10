@@ -5,7 +5,10 @@ import json
 import subprocess
 import ctypes
 from ctypes import wintypes
-import winreg
+try:
+    import winreg
+except ImportError:
+    winreg = None
 from typing import Tuple, Dict, Any, List, Optional
 
 # -------------------------------------------------------------
@@ -376,36 +379,37 @@ class XINPUT_STATE(ctypes.Structure):
 
 _xinput_dll = None
 _xinput_get_state_ex = None
-for _dll in ["xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"]:
-    try:
-        _xinput_dll = ctypes.windll.LoadLibrary(_dll)
+if hasattr(ctypes, "windll"):
+    for _dll in ["xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"]:
         try:
-            # Ordinal 100 es la función no documentada XInputGetStateEx que incluye el botón Xbox / Guide (0x0400)
-            _xinput_get_state_ex = _xinput_dll[100]
+            _xinput_dll = ctypes.windll.LoadLibrary(_dll)
+            try:
+                # Ordinal 100 es la función no documentada XInputGetStateEx que incluye el botón Xbox / Guide (0x0400)
+                _xinput_get_state_ex = _xinput_dll[100]
+            except Exception:
+                _xinput_get_state_ex = None
+            break
         except Exception:
-            _xinput_get_state_ex = None
-        break
-    except Exception:
-        pass
+            pass
 
 # -------------------------------------------------------------
 # WinMM (DirectInput, DualSense, DualShock y Bluetooth)
 # -------------------------------------------------------------
 class JOYINFOEX(ctypes.Structure):
     _fields_ = [
-        ("dwSize", wintypes.DWORD),
-        ("dwFlags", wintypes.DWORD),
-        ("dwXpos", wintypes.DWORD),
-        ("dwYpos", wintypes.DWORD),
-        ("dwZpos", wintypes.DWORD),
-        ("dwRpos", wintypes.DWORD),
-        ("dwUpos", wintypes.DWORD),
-        ("dwVpos", wintypes.DWORD),
-        ("dwButtons", wintypes.DWORD),
-        ("dwButtonNumber", wintypes.DWORD),
-        ("dwPOV", wintypes.DWORD),
-        ("dwReserved1", wintypes.DWORD),
-        ("dwReserved2", wintypes.DWORD)
+        ("dwSize", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwFlags", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwXpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwYpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwZpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwRpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwUpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwVpos", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwButtons", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwButtonNumber", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwPOV", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwReserved1", wintypes.DWORD if wintypes else ctypes.c_uint32),
+        ("dwReserved2", wintypes.DWORD if wintypes else ctypes.c_uint32)
     ]
 
 class JOYCAPSW(ctypes.Structure):
@@ -429,10 +433,11 @@ class JOYCAPSW(ctypes.Structure):
     ]
 
 class RAWINPUTDEVICELIST(ctypes.Structure):
-    _fields_ = [("hDevice", wintypes.HANDLE), ("dwType", wintypes.DWORD)]
+    _fields_ = [("hDevice", wintypes.HANDLE if wintypes else ctypes.c_void_p), ("dwType", wintypes.DWORD if wintypes else ctypes.c_uint32)]
 
-_winmm = ctypes.windll.winmm
-_user32 = ctypes.windll.user32
+_windll = getattr(ctypes, "windll", None)
+_winmm = getattr(_windll, "winmm", None)
+_user32 = getattr(_windll, "user32", None)
 JOY_RETURNALL = 0x000000FF
 
 def get_connected_controller_family(cfg: Optional[Dict[str, Any]] = None) -> str:

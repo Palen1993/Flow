@@ -48,8 +48,8 @@ from ui.dropdowns import FloatingGlassMenu
 from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
-    ExternalImportDialog, BatchSteamGridDBDialog, invalidate_thumb_cache,
-    show_info, show_error, ask_yes_no, browse_folder
+    ExternalImportDialog, BatchSteamGridDBDialog, CollectionsFilterDialog,
+    invalidate_thumb_cache, show_info, show_error, ask_yes_no, browse_folder
 )
 from gamepad_manager import (
     load_gamepad_config, poll_active_gamepad, get_connected_controller_family,
@@ -76,11 +76,16 @@ class App(ctk.CTk):
         # Configurar icono personalizado en barra de tareas y ventana
         self.window_manager.setup_app_icon()
 
-        # Cargar colección de juegos en memoria
-        self.games = self.library.load()
+        # Cargar colección de juegos en memoria y preparar filtros
+        self.library.load()
+        self.current_filter_id = "all"
+        self.available_filters = self.library.get_available_filters()
+        self.filtered_games = self.library.filter_games(self.current_filter_id)
+        self.games = self.filtered_games
         self.monitors = get_monitors()
         self.selected_index = 0
         self.exit_dialog = None
+        self._collections_dialog = None
         self._modal_stack: List[Any] = []
         self._action_queue: queue.Queue = queue.Queue()
         self.gamepad_config = load_gamepad_config()
@@ -148,20 +153,120 @@ class App(ctk.CTk):
     # Gestión de Colección de Juegos (Delegación a GameLibraryService)
     # -------------------------------------------------------------
     def load_games(self) -> List[Dict[str, Any]]:
-        self.games = self.library.load()
+        self.library.load()
+        self.available_filters = self.library.get_available_filters()
+        self.filtered_games = self.library.filter_games(self.current_filter_id)
+        self.games = self.filtered_games
         return self.games
 
     def save_games(self) -> None:
-        self.library.games = self.games
         self.library.save()
 
     def refresh_games_from_disk_if_modified(self) -> bool:
         """Sincroniza metadatos de juegos actualizados en disco por el centinela sin reiniciar la selección."""
         res = self.library.refresh_if_modified()
         if res:
-            self.games = self.library.games
-            self.update_ui_details(self.selected_index)
+            self.apply_filter(self.current_filter_id, keep_selection=True)
         return res
+
+    def _get_library_index_for_game(self, game: Optional[Dict[str, Any]]) -> int:
+        """Resuelve el índice absoluto de un juego en la colección global library.games."""
+        if not game:
+            return 0
+        gp = game.get("path")
+        gn = (game.get("name") or "").strip().lower()
+        for idx, lg in enumerate(self.library.games):
+            if gp and lg.get("path") == gp:
+                return idx
+            if gn and (lg.get("name") or "").strip().lower() == gn:
+                return idx
+        return 0
+
+    def apply_filter(self, filter_id: str, keep_selection: bool = True):
+        """Aplica un filtro o colección a la biblioteca (Todos, Favoritos, Estado, Plataforma o Género)."""
+        prev_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
+        self.current_filter_id = filter_id
+        self.available_filters = self.library.get_available_filters()
+        self.filtered_games = self.library.filter_games(filter_id)
+        self.games = self.filtered_games
+
+        new_idx = 0
+        if keep_selection and prev_game:
+            pg_path = prev_game.get("path")
+            pg_name = (prev_game.get("name") or "").strip().lower()
+            for i, g in enumerate(self.games):
+                if (pg_path and g.get("path") == pg_path) or (pg_name and (g.get("name") or "").strip().lower() == pg_name):
+                    new_idx = i
+                    break
+
+        active_filt = next(
+            (f for f in self.available_filters if f["id"] == filter_id),
+            {"label": "Todos", "count": len(self.games), "icon": "🎮"}
+        )
+
+        if hasattr(self, "cover_stage") and self.cover_stage:
+            self.cover_stage.ui_filter_label = active_filt.get("label", "Todos")
+            self.cover_stage.ui_filter_count = len(self.games)
+            self.cover_stage.set_games(self.games, target_index=new_idx)
+
+        self.selected_index = new_idx if self.games else 0
+        self.update_ui_details(self.selected_index)
+
+    def cycle_filter(self, direction: int):
+        """Cambia cíclicamente de colección/filtro con los botones LB/RB del mando o teclas Q/E."""
+        filters = self.library.get_available_filters()
+        if not filters:
+            return
+        cur_id = self.current_filter_id
+        cur_idx = 0
+        for i, f in enumerate(filters):
+            if f["id"] == cur_id:
+                cur_idx = i
+                break
+        next_idx = (cur_idx + direction) % len(filters)
+        next_filt = filters[next_idx]
+        try:
+            from core.feedback import feedback_click
+            feedback_click()
+        except Exception:
+            pass
+        self.apply_filter(next_filt["id"], keep_selection=True)
+        self.set_status(f"Colección: {next_filt.get('icon', '🏷️')} {next_filt.get('label', 'Todos')} ({len(self.games)} juegos)")
+
+    def open_collections_dialog(self):
+        """Abre el diálogo modal de exploración y filtrado rápido de colecciones."""
+        self.close_active_menu()
+        if hasattr(self, "_collections_dialog") and self._collections_dialog and self._collections_dialog.winfo_exists():
+            try:
+                self._collections_dialog.lift()
+                self._collections_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        filters = self.library.get_available_filters()
+        self._collections_dialog = CollectionsFilterDialog(
+            self,
+            filters=filters,
+            current_filter_id=self.current_filter_id,
+            on_select_filter=lambda fid: self.apply_filter(fid, keep_selection=True)
+        )
+
+    def toggle_current_game_favorite(self):
+        """Alterna el estado favorito del juego actualmente seleccionado."""
+        self.close_active_menu()
+        if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
+            return
+        target_game = self.games[self.selected_index]
+        real_idx = self._get_library_index_for_game(target_game)
+        new_fav = self.library.toggle_favorite(real_idx)
+        try:
+            from core.feedback import feedback_click
+            feedback_click()
+        except Exception:
+            pass
+        status_msg = f"★ '{target_game.get('name')}' añadido a Favoritos" if new_fav else f"'{target_game.get('name')}' quitado de Favoritos"
+        self.set_status(status_msg)
+        self.apply_filter(self.current_filter_id, keep_selection=True)
 
     def _format_monitor_full_label(self, mon_idx: int) -> str:
         """Devuelve el texto completo del monitor (ej: 'Monitor 2 - SAMSUNG (1920x1080)')."""
@@ -175,7 +280,7 @@ class App(ctk.CTk):
         if not self.games or self._get_topmost_active_modal() is not None:
             return
         ch = getattr(event, "char", "") if event else ""
-        next_idx = self.library.find_alphabetical_jump(self.selected_index, direction=direction, char=ch)
+        next_idx = self.library.find_alphabetical_jump(self.selected_index, direction=direction, char=ch, games_list=self.games)
         if next_idx is not None:
             self.cover_stage.select_index(next_idx)
             target_game = self.games[next_idx]
@@ -344,6 +449,14 @@ class App(ctk.CTk):
         self.bind("<Tab>", lambda e: self.toggle_size_mode())
         self.bind("<Escape>", lambda e: self.set_mini_mode() if not self.is_mini_mode else None)
         self.bind("<Key>", self._on_quick_letter_jump, add="+")
+        self.bind("<q>", lambda e: self.cycle_filter(-1))
+        self.bind("<Q>", lambda e: self.cycle_filter(-1))
+        self.bind("<e>", lambda e: self.cycle_filter(1))
+        self.bind("<E>", lambda e: self.cycle_filter(1))
+        self.bind("<bracketleft>", lambda e: self.cycle_filter(-1))
+        self.bind("<bracketright>", lambda e: self.cycle_filter(1))
+        self.bind("<f>", lambda e: self.toggle_current_game_favorite())
+        self.bind("<F>", lambda e: self.toggle_current_game_favorite())
         self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
@@ -358,6 +471,12 @@ class App(ctk.CTk):
             self._show_battery_info()
         elif action == "launch":
             self.launch_current_game()
+        elif action == "filter_prev":
+            self.cycle_filter(-1)
+        elif action == "filter_next":
+            self.cycle_filter(1)
+        elif action == "filter_menu":
+            self.open_collections_dialog()
         elif action == "start":
             self.toggle_size_mode()
         elif action == "select":
@@ -892,7 +1011,14 @@ class App(ctk.CTk):
             self.close_active_menu()
             return
 
+        cur_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
+        is_fav = bool(cur_game.get("favorite", False)) if cur_game else False
+        fav_label = "Quitar de Favoritos (F)" if is_fav else "Marcar como Favorito (F)"
+        fav_icon = "★" if is_fav else "☆"
+
         items = [
+            (fav_icon, fav_label, self.toggle_current_game_favorite),
+            ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
             ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
             ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),
@@ -998,7 +1124,7 @@ class App(ctk.CTk):
             except Exception:
                 pass
             return
-        if not self.games:
+        if not self.library.games:
             show_info(
                 "Editar Juego",
                 "No hay juegos registrados en la biblioteca.\nUsa '＋ Agregar Juego' o '📁 Escanear Carpeta' para añadir juegos primero.",
@@ -1007,24 +1133,24 @@ class App(ctk.CTk):
             return
         self._select_dialog = SelectGameToEditDialog(
             self,
-            self.games,
+            self.library.games,
             on_select_callback=self.open_edit_for_game_index,
-            initial_index=self.selected_index,
-            on_library_changed=lambda games: self.cover_stage.set_games(games, target_index=self.selected_index) if hasattr(self, "cover_stage") and self.cover_stage else None,
+            initial_index=self._get_library_index_for_game(self.games[self.selected_index]) if self.games else 0,
+            on_library_changed=lambda games: self.apply_filter(self.current_filter_id, keep_selection=True),
         )
 
     def open_edit_for_game_index(self, index: int, return_callback=None):
-        if index < 0 or index >= len(self.games):
+        if index < 0 or index >= len(self.library.games):
             if return_callback:
                 return_callback()
             return
         self.monitors = get_monitors()
-        game = self.games[index]
+        game = self.library.games[index]
         AddEditGameDialog(
             self,
             self.monitors,
             game_data=game,
-            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None: self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb),
+            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None, fav=False, st="Por jugar", gen="", plat="PC": self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb, fav, st, gen, plat),
             delete_callback=lambda: self.delete_specific_game(index, confirm=False),
             on_close_callback=return_callback
         )
@@ -1032,39 +1158,55 @@ class App(ctk.CTk):
     def open_edit_dialog(self):
         self.open_select_game_dialog()
 
-    def on_game_added(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
-        new_index = self.library.add_game(name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
-        self.games = self.library.games
+    def on_game_added(
+        self, name, path, monitor, high_priority, cover, launch_args: str = "",
+        wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None,
+        favorite: bool = False, status: str = "Por jugar", genre: str = "", platform: str = "PC"
+    ):
+        new_index = self.library.add_game(
+            name, path, monitor, high_priority, cover, launch_args,
+            wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur,
+            favorite=favorite, status=status, genre=genre, platform=platform
+        )
         invalidate_thumb_cache()
-        self.cover_stage.set_games(self.games, target_index=new_index)
-        self.update_ui_details(new_index)
+        self.apply_filter(self.current_filter_id, keep_selection=False)
         self.set_status(f"Juego '{name}' añadido con éxito.")
 
-    def on_specific_game_edited(self, index: int, name: str, path: str, monitor: int, high_priority: bool, cover: str, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
-        if self.library.update_game(index, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur):
-            self.games = self.library.games
+    def on_specific_game_edited(
+        self, index: int, name: str, path: str, monitor: int, high_priority: bool, cover: str, launch_args: str = "",
+        wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None,
+        favorite: Optional[bool] = None, status: Optional[str] = None, genre: Optional[str] = None, platform: Optional[str] = None
+    ):
+        if self.library.update_game(
+            index, name, path, monitor, high_priority, cover, launch_args,
+            wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur,
+            favorite=favorite, status=status, genre=genre, platform=platform
+        ):
             invalidate_thumb_cache()
-            self.cover_stage.set_games(self.games, target_index=index)
-            self.update_ui_details(index)
+            self.apply_filter(self.current_filter_id, keep_selection=True)
             self.set_status(f"Juego '{name}' actualizado.")
 
     def on_game_edited(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
-        self.on_specific_game_edited(self.selected_index, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
+        target_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
+        real_idx = self._get_library_index_for_game(target_game) if target_game else self.selected_index
+        self.on_specific_game_edited(real_idx, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
 
     def delete_specific_game(self, index: int, confirm: bool = False):
-        if index < 0 or index >= len(self.games):
+        if index < 0 or index >= len(self.library.games):
             return
-        game = self.games[index]
+        game = self.library.games[index]
         if not confirm or ask_yes_no("Eliminar Juego", f"¿Estás seguro de que deseas eliminar '{game['name']}' de la biblioteca?", parent=self, confirm_text="Eliminar", is_destructive=True):
-            new_idx = self.library.delete_game(index)
-            self.games = self.library.games
+            self.library.delete_game(index)
             invalidate_thumb_cache()
-            self.cover_stage.set_games(self.games, target_index=new_idx)
-            self.update_ui_details(new_idx)
+            self.apply_filter(self.current_filter_id, keep_selection=False)
             self.set_status(f"Juego '{game['name']}' eliminado.")
 
     def delete_current_game(self, confirm: bool = True):
-        self.delete_specific_game(self.selected_index, confirm=confirm)
+        if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
+            return
+        cur_game = self.games[self.selected_index]
+        real_idx = self._get_library_index_for_game(cur_game)
+        self.delete_specific_game(real_idx, confirm=confirm)
 
     def refresh_monitors(self):
         self.monitors = get_monitors(force_refresh=True)

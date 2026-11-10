@@ -6,16 +6,23 @@ import json
 import ctypes
 from typing import List, Dict, Any, Tuple
 import psutil
-import win32gui
-import win32api
-import win32process
+try:
+    import win32gui
+    import win32api
+    import win32process
+    import win32con
+except ImportError:
+    win32gui = None
+    win32api = None
+    win32process = None
+    win32con = None
+
 try:
     from core.logger import get_logger
     logger = get_logger("System")
 except Exception:
     import logging
     logger = logging.getLogger("GameFlow.System")
-import win32con
 
 # Asegurar codificación segura UTF-8 para evitar errores con títulos Unicode (como el carácter Δ de Metal Gear)
 try:
@@ -161,6 +168,9 @@ def get_monitors(force_refresh: bool = False) -> List[Dict[str, Any]]:
     global _WMI_MONITOR_MAP, _WMI_MAP_TIMESTAMP
     monitors = []
     wmi_map = _WMI_MONITOR_MAP
+
+    if win32api is None:
+        return [{"id": 0, "name": "Principal", "rect": (0, 0, 1920, 1080), "is_primary": True}]
 
     now = time.time()
     if force_refresh or not _WMI_MONITOR_MAP or (now - _WMI_MAP_TIMESTAMP > 60.0):

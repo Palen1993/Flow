@@ -2,8 +2,12 @@ import os
 import ctypes
 from typing import Optional, Dict, Any
 from PIL import Image
-import win32gui
-import win32ui
+try:
+    import win32gui
+    import win32ui
+except ImportError:
+    win32gui = None
+    win32ui = None
 
 from core.config import COVERS_DIR
 from core.coverflow_engine import create_procedural_album
@@ -15,7 +19,8 @@ def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
     hdc = None
     hdc_mem = None
     hbmp = None
-    old_bmp = None
+    if win32gui is None or win32ui is None:
+        return None
     try:
         ico_x = size
         ico_y = size

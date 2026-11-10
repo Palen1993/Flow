@@ -15,8 +15,10 @@ from ui.dialogs.glass_folder_browser import GlassFolderBrowserDialog, browse_fol
 from ui.dialogs.on_screen_keyboard import OnScreenKeyboardDialog, prompt_on_screen_keyboard
 from ui.dialogs.external_import_dialog import ExternalImportDialog
 from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
+from ui.dialogs.collections_dialog import CollectionsFilterDialog
 
 __all__ = [
+    "CollectionsFilterDialog",
     "BatchSteamGridDBDialog",
     "ExternalImportDialog",
     "BaseGlassDialog",

@@ -16,7 +16,8 @@ from ui.theme import COLOR_BG_CANVAS, COLOR_TRANS_KEY
 from ui.controller_hud import (
     render_controller_hud_strip,
     render_big_picture_top_hud,
-    render_launch_button_pill
+    render_launch_button_pill,
+    render_filter_capsule
 )
 
 class CoverFlowCanvas(tk.Canvas):
@@ -48,6 +49,8 @@ class CoverFlowCanvas(tk.Canvas):
         self.ui_battery_text = "🎮 Mando"
         self.ui_battery_color = (100, 116, 139)
         self.ui_launch_disabled = False
+        self.ui_filter_label = "Todos"
+        self.ui_filter_count = 0
         self._launch_hovered = False
         self._bottom_overlay_cache: Dict[Tuple[Any, ...], Image.Image] = {}
         self.display_scale = 1.0
@@ -794,6 +797,25 @@ class CoverFlowCanvas(tk.Canvas):
             self.hud_hitboxes = []
             return
 
+        # 0. Modo Big Picture: Píldora de Colección y Filtro arriba a la izquierda [ (LB/L1) ‹ FAVORITOS (4) › (RB/R1) ]
+        try:
+            filt_lbl = getattr(self, "ui_filter_label", "Todos")
+            filt_cnt = getattr(self, "ui_filter_count", len(self.games))
+            top_h = max(28, int(round(36 * scale)))
+            filt_img, filt_boxes = render_filter_capsule(
+                filter_label=filt_lbl,
+                count=filt_cnt,
+                family=fam,
+                height=top_h
+            )
+            filt_x = int(18 * scale)
+            filt_y = int(14 * scale)
+            bg.paste(filt_img, (filt_x, filt_y), filt_img)
+            for (bx1, by1, bx2, by2, act) in filt_boxes:
+                self.hud_hitboxes.append((filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2, act))
+        except Exception:
+            pass
+
         # 1. Modo Big Picture: Botones flotantes arriba a la derecha (wallpaper visible hasta y=0 detrás)
         try:
             top_h = max(28, int(round(36 * scale)))
@@ -895,8 +917,12 @@ class CoverFlowCanvas(tk.Canvas):
         if n == 0:
             bg_col = (0, 0, 1) if getattr(self, "is_transparent_mode", False) else (12, 14, 19)
             bg = Image.new('RGB', (w, h), bg_col)
-            draw = ImageDraw.Draw(bg)
-            draw.text((w // 2, h // 2), "No hay juegos en la biblioteca\nHaz clic en 'Opciones' arriba a la derecha para agregar o escanear juegos", fill=(150, 160, 180), anchor='mm')
+            filt_lbl = getattr(self, "ui_filter_label", "Todos")
+            if filt_lbl and filt_lbl.strip().lower() != "todos":
+                msg = f"No hay juegos en la colección '{filt_lbl}'\nPulsa LB / RB para cambiar de colección o añade juegos con (X)"
+            else:
+                msg = "No hay juegos en la biblioteca\nHaz clic en 'Opciones' arriba a la derecha para agregar o escanear juegos"
+            draw.text((w // 2, h // 2), msg, fill=(150, 160, 180), anchor='mm')
             self._draw_overlays(bg, w, h)
             self._photo_w = w
             self._photo_h = h

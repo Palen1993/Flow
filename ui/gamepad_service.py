@@ -161,17 +161,13 @@ class GamepadNavigationService:
                 if not getattr(self.app, "is_mini_mode", False):
                     self.app.toggle_top_menu()
 
-            # LB / RB: Salto de 5 carátulas
+            # LB / RB: Navegación de Colecciones y Filtros (Favoritos, Estado, Plataforma, Género)
             if inputs.get("lb", False) and not prev.get("lb", False):
-                n = len(self.app.games)
-                if n > 0:
-                    cur = int(round(self.app.cover_stage.target_pos))
-                    self.app.cover_stage.select_index(max(0, cur - 5))
+                if hasattr(self.app, "cycle_filter"):
+                    self.app.cycle_filter(-1)
             if inputs.get("rb", False) and not prev.get("rb", False):
-                n = len(self.app.games)
-                if n > 0:
-                    cur = int(round(self.app.cover_stage.target_pos))
-                    self.app.cover_stage.select_index(min(n - 1, cur + 5))
+                if hasattr(self.app, "cycle_filter"):
+                    self.app.cycle_filter(1)
 
             # LT / RT: Salto alfabético
             if inputs.get("lt", False) and not prev.get("lt", False):
