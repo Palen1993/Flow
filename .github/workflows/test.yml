@@ -29,6 +29,7 @@ jobs:
     - name: Run Regression and Audit Tests
       run: |
         python scratch/mega_audit_test_suite.py
+        python scratch/test_unit_mocked_core.py
         python scratch/test_gamepad_folder_and_manual_add.py
         python scratch/test_gamepad_buttons_interactive.py
         python scratch/test_select_game_layout.py

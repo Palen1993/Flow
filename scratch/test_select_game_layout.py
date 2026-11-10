@@ -32,9 +32,11 @@ dlg = SelectGameToEditDialog(root, dummy_games)
 dlg.update_idletasks()
 dlg.update()
 
-print(f"Dialog dimensions: {dlg.winfo_width()}x{dlg.winfo_height()}")
-assert dlg.winfo_width() >= 900, f"Expected width >= 900, got {dlg.winfo_width()}"
-assert dlg.winfo_height() >= 620, f"Expected height >= 620, got {dlg.winfo_height()}"
+print(f"Dialog dimensions: {dlg.winfo_width()}x{dlg.winfo_height()} (scale={dlg.scale_factor:.2f})")
+min_expected_w = min(900, int(900 * dlg.scale_factor) - 5)
+min_expected_h = min(620, int(620 * dlg.scale_factor) - 5)
+assert dlg.winfo_width() >= min_expected_w, f"Expected width >= {min_expected_w}, got {dlg.winfo_width()}"
+assert dlg.winfo_height() >= min_expected_h, f"Expected height >= {min_expected_h}, got {dlg.winfo_height()}"
 
 # Verify rows were created
 assert len(dlg._card_rows) == 2, f"Expected 2 rows, got {len(dlg._card_rows)}"

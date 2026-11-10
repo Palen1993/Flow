@@ -12,8 +12,10 @@ def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
     """Extrae el icono de máxima resolución integrado en un .exe liberando todos los recursos GDI."""
     hicon = ctypes.c_void_p()
     desktop_dc = 0
+    hdc = None
     hdc_mem = None
     hbmp = None
+    old_bmp = None
     try:
         ico_x = size
         ico_y = size
@@ -27,29 +29,35 @@ def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
             hbmp = win32ui.CreateBitmap()
             hbmp.CreateCompatibleBitmap(hdc, ico_x, ico_y)
             hdc_mem = hdc.CreateCompatibleDC()
-            hdc_mem.SelectObject(hbmp)
+            old_bmp = hdc_mem.SelectObject(hbmp)
             win32gui.DrawIconEx(hdc_mem.GetHandleOutput(), 0, 0, hicon.value, ico_x, ico_y, 0, 0, 3)
             bmpinfo = hbmp.GetInfo()
             bmpstr = hbmp.GetBitmapBits(True)
             img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
-            return img
+            return img.copy()
     except Exception:
         pass
     finally:
-        # Liberación estricta y garantizada de recursos GDI y handles de Windows
+        # Liberación estricta en orden inverso Win32 GDI:
+        # 1) Deseleccionar HBITMAP del DC de memoria, 2) Eliminar DC de memoria, 3) Eliminar HBITMAP, 4) Liberar DC de escritorio
         if hicon.value:
             try:
                 ctypes.windll.user32.DestroyIcon(hicon.value)
             except Exception:
                 pass
+        if hdc_mem is not None:
+            if old_bmp is not None:
+                try:
+                    hdc_mem.SelectObject(old_bmp)
+                except Exception:
+                    pass
+            try:
+                hdc_mem.DeleteDC()
+            except Exception:
+                pass
         if hbmp is not None:
             try:
                 win32gui.DeleteObject(hbmp.GetHandle())
-            except Exception:
-                pass
-        if hdc_mem is not None:
-            try:
-                hdc_mem.DeleteDC()
             except Exception:
                 pass
         if desktop_dc:

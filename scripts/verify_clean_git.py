@@ -7,19 +7,22 @@ import sys
 import subprocess
 
 def main():
-    res = subprocess.run(["git", "diff", "--cached", "--name-only"], capture_output=True, text=True, check=True)
+    res = subprocess.run(
+        ["git", "diff", "--cached", "--diff-filter=ACMR", "--name-only"],
+        capture_output=True, text=True, check=True
+    )
     staged_files = res.stdout.strip().splitlines()
 
     blocked = []
     for f in staged_files:
         f_norm = f.strip().replace("\\", "/").lower()
-        if f_norm == "games.json":
+        if f_norm in ("games.json", "games.json.bak", "gamepad_config.json", ".portable"):
             blocked.append(f)
         elif f_norm.startswith("covers/") and not f_norm.endswith(".gitkeep"):
             blocked.append(f)
         elif f_norm.startswith("wallpapers/") and not f_norm.endswith(".gitkeep"):
             blocked.append(f)
-        elif f_norm == "gamepad_config.json":
+        elif f_norm.endswith((".log", ".bak", ".lnk", ".tmp")):
             blocked.append(f)
 
     if blocked:

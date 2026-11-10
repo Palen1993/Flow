@@ -1005,7 +1005,13 @@ class App(ctk.CTk):
                 parent=self
             )
             return
-        self._select_dialog = SelectGameToEditDialog(self, self.games, on_select_callback=self.open_edit_for_game_index, initial_index=self.selected_index)
+        self._select_dialog = SelectGameToEditDialog(
+            self,
+            self.games,
+            on_select_callback=self.open_edit_for_game_index,
+            initial_index=self.selected_index,
+            on_library_changed=lambda games: self.cover_stage.set_games(games, target_index=self.selected_index) if hasattr(self, "cover_stage") and self.cover_stage else None,
+        )
 
     def open_edit_for_game_index(self, index: int, return_callback=None):
         if index < 0 or index >= len(self.games):

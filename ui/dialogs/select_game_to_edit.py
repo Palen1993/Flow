@@ -5,7 +5,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from core.system import get_monitors
-from core.coverflow_engine import create_procedural_album
+from core.coverflow_engine import create_procedural_album, invalidate_jewel_case_cache
 from core.cover_resolver import resolve_game_cover
 from ui.dropdowns import GlassDropdownButton
 from ui.controller_hud import get_button_icon_ctk
@@ -56,8 +56,9 @@ def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage
     return thumb_img
 
 def invalidate_thumb_cache(cover_path: Optional[str] = None):
-    """Invalida la caché de miniaturas de carátula cuando se cambia el arte de un juego."""
+    """Invalida la caché de miniaturas de carátula y estuches 3D en disco cuando se cambia el arte de un juego."""
     if cover_path:
+        invalidate_jewel_case_cache(cover_path)
         for k in list(_GLOBAL_THUMB_CACHE.keys()):
             if cover_path in k:
                 _GLOBAL_THUMB_CACHE.pop(k, None)
@@ -69,10 +70,11 @@ class SelectGameToEditDialog(BaseGlassDialog):
     """Panel de gestión rápida, filtrado y edición masiva / individual de juegos altamente optimizado para bibliotecas masivas (100+ juegos)."""
     CHUNK_SIZE = 20
 
-    def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0):
+    def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0, on_library_changed=None):
         super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=26)
         self.games = games
         self.on_select = on_select_callback
+        self.on_library_changed = on_library_changed
         self._initial_target_idx = initial_index if 0 <= initial_index < len(self.games) else 0
         self.family = getattr(parent, "_current_controller_family", "xbox")
         
@@ -376,14 +378,19 @@ class SelectGameToEditDialog(BaseGlassDialog):
         )
         btn_search.pack(side="right", padx=6, pady=4)
 
+    def _notify_stage_sync(self):
+        if callable(getattr(self, "on_library_changed", None)):
+            self.on_library_changed(self.games)
+        elif hasattr(self.master, "cover_stage") and self.master.cover_stage:
+            self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
+
     def _open_batch_sgdb(self):
         from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
         def _on_done():
             invalidate_thumb_cache()
             self._save_changes()
             self.refresh_list()
-            if hasattr(self.master, "cover_stage") and self.master.cover_stage:
-                self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
+            self._notify_stage_sync()
         BatchSteamGridDBDialog(self, self.games, on_complete_callback=_on_done)
 
     def refresh_list(self):
@@ -707,8 +714,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
                 return
             self.games = current_games
             invalidate_thumb_cache()
-            if hasattr(self.master, "cover_stage") and self.master.cover_stage:
-                self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
+            self._notify_stage_sync()
             self.deiconify()
             self.lift()
             self.focus_force()

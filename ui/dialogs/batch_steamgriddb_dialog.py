@@ -35,6 +35,7 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
         self.on_complete_callback = on_complete_callback
         self.family = getattr(parent, "_current_controller_family", "xbox")
         self._action_queue: queue.Queue = queue.Queue()
+        self._cancel_event = threading.Event()
         self._is_running = False
         self._completed_count = 0
         self._updated_games_count = 0
@@ -44,6 +45,8 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
         self.after(50, self._poll_queue)
 
     def destroy(self):
+        self._cancel_event.set()
+        self._is_running = False
         if hasattr(self, "_chunk_timer") and self._chunk_timer is not None:
             try:
                 self.after_cancel(self._chunk_timer)
@@ -403,7 +406,7 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
         def _worker():
             total = len(self.games)
             for i, game in enumerate(self.games):
-                if not self.winfo_exists():
+                if self._cancel_event.is_set():
                     return
                 g_name = game.get("name", "Juego")
                 self._action_queue.put(("game_start", (i, g_name)))
@@ -418,9 +421,12 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
                 except Exception as e:
                     res = {"success": False, "error": str(e), "cover_applied": False, "wallpaper_applied": False}
 
+                if self._cancel_event.is_set():
+                    return
                 self._action_queue.put(("game_finish", (i, game, res)))
 
-            self._action_queue.put(("all_finished", None))
+            if not self._cancel_event.is_set():
+                self._action_queue.put(("all_finished", None))
 
         threading.Thread(target=_worker, daemon=True).start()
 

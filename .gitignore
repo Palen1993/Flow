@@ -28,6 +28,9 @@ build/
 # User Personal Data & Custom Artwork (Untracked for clean distributions)
 games.json
 games.json.bak
+gamepad_config.json
+*.lnk
+.portable
 covers/*
 !covers/.gitkeep
 wallpapers/*
@@ -42,6 +45,12 @@ Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
-# User Scratch Temporary Outputs
+# User Scratch Temporary Outputs & Ad-Hoc Profiling/Migration Scripts
 scratch/*.tmp
 scratch/*.bak
+scratch/patch_*.py
+scratch/find_*.py
+scratch/inspect_*.py
+scratch/print_*.py
+scratch/profile_*.py
+scratch/benchmark_*.py

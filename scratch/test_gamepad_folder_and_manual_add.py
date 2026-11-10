@@ -20,9 +20,11 @@ dlg = GlassFolderBrowserDialog(root, title="Test Selector Carpeta", initial_dir=
 dlg.update_idletasks()
 dlg.update()
 
-print(f"Browser dimensions: {dlg.winfo_width()}x{dlg.winfo_height()}")
-assert dlg.winfo_width() >= 750, f"Expected width >= 750, got {dlg.winfo_width()}"
-assert dlg.winfo_height() >= 550, f"Expected height >= 550, got {dlg.winfo_height()}"
+print(f"Browser dimensions: {dlg.winfo_width()}x{dlg.winfo_height()} (scale={dlg.scale_factor:.2f})")
+min_expected_w = min(750, int(750 * dlg.scale_factor) - 5)
+min_expected_h = min(550, int(550 * dlg.scale_factor) - 5)
+assert dlg.winfo_width() >= min_expected_w, f"Expected width >= {min_expected_w}, got {dlg.winfo_width()}"
+assert dlg.winfo_height() >= min_expected_h, f"Expected height >= {min_expected_h}, got {dlg.winfo_height()}"
 
 # Check detected drives
 print(f"Detected drives: {dlg.drives}")

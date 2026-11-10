@@ -2,6 +2,8 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from unittest.mock import patch
+import app as app_module
 from app import App
 from ui.dialogs.confirm_exit import ConfirmExitDialog
 from ui.dialogs.glass_message_box import GlassMessageBox
@@ -15,7 +17,8 @@ from ui.dialogs.add_edit_game import AddEditGameDialog
 from ui.dialogs.select_game_to_edit import SelectGameToEditDialog
 from ui.dialogs.cover_picker_dialog import CoverPickerDialog
 
-app = App()
+with patch.object(app_module, "ensure_watcher_running", lambda: None):
+    app = App()
 app.withdraw()
 
 print("=================================================================")

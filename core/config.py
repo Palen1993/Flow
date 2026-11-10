@@ -46,6 +46,31 @@ def is_portable_mode() -> bool:
     """Indica si la aplicación está operando en almacenamiento local portable."""
     return os.path.abspath(STORAGE_DIR) == os.path.abspath(BASE_DIR)
 
+
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def sanitize_game_filename(name: str, default: str = "game") -> str:
+    """
+    Sanitiza un título de juego para usarlo como nombre de archivo seguro en Windows/NTFS.
+    Elimina caracteres prohibidos (como ':' que crea Alternate Data Streams en NTFS o '../'),
+    espacios/puntos extremos y nombres de dispositivo reservados.
+    """
+    if not name:
+        return default
+    cleaned = "".join(c if (c.isalnum() or c in (" ", "_", "-")) else "_" for c in str(name))
+    cleaned = " ".join(cleaned.split()).strip(" ._")
+    if not cleaned:
+        return default
+    if cleaned.upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}_"
+    return cleaned[:120]
+
+
 CONFIG_FILE = os.path.join(STORAGE_DIR, "games.json")
 COVERS_DIR = os.path.join(STORAGE_DIR, "covers")
 WALLPAPERS_DIR = os.path.join(STORAGE_DIR, "wallpapers")
@@ -80,14 +105,25 @@ def _get_logger():
         return logging.getLogger("GameFlow.Config")
 
 _local_thread_lock = threading.RLock()
+_thread_lock_state = threading.local()
 
 @contextlib.contextmanager
 def config_lock(timeout_ms: int = 5000):
     """
     Mutex inter-proceso de Windows para serializar lecturas y escrituras concurrentes en games.json.
     Previene condiciones de carrera entre la interfaz gráfica principal y el proceso centinela (sentinel_process).
+    Soporta re-entrada en el mismo hilo sin duplicar handles del kernel Win32.
     """
     with _local_thread_lock:
+        depth = getattr(_thread_lock_state, "depth", 0)
+        if depth > 0:
+            _thread_lock_state.depth = depth + 1
+            try:
+                yield getattr(_thread_lock_state, "acquired", True)
+            finally:
+                _thread_lock_state.depth = depth
+            return
+
         mutex_handle = None
         acquired = False
         try:
@@ -109,9 +145,13 @@ def config_lock(timeout_ms: int = 5000):
         except Exception:
             acquired = False
 
+        _thread_lock_state.depth = 1
+        _thread_lock_state.acquired = acquired
         try:
             yield acquired
         finally:
+            _thread_lock_state.depth = 0
+            _thread_lock_state.acquired = False
             if mutex_handle:
                 if acquired:
                     try:

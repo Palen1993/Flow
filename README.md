@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078d7.svg?style=for-the-badge&logo=windows)
-![Python](https://img.shields.io/badge/Python-3.14-3776ab.svg?style=for-the-badge&logo=python)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776ab.svg?style=for-the-badge&logo=python)
 ![UI Framework](https://img.shields.io/badge/UI-CustomTkinter%20%2B%20Pillow-1f2937.svg?style=for-the-badge)
 ![Gamepad](https://img.shields.io/badge/Gamepad-Console--Grade%2040Hz-10b981.svg?style=for-the-badge&logo=xbox)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
@@ -78,7 +78,7 @@ No requiere tener Python instalado:
 3. Ejecuta **`GameFlow Launcher.exe`**.
 
 ### Opción 2: Ejecución desde Código Fuente (Para desarrolladores)
-**Requisitos:** Windows 10 o Windows 11 y Python 3.10+ (recomendado 3.14).
+**Requisitos:** Windows 10 o Windows 11 y Python 3.11+ (compatible con 3.11 hasta 3.14).
 
 ```powershell
 # 1. Clonar el repositorio

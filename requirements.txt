@@ -3,12 +3,12 @@
 # ====================================================================
 
 # GUI Framework, Theming & Image Manipulation
-customtkinter==6.0.0
-darkdetect==0.8.0
-pillow==13.0.0
-packaging==26.3
-typing_extensions==4.16.0
+customtkinter>=5.2.2
+darkdetect>=0.8.0
+pillow>=10.4.0
+packaging>=23.2
+typing_extensions>=4.8.0
 
 # Windows Win32 API & Process Tree Lifecycle Management
-pywin32==312
-psutil==7.2.2
+pywin32>=306
+psutil>=5.9.8

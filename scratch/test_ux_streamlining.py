@@ -2,13 +2,16 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from unittest.mock import patch
+import app as app_module
 from app import App
 from ui.dialogs.cover_picker_dialog import CoverPickerDialog
 from ui.dialogs.external_import_dialog import ExternalImportDialog
 from ui.dialogs.add_edit_game import AddEditGameDialog
 from ui.dialogs.select_game_to_edit import SelectGameToEditDialog
 
-app = App()
+with patch.object(app_module, "ensure_watcher_running", lambda: None):
+    app = App()
 app.withdraw()
 
 print("=================================================================")
@@ -22,17 +25,18 @@ assert app.glass_menu is not None, "Top menu didn't open"
 menu_texts = [item[1] for item in app.glass_menu.items]
 print("Menu Items:", menu_texts)
 
-# Must have exactly 3 items:
+# Must have the 4 master items:
 expected = [
     "Importar Juegos...",
+    "Descargar Arte Masivo (SteamGridDB)...",
     "Administrar Todos los Juegos...",
     "Configurar Mando..."
 ]
-assert len(menu_texts) == 3, f"Expected 3 items, got {len(menu_texts)}: {menu_texts}"
+assert len(menu_texts) == 4, f"Expected 4 items, got {len(menu_texts)}: {menu_texts}"
 for exp in expected:
     assert any(exp in t for t in menu_texts), f"Expected '{exp}' in menu, found: {menu_texts}"
 
-print("PASS: Top Menu simplified to exactly the 3 master entry points!")
+print("PASS: Top Menu simplified to the 4 master entry points!")
 app.glass_menu.destroy()
 app.glass_menu = None
 
@@ -62,7 +66,11 @@ aed.destroy()
 
 # Test 5: SelectGameToEditDialog pre-focuses current game
 target_idx = 2
-sed = SelectGameToEditDialog(app, games=app.games, initial_index=target_idx)
+sample_games = app.games if len(app.games) > target_idx else [
+    {"name": f"Test Game {i}", "path": f"C:\\Games\\Game{i}\\game.exe", "monitor": 0}
+    for i in range(4)
+]
+sed = SelectGameToEditDialog(app, games=sample_games, initial_index=target_idx)
 assert sed._selected_row_idx == target_idx, f"Expected focused row {target_idx}, got {sed._selected_row_idx}"
 print(f"PASS: SelectGameToEditDialog pre-focuses active game index ({target_idx})")
 sed.destroy()

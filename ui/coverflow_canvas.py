@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
 from core.coverflow_engine import (
     create_procedural_album, create_jewel_case, prepare_flat_cover,
     render_cover_flow_from_flat, prevent_transparency_color_collision,
-    compose_big_picture_wallpaper_bg, get_cached_jewel_case
+    compose_big_picture_wallpaper_bg, get_cached_jewel_case, invalidate_jewel_case_cache
 )
 from core.cover_resolver import resolve_game_cover
 from ui.theme import COLOR_BG_CANVAS, COLOR_TRANS_KEY
@@ -39,6 +39,7 @@ class CoverFlowCanvas(tk.Canvas):
         self._wp_sigs: Dict[str, Tuple[Any, ...]] = {}
         self._cache_generation = 0
         self._library_load_id = 0
+        self._cache_lock = threading.RLock()
 
         # Estado del HUD superpuesto sin barras grises en modo Big Picture
         self.ui_title = ""
@@ -182,26 +183,30 @@ class CoverFlowCanvas(tk.Canvas):
         if not g:
             return
         key = self._get_key(g)
-        self.raw_jewels.pop(key, None)
-        self.flat_covers.pop(key, None)
-        self.rendered_cache.pop(key, None)
-        self._cover_sigs[key] = self._get_cover_sig(g)
+        cov_path = g.get("cover")
+        if cov_path:
+            invalidate_jewel_case_cache(cov_path)
+        with self._cache_lock:
+            self.raw_jewels.pop(key, None)
+            self.flat_covers.pop(key, None)
+            self.rendered_cache.pop(key, None)
+            self._cover_sigs[key] = self._get_cover_sig(g)
 
-        jewel = self._get_or_create_jewel_case(g)
-        self.raw_jewels[key] = jewel
+            jewel = self._get_or_create_jewel_case(g)
+            self.raw_jewels[key] = jewel
 
-        has_refl = not getattr(self, "is_transparent_mode", False)
-        size = self.base_size
-        flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-        self.flat_covers[key] = (flat_cover, sz, tot_h)
+            has_refl = not getattr(self, "is_transparent_mode", False)
+            size = self.base_size
+            flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+            self.flat_covers[key] = (flat_cover, sz, tot_h)
 
-        w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, size, -1.0, has_reflection=has_refl)
-        w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, size, 1.0, has_reflection=has_refl)
-        self.rendered_cache[key] = {
-            -1.0: (w_left, w_lw),
-            0.0: (flat_cover, sz),
-            1.0: (w_right, w_rw)
-        }
+            w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, size, -1.0, has_reflection=has_refl)
+            w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, size, 1.0, has_reflection=has_refl)
+            self.rendered_cache[key] = {
+                -1.0: (w_left, w_lw),
+                0.0: (flat_cover, sz),
+                1.0: (w_right, w_rw)
+            }
         self.redraw()
 
     def set_games(self, games: List[Dict[str, Any]], target_index: int = 0):
@@ -274,6 +279,9 @@ class CoverFlowCanvas(tk.Canvas):
         # Fase 2: Carga en segundo plano para el resto de juegos (inmune a redimensionamiento de ventana)
         remaining_indices = [i for i in range(n) if i not in visible_indices]
         if remaining_indices:
+            init_w = max(60, self.winfo_width())
+            init_h = max(60, self.winfo_height())
+
             def _bg_loader():
                 for i in remaining_indices:
                     if self._library_load_id != current_load_id or i >= len(self.games):
@@ -303,18 +311,12 @@ class CoverFlowCanvas(tk.Canvas):
                             }
                 if self._library_load_id != current_load_id:
                     return
-                # Pre-componer fondos para todos los juegos recién cargados
-                cur_w = max(60, self.winfo_width())
-                cur_h = max(60, self.winfo_height())
+                # Pre-componer fondos para todos los juegos recién cargados sin llamar a Tcl desde el hilo secundario
+                cur_w, cur_h = getattr(self, "_last_canvas_dims", (init_w, init_h))
                 self._precache_wallpapers_async(cur_w, cur_h, getattr(self, "floor_y", 0))
                 q = getattr(self.master, "_action_queue", None)
                 if q is not None:
                     q.put(("callable", self.redraw))
-                else:
-                    try:
-                        self.after(10, self.redraw)
-                    except Exception:
-                        pass
             threading.Thread(target=_bg_loader, daemon=True).start()
 
     def _rebuild_rendered_cache(self):
@@ -425,55 +427,57 @@ class CoverFlowCanvas(tk.Canvas):
 
     def _prune_rendered_cache(self, max_games: int = 40):
         """Política LRU: Acota la memoria eliminando las carátulas 3D de los juegos más lejanos al índice visible."""
-        if len(self.rendered_cache) <= max_games:
-            return
-        center_idx = int(round(getattr(self, "target_pos", 0.0)))
-        key_to_dist = {}
-        for key in list(self.rendered_cache.keys()):
-            idx = next((i for i, g in enumerate(self.games) if self._get_key(g) == key), 9999)
-            key_to_dist[key] = abs(idx - center_idx)
+        with self._cache_lock:
+            if len(self.rendered_cache) <= max_games:
+                return
+            center_idx = int(round(getattr(self, "target_pos", 0.0)))
+            key_to_dist = {}
+            for key in list(self.rendered_cache.keys()):
+                idx = next((i for i, g in enumerate(self.games) if self._get_key(g) == key), 9999)
+                key_to_dist[key] = abs(idx - center_idx)
 
-        sorted_keys = sorted(key_to_dist.keys(), key=lambda k: key_to_dist[k], reverse=True)
-        for k in sorted_keys[:len(self.rendered_cache) - max_games]:
-            self.rendered_cache.pop(k, None)
-            self.flat_covers.pop(k, None)
+            sorted_keys = sorted(key_to_dist.keys(), key=lambda k: key_to_dist[k], reverse=True)
+            for k in sorted_keys[:len(self.rendered_cache) - max_games]:
+                self.rendered_cache.pop(k, None)
+                self.flat_covers.pop(k, None)
 
     def get_rendered_cover(self, game_key: str, af: float) -> Tuple[Optional[Image.Image], int]:
         """Obtiene la carátula proyectada en 3D del caché o la calcula bajo demanda con política LRU acotada."""
         key = max(-1.0, min(1.0, round(af * 8.0) / 8.0))
-        game_cache = self.rendered_cache.get(game_key)
-        if game_cache is None:
-            self._prune_rendered_cache(max_games=15)
-            game_cache = {}
-            self.rendered_cache[game_key] = game_cache
-            
-        cached = game_cache.get(key)
-        if cached is not None:
-            return cached
-            
-        flat_data = self.flat_covers.get(game_key)
-        if not flat_data:
-            jewel = self.raw_jewels.get(game_key)
-            if not jewel:
-                g = next((gm for gm in self.games if self._get_key(gm) == game_key), None)
-                if g:
-                    jewel = self._get_or_create_jewel_case(g)
-                    self.raw_jewels[game_key] = jewel
-            if jewel:
-                has_refl = not getattr(self, "is_transparent_mode", False)
-                size = self.base_size
-                flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                self.flat_covers[game_key] = flat_data
-            else:
-                return None, 0
-            
-        flat_cover, sz, _ = flat_data
-        has_refl = not getattr(self, "is_transparent_mode", False)
-        w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, key, has_reflection=has_refl)
-        w_img = prevent_transparency_color_collision(w_img)
-        entry = (w_img, tw)
-        game_cache[key] = entry
-        return entry
+        with self._cache_lock:
+            game_cache = self.rendered_cache.get(game_key)
+            if game_cache is None:
+                self._prune_rendered_cache(max_games=15)
+                game_cache = {}
+                self.rendered_cache[game_key] = game_cache
+
+            cached = game_cache.get(key)
+            if cached is not None:
+                return cached
+
+            flat_data = self.flat_covers.get(game_key)
+            if not flat_data:
+                jewel = self.raw_jewels.get(game_key)
+                if not jewel:
+                    g = next((gm for gm in self.games if self._get_key(gm) == game_key), None)
+                    if g:
+                        jewel = self._get_or_create_jewel_case(g)
+                        self.raw_jewels[game_key] = jewel
+                if jewel:
+                    has_refl = not getattr(self, "is_transparent_mode", False)
+                    size = self.base_size
+                    flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+                    self.flat_covers[game_key] = flat_data
+                else:
+                    return None, 0
+
+            flat_cover, sz, _ = flat_data
+            has_refl = not getattr(self, "is_transparent_mode", False)
+            w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, key, has_reflection=has_refl)
+            w_img = prevent_transparency_color_collision(w_img)
+            entry = (w_img, tw)
+            game_cache[key] = entry
+            return entry
 
     def _rebuild_background(self, w: int, h: int):
         """Pre-renderiza el escenario estático y foco de luz como RGB ultra optimizado (sin líneas grises)."""
@@ -559,11 +563,13 @@ class CoverFlowCanvas(tk.Canvas):
                     wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
                 )
                 self.wallpaper_bg_cache[cache_key] = composed
-                # Si el usuario sigue posicionado en este juego, actualizar suavemente
+                # Si el usuario sigue posicionado en este juego, actualizar suavemente vía cola segura
                 if not self.is_animating and not self.is_dragging:
                     center_int = int(round(self.current_pos))
                     if 0 <= center_int < len(self.games) and self._get_key(self.games[center_int]) == key:
-                        self.after(10, self.redraw)
+                        q = getattr(self.master, "_action_queue", None)
+                        if q is not None:
+                            q.put(("callable", self.redraw))
 
         threading.Thread(target=_bg_generate, daemon=True).start()
         return self.bg_cache
@@ -573,6 +579,7 @@ class CoverFlowCanvas(tk.Canvas):
         h = event.height
         if w < 60 or h < 60:
             return
+        self._last_canvas_dims = (w, h)
         is_trans = getattr(self, "is_transparent_mode", False)
         mode_changed = (getattr(self, "_last_mode_was_trans", None) != is_trans)
         if not mode_changed and abs(w - self.last_w) < 4 and abs(h - self.last_h) < 4:

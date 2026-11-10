@@ -9,6 +9,7 @@ from ui.display_scale import (
     calculate_dialog_bounds,
     get_monitor_work_area_for_window,
     get_ctk_window_scaling,
+    get_active_display_scale,
     set_active_display_scale
 )
 
@@ -48,6 +49,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
         self.parent = parent
         
         # Sizing adaptativo dinámico según la resolución del monitor donde se reproduce
+        self._prev_display_scale = get_active_display_scale()
         final_w, final_h, scale = calculate_dialog_bounds(width, height, window=parent or self)
         self.dialog_width = final_w
         self.dialog_height = final_h
@@ -136,7 +138,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
             self._unregister_from_modal_stack()
 
     def destroy(self):
-        set_active_display_scale(1.0)
+        set_active_display_scale(getattr(self, "_prev_display_scale", 1.0))
         self._unregister_from_modal_stack()
         for after_id in getattr(self, "_pending_afters", []):
             try:

@@ -14,11 +14,18 @@ datas = datas_ctk + [
 ]
 
 binaries = binaries_ctk
-hiddenimports = list(set(hiddenimports_ctk + [
+
+launcher_hiddenimports = list(set(hiddenimports_ctk + [
     'win32gui',
     'win32process',
     'win32con',
     'win32api',
+    'win32event',
+    'win32ui',
+    'win32com',
+    'win32com.client',
+    'pythoncom',
+    'pywintypes',
     'psutil',
     'cffi',
     'ctypes',
@@ -27,16 +34,74 @@ hiddenimports = list(set(hiddenimports_ctk + [
     'PIL._imaging',
     'darkdetect',
     'packaging',
-    'ui.display_scale',
+    'core.config',
+    'core.logger',
+    'core.library_service',
+    'core.execution_service',
+    'core.launcher',
+    'core.cover_resolver',
+    'core.coverflow_engine',
+    'core.cover_downloader',
+    'core.steamgriddb_client',
+    'core.gamepad_hid',
     'core.external_launchers',
+    'core.scanner',
+    'core.system',
     'core.feedback',
+    'ui.display_scale',
+    'ui.theme',
+    'ui.window_manager',
+    'ui.modal_manager',
+    'ui.gamepad_service',
+    'ui.controller_hud',
+    'ui.coverflow_canvas',
+    'ui.dropdowns',
     'ui.dialogs.base_dialog',
+    'ui.dialogs.add_edit_game',
+    'ui.dialogs.select_game_to_edit',
+    'ui.dialogs.cover_picker_dialog',
+    'ui.dialogs.cover_crop_engine',
+    'ui.dialogs.batch_steamgriddb_dialog',
     'ui.dialogs.external_import_dialog',
     'ui.dialogs.glass_folder_browser',
     'ui.dialogs.glass_message_box',
     'ui.dialogs.on_screen_keyboard',
     'ui.dialogs.controller_info_dialog',
+    'ui.dialogs.gamepad_config_dialog',
+    'ui.dialogs.scan_results',
+    'ui.dialogs.confirm_exit',
 ]))
+
+watcher_hiddenimports = [
+    'win32gui',
+    'win32process',
+    'win32con',
+    'win32api',
+    'win32event',
+    'pywintypes',
+    'psutil',
+    'ctypes',
+    'core.config',
+    'core.logger',
+    'core.gamepad_hid',
+    'gamepad_manager',
+]
+
+sentinel_hiddenimports = [
+    'win32gui',
+    'win32process',
+    'win32con',
+    'win32api',
+    'win32event',
+    'pywintypes',
+    'psutil',
+    'ctypes',
+    'core.config',
+    'core.logger',
+    'core.launcher',
+    'core.system',
+    'gamepad_manager',
+]
 
 # 1. Main Launcher
 a_launcher = Analysis(
@@ -44,7 +109,7 @@ a_launcher = Analysis(
     pathex=['.'],
     binaries=binaries,
     datas=datas,
-    hiddenimports=hiddenimports,
+    hiddenimports=launcher_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -76,17 +141,17 @@ exe_launcher = EXE(
     icon='assets/icon.ico' if os.path.isfile('assets/icon.ico') else None,
 )
 
-# 2. Gamepad Watcher
+# 2. Gamepad Watcher (Headless background daemon)
 a_watcher = Analysis(
     ['gamepad_watcher.pyw'],
     pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=hiddenimports,
+    hiddenimports=watcher_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter.test', 'unittest', 'test'],
+    excludes=['customtkinter', 'tkinter', 'tkinter.test', 'unittest', 'test'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -114,17 +179,17 @@ exe_watcher = EXE(
     icon='assets/icon.ico' if os.path.isfile('assets/icon.ico') else None,
 )
 
-# 3. Sentinel Process
+# 3. Sentinel Process (Headless game session monitor)
 a_sentinel = Analysis(
     ['core/sentinel_process.py'],
     pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=hiddenimports,
+    hiddenimports=sentinel_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter.test', 'unittest', 'test'],
+    excludes=['customtkinter', 'tkinter', 'tkinter.test', 'unittest', 'test'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

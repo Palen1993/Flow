@@ -105,82 +105,26 @@ class ScanResultsDialog(BaseGlassDialog):
         scroll_frame.grid_columnconfigure(0, weight=1)
         self.scroll_frame = scroll_frame
         
-        thumb_size = 48
-        for cand in self.candidates:
-            row_frame = ctk.CTkFrame(scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
-            row_frame.pack(fill="x", pady=4, padx=2)
-            self._row_frames.append(row_frame)
-            
-            # Checkbox estilo iOS
-            is_already = cand.get("already_added", False)
-            var = ctk.BooleanVar(value=not is_already)
-            cb = ctk.CTkCheckBox(
-                row_frame, text="", variable=var, width=24,
-                fg_color="#007aff", hover_color="#0062cc", border_color="#3a455c", border_width=1.5,
-                corner_radius=6,
-                command=self.update_selected_count
-            )
-            cb.pack(side="left", padx=(12, 8), pady=10)
-            
-            # Miniatura de carátula
-            cov_path = cand.get("cover", "")
-            if cov_path and os.path.isfile(cov_path):
-                try:
-                    with Image.open(cov_path) as im_raw:
-                        raw_im = im_raw.copy().resize((thumb_size, thumb_size), Image.Resampling.BILINEAR)
-                except Exception:
-                    raw_im = create_procedural_album(cand["name"], size=thumb_size)
-            else:
-                raw_im = create_procedural_album(cand["name"], size=thumb_size)
-                
-            photo_im = ImageTk.PhotoImage(raw_im)
-            self.thumb_refs.append(photo_im)
-            
-            lbl_thumb = tk.Label(row_frame, image=photo_im, bg=COLOR_BG_CARD_SECONDARY, width=thumb_size, height=thumb_size)
-            lbl_thumb.pack(side="left", padx=(0, 12))
-            
-            # Centro: Nombre editable y ruta del ejecutable
-            info_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-            info_frame.pack(side="left", fill="both", expand=True, pady=6)
-            
-            name_entry = ctk.CTkEntry(
-                info_frame, height=32, corner_radius=16,
-                font=font_button(13),
-                fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_BORDER, border_width=1.2,
-                text_color=COLOR_TEXT_MAIN
-            )
-            name_entry.insert(0, cand["name"])
-            name_entry.pack(fill="x", pady=(2, 2))
-            
-            exe_disp = cand["path"]
-            if len(exe_disp) > 65:
-                exe_disp = "..." + exe_disp[-62:]
-            lbl_exe = ctk.CTkLabel(
-                info_frame, text=f"Ejecutable: {exe_disp}",
-                font=font_body(11), text_color=COLOR_TEXT_DIM, anchor="w"
-            )
-            lbl_exe.pack(fill="x")
-            
-            # Badge de estado derecha (Píldoras iOS)
-            if is_already:
-                lbl_badge = ctk.CTkLabel(
-                    row_frame, text="En biblioteca",
-                    font=font_button(11),
-                    fg_color="#2d2215", text_color=COLOR_STATUS_WARNING,
-                    corner_radius=10, padx=8, pady=3
-                )
-                lbl_badge.pack(side="right", padx=12)
-            else:
-                lbl_badge = ctk.CTkLabel(
-                    row_frame, text="Nuevo",
-                    font=font_button(11),
-                    fg_color="#142c1f", text_color=COLOR_STATUS_SUCCESS,
-                    corner_radius=10, padx=8, pady=3
-                )
-                lbl_badge.pack(side="right", padx=12)
-                
-            self.items_vars.append((var, name_entry, cand))
-            
+        self._chunk_timer = None
+        initial_count = min(len(self.candidates), 25)
+        for idx in range(initial_count):
+            self._create_candidate_row(self.candidates[idx])
+
+        if initial_count < len(self.candidates):
+            def _stream_batch_rows(start_idx: int):
+                if not self.winfo_exists():
+                    return
+                end_idx = min(start_idx + 25, len(self.candidates))
+                for k in range(start_idx, end_idx):
+                    self._create_candidate_row(self.candidates[k])
+                self.update_selected_count()
+                if end_idx < len(self.candidates):
+                    self._chunk_timer = self.after(15, lambda: _stream_batch_rows(end_idx))
+                else:
+                    self._chunk_timer = None
+
+            self._chunk_timer = self.after(15, lambda: _stream_batch_rows(initial_count))
+
         # 3. Panel inferior
         bottom_frame = ctk.CTkFrame(self.main_card, fg_color="transparent")
         bottom_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(8, 14))
@@ -213,6 +157,82 @@ class ScanResultsDialog(BaseGlassDialog):
         
         self.update_selected_count()
         self.after(50, lambda: self._highlight_row(0))
+
+    def _create_candidate_row(self, cand: Dict[str, Any]):
+        thumb_size = 48
+        row_frame = ctk.CTkFrame(self.scroll_frame, fg_color=COLOR_BG_CARD_SECONDARY, corner_radius=14, border_color=COLOR_BORDER_CARD, border_width=1.0)
+        row_frame.pack(fill="x", pady=4, padx=2)
+        self._row_frames.append(row_frame)
+        
+        # Checkbox estilo iOS
+        is_already = cand.get("already_added", False)
+        var = ctk.BooleanVar(value=not is_already)
+        cb = ctk.CTkCheckBox(
+            row_frame, text="", variable=var, width=24,
+            fg_color="#007aff", hover_color="#0062cc", border_color="#3a455c", border_width=1.5,
+            corner_radius=6,
+            command=self.update_selected_count
+        )
+        cb.pack(side="left", padx=(12, 8), pady=10)
+        
+        # Miniatura de carátula
+        cov_path = cand.get("cover", "")
+        if cov_path and os.path.isfile(cov_path):
+            try:
+                with Image.open(cov_path) as im_raw:
+                    raw_im = im_raw.copy().resize((thumb_size, thumb_size), Image.Resampling.BILINEAR)
+            except Exception:
+                raw_im = create_procedural_album(cand["name"], size=thumb_size)
+        else:
+            raw_im = create_procedural_album(cand["name"], size=thumb_size)
+            
+        photo_im = ImageTk.PhotoImage(raw_im)
+        self.thumb_refs.append(photo_im)
+        
+        lbl_thumb = tk.Label(row_frame, image=photo_im, bg=COLOR_BG_CARD_SECONDARY, width=thumb_size, height=thumb_size)
+        lbl_thumb.pack(side="left", padx=(0, 12))
+        
+        # Centro: Nombre editable y ruta del ejecutable
+        info_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+        info_frame.pack(side="left", fill="both", expand=True, pady=6)
+        
+        name_entry = ctk.CTkEntry(
+            info_frame, height=32, corner_radius=16,
+            font=font_button(13),
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            text_color=COLOR_TEXT_MAIN
+        )
+        name_entry.insert(0, cand["name"])
+        name_entry.pack(fill="x", pady=(2, 2))
+        
+        exe_disp = cand["path"]
+        if len(exe_disp) > 65:
+            exe_disp = "..." + exe_disp[-62:]
+        lbl_exe = ctk.CTkLabel(
+            info_frame, text=f"Ejecutable: {exe_disp}",
+            font=font_body(11), text_color=COLOR_TEXT_DIM, anchor="w"
+        )
+        lbl_exe.pack(fill="x")
+        
+        # Badge de estado derecha (Píldoras iOS)
+        if is_already:
+            lbl_badge = ctk.CTkLabel(
+                row_frame, text="En biblioteca",
+                font=font_button(11),
+                fg_color="#2d2215", text_color=COLOR_STATUS_WARNING,
+                corner_radius=10, padx=8, pady=3
+            )
+            lbl_badge.pack(side="right", padx=12)
+        else:
+            lbl_badge = ctk.CTkLabel(
+                row_frame, text="Nuevo",
+                font=font_button(11),
+                fg_color="#142c1f", text_color=COLOR_STATUS_SUCCESS,
+                corner_radius=10, padx=8, pady=3
+            )
+            lbl_badge.pack(side="right", padx=12)
+            
+        self.items_vars.append((var, name_entry, cand))
 
     def _step_row(self, delta: int):
         if not self._row_frames:

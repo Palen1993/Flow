@@ -299,6 +299,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             except Exception:
                 pass
 
+    PAGE_SIZE = 60
+
     def _refresh_contents(self):
         self.lbl_path.configure(text=f"📂  {self.current_path}")
         self._update_drive_buttons_highlight()
@@ -308,6 +310,9 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
 
         self._items.clear()
         self._item_buttons.clear()
+        self._pending_entries = []
+        self._load_more_btn = None
+        self._prev_selected_index = -1
 
         # Botón subir nivel (..)
         parent_dir = os.path.dirname(self.current_path)
@@ -366,12 +371,15 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             )
             lbl_empty.pack(pady=30)
 
-        # Añadir carpetas
         for f_name in subdirs:
-            full_p = os.path.join(self.current_path, f_name)
-            item_idx = len(self._items)
-            self._items.append(("dir", f_name, full_p))
+            self._pending_entries.append(("dir", f_name, os.path.join(self.current_path, f_name)))
+        for f_name in files:
+            self._pending_entries.append(("file", f_name, os.path.join(self.current_path, f_name)))
 
+        self._load_next_page(initial=True)
+
+    def _create_entry_button(self, entry_type: str, f_name: str, full_p: str, item_idx: int) -> ctk.CTkButton:
+        if entry_type == "dir":
             btn = ctk.CTkButton(
                 self.scroll_frame,
                 text=f"  📁  {f_name}",
@@ -386,16 +394,7 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             )
             btn.pack(fill="x", padx=4, pady=1)
             btn.bind("<Double-Button-1>", lambda e, p=full_p: self._change_directory(p))
-            btn.bind("<Button-1>", lambda e, i=item_idx: self._on_click_item(i))
-            btn.bind("<Enter>", lambda e, i=item_idx: self._on_hover(i))
-            self._item_buttons.append(btn)
-
-        # Añadir archivos si estamos en modo selector de archivo
-        for f_name in files:
-            full_p = os.path.join(self.current_path, f_name)
-            item_idx = len(self._items)
-            self._items.append(("file", f_name, full_p))
-
+        else:
             f_icon = "🎮" if f_name.lower().endswith(".exe") else "🖼️"
             btn = ctk.CTkButton(
                 self.scroll_frame,
@@ -411,40 +410,100 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
             )
             btn.pack(fill="x", padx=4, pady=1)
             btn.bind("<Double-Button-1>", lambda e, p=full_p: self._confirm_file_path(p))
-            btn.bind("<Button-1>", lambda e, i=item_idx: self._on_click_item(i))
-            btn.bind("<Enter>", lambda e, i=item_idx: self._on_hover(i))
+
+        btn.bind("<Button-1>", lambda e, i=item_idx: self._on_click_item(i))
+        btn.bind("<Enter>", lambda e, i=item_idx: self._on_hover(i))
+        return btn
+
+    def _load_next_page(self, initial: bool = False):
+        if self._load_more_btn is not None:
+            try:
+                if self._items and self._items[-1][0] == "load_more":
+                    self._items.pop()
+                if self._item_buttons and self._item_buttons[-1] == self._load_more_btn:
+                    self._item_buttons.pop()
+                self._load_more_btn.destroy()
+            except Exception:
+                pass
+            self._load_more_btn = None
+            self._prev_selected_index = -1
+
+        batch = self._pending_entries[:self.PAGE_SIZE]
+        self._pending_entries = self._pending_entries[self.PAGE_SIZE:]
+
+        for entry_type, f_name, full_p in batch:
+            item_idx = len(self._items)
+            self._items.append((entry_type, f_name, full_p))
+            btn = self._create_entry_button(entry_type, f_name, full_p, item_idx)
             self._item_buttons.append(btn)
 
-        self._update_selection()
+        if self._pending_entries:
+            more_idx = len(self._items)
+            rem = len(self._pending_entries)
+            self._items.append(("load_more", f"Mostrar {min(self.PAGE_SIZE, rem)} más ({rem} restantes)...", ""))
+            btn_more = ctk.CTkButton(
+                self.scroll_frame,
+                text=f"  ➕  Mostrar más elementos ({rem} restantes)...",
+                anchor="center",
+                height=36,
+                corner_radius=10,
+                font=font_button(12),
+                fg_color="#181e2b",
+                hover_color="#242c3d",
+                text_color=COLOR_CYAN_ACCENT,
+                command=lambda: self._load_next_page(initial=False)
+            )
+            btn_more.pack(fill="x", padx=4, pady=4)
+            btn_more.bind("<Enter>", lambda e, i=more_idx: self._on_hover(i))
+            self._item_buttons.append(btn_more)
+            self._load_more_btn = btn_more
+
+        self._update_selection(scroll=not initial)
 
     def _on_click_item(self, idx: int):
         self._selected_index = idx
         self._update_selection(scroll=False)
 
     def _on_hover(self, idx: int):
+        if idx == self._selected_index:
+            return
         self._selected_index = idx
         self._update_selection(scroll=False)
 
+    def _style_button_default(self, idx: int):
+        if not (0 <= idx < len(self._item_buttons)):
+            return
+        b = self._item_buttons[idx]
+        item_type = self._items[idx][0] if idx < len(self._items) else "dir"
+        is_special = item_type in ("up", "load_more")
+        is_file = (item_type == "file")
+        def_color = "#38bdf8" if is_special else ("#93c5fd" if is_file else "#e2e8f0")
+        b.configure(
+            fg_color="#181e2b" if is_special else "transparent",
+            border_width=0,
+            text_color=def_color
+        )
+
     def _update_selection(self, scroll: bool = True):
-        for i, b in enumerate(self._item_buttons):
-            if i == self._selected_index:
-                b.configure(
-                    fg_color="#1e3a5f",
-                    border_color="#00e5ff",
-                    border_width=3,
-                    text_color=COLOR_TEXT_WHITE
-                )
-                if scroll:
-                    scroll_to_widget(self.scroll_frame, b)
-            else:
-                is_up = (i < len(self._items) and self._items[i][0] == "up")
-                is_file = (i < len(self._items) and self._items[i][0] == "file")
-                def_color = "#38bdf8" if is_up else ("#93c5fd" if is_file else "#e2e8f0")
-                b.configure(
-                    fg_color="#181e2b" if is_up else "transparent",
-                    border_width=0,
-                    text_color=def_color
-                )
+        prev = getattr(self, "_prev_selected_index", -1)
+        if prev != self._selected_index and 0 <= prev < len(self._item_buttons):
+            self._style_button_default(prev)
+        elif prev == -1:
+            for i in range(len(self._item_buttons)):
+                if i != self._selected_index:
+                    self._style_button_default(i)
+
+        if 0 <= self._selected_index < len(self._item_buttons):
+            b = self._item_buttons[self._selected_index]
+            b.configure(
+                fg_color="#1e3a5f",
+                border_color="#00e5ff",
+                border_width=3,
+                text_color=COLOR_TEXT_WHITE
+            )
+            if scroll:
+                scroll_to_widget(self.scroll_frame, b)
+        self._prev_selected_index = self._selected_index
 
         # Actualizar texto del botón de confirmación según el elemento enfocado
         if self._items and 0 <= self._selected_index < len(self._items):
@@ -458,6 +517,11 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
                 disp_name = (cur_name[:20] + "...") if len(cur_name) > 23 else cur_name
                 self.btn_confirm_selection.configure(text=f"✓ Seleccionar '{disp_name}' ")
                 self.btn_open.configure(state="normal", text="Subir Nivel ")
+            elif item_type == "load_more":
+                cur_name = os.path.basename(self.current_path) or self.current_path
+                disp_name = (cur_name[:20] + "...") if len(cur_name) > 23 else cur_name
+                self.btn_confirm_selection.configure(text=f"✓ Seleccionar '{disp_name}' ")
+                self.btn_open.configure(state="normal", text="Cargar Más ")
             elif item_type == "file":
                 self.btn_confirm_selection.configure(text="✓ Seleccionar Archivo ")
                 self.btn_open.configure(state="normal", text="Elegir ")
@@ -485,6 +549,8 @@ class GlassFolderBrowserDialog(BaseGlassDialog):
         item_type, _name, full_p = self._items[self._selected_index]
         if item_type == "up":
             self._go_up_directory()
+        elif item_type == "load_more":
+            self._load_next_page(initial=False)
         elif item_type == "dir":
             self._change_directory(full_p)
             try:

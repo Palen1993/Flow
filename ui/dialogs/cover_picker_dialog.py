@@ -10,7 +10,7 @@ import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 from typing import Optional, List, Dict, Any, Callable
 
-from core.config import COVERS_DIR, WALLPAPERS_DIR
+from core.config import COVERS_DIR, WALLPAPERS_DIR, sanitize_game_filename
 from core.cover_downloader import (
     search_cover_candidates,
     download_and_save_cover,
@@ -29,6 +29,11 @@ from core.coverflow_engine import (
 from core.feedback import feedback_click, feedback_cover_applied
 from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
+from ui.dialogs.cover_crop_engine import (
+    compose_cover_preview_stage,
+    draw_grid_card_on_master,
+    prepare_card_and_preview_images,
+)
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
     COLOR_BG_DARK, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY,
@@ -41,6 +46,7 @@ from ui.theme import (
 )
 
 _GLOBAL_THUMB_CACHE: Dict[str, Image.Image] = {}
+_THUMB_CACHE_LOCK = threading.RLock()
 
 
 class CoverPickerDialog(BaseGlassDialog):
@@ -106,6 +112,7 @@ class CoverPickerDialog(BaseGlassDialog):
         self._search_generation = 0
         self._thumb_cache = _GLOBAL_THUMB_CACHE
         self._thumb_executor: Optional[ThreadPoolExecutor] = None
+        self._worker_lock = threading.RLock()
 
         # Estado del motor de scroll virtual (0 artefactos / 0 emborronado)
         self.scroll_y = 0
@@ -734,92 +741,21 @@ class CoverPickerDialog(BaseGlassDialog):
         x1 = x0 + card_w
         y1 = y0 + self.CARD_H
 
-        img = self._grid_master_img
-        draw = ImageDraw.Draw(img)
-        item = self.filtered_candidates[idx]
-
-        # Limpiar área de la tarjeta antes de redibujarla
-        draw.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=(15, 18, 24))
-
-        is_sel = (idx == self.selected_card_idx)
-        bg_col = (28, 48, 82) if is_sel else (20, 23, 34)
-        border_col = (0, 229, 255) if is_sel else (36, 44, 61)
-        border_w = 3 if is_sel else 1
-
-        draw.rounded_rectangle([x0, y0, x1, y1], radius=14, fill=bg_col, outline=border_col, width=border_w)
-
-        cx = (x0 + x1) // 2
-        card_thumb = self.card_thumb_by_idx.get(idx)
-        pil_im = self.raw_pil_by_idx.get(idx)
-
-        if card_thumb is not None:
-            tw, th = card_thumb.size
-            tx = cx - tw // 2
-            ty = (y0 + 14 + (118 - th) // 2) if is_wp else (y0 + 10 + (132 - th) // 2)
-            img.paste(card_thumb, (tx, ty))
-            outline_c = ((56, 189, 248) if is_sel else (55, 65, 85)) if is_wp else (55, 65, 85)
-            draw.rectangle([tx - 1, ty - 1, tx + tw, ty + th], outline=outline_c, width=1)
-        else:
-            box_hw = 76 if is_wp else 55
-            draw.rounded_rectangle([cx - box_hw, y0 + 18, cx + box_hw, y0 + 132], radius=8, fill=(13, 15, 22), outline=(32, 38, 52))
-            draw.text((cx, y0 + 75), "Cargando...", fill=(100, 116, 139), anchor="mm", font=self._pil_font_badge)
-
-        title_str = item.get("name", "Juego")
-        if len(title_str) > 25:
-            title_str = title_str[:23] + "…"
-        draw.text((cx, y0 + 156), title_str, fill=(248, 250, 252), anchor="mm", font=self._pil_font_title)
-
-        src = item.get("source", "Web")
-        if pil_im is not None:
-            iw, ih = item.get("orig_size", pil_im.size)
-            if is_wp:
-                # Si las dimensiones son las del thumbnail temporal (ej. 474x266),
-                # asegurar que se represente la verdadera resolución Full HD (1920x1080)
-                if ih < 1080 or iw < 1920:
-                    iw, ih = 1920, 1080
-                    item["orig_size"] = (1920, 1080)
-
-                if ih >= 2160 or iw >= 3840:
-                    b_txt = f"✦ 4K UHD ({iw}×{ih})"
-                elif ih >= 1440 or iw >= 2560:
-                    b_txt = f"✦ 2K QHD ({iw}×{ih})"
-                else:
-                    b_txt = f"✦ 1080p Full HD ({iw}×{ih})"
-                b_col = (56, 189, 248)
-            else:
-                adiff = abs(iw - ih) / float(max(1, max(iw, ih)))
-                if adiff <= 0.14:
-                    b_txt = f"✦ 1:1 Cuadrada ({iw}×{ih})"
-                    b_col = (52, 199, 89)
-                elif iw > ih * 1.2:
-                    b_txt = f"✦ HD 16:9 ({iw}×{ih})"
-                    b_col = (56, 189, 248)
-                else:
-                    b_txt = f"{src} ({iw}×{ih})"
-                    b_col = (56, 189, 248)
-        else:
-            if is_wp:
-                b_txt = "✦ 1080p Full HD"
-                b_col = (56, 189, 248)
-            else:
-                b_txt = f"✦ {src}" if item.get("is_square") else src
-                b_col = (52, 199, 89) if item.get("is_square") else (148, 163, 184)
-
-        draw.text((cx, y0 + 178), b_txt, fill=b_col, anchor="mm", font=self._pil_font_badge)
-
-        btn_y0 = y0 + 196
-        btn_y1 = y0 + 224
-        btn_fill = (0, 122, 255) if is_sel else (31, 37, 51)
-        btn_txt = "✓ Seleccionado" if (is_sel and is_wp) else ("✓ Seleccionada" if is_sel else "Ver en Previa")
-        btn_tcol = (255, 255, 255) if is_sel else (203, 213, 225)
-        draw.rounded_rectangle(
-            [x0 + 14, btn_y0, x1 - 14, btn_y1],
-            radius=10,
-            fill=btn_fill,
-            outline=(255, 255, 255) if is_sel else None,
-            width=2 if is_sel else 0
+        draw_grid_card_on_master(
+            img=self._grid_master_img,
+            item=self.filtered_candidates[idx],
+            x0=x0,
+            y0=y0,
+            x1=x1,
+            y1=y1,
+            is_sel=(idx == self.selected_card_idx),
+            is_wp=is_wp,
+            card_thumb=self.card_thumb_by_idx.get(idx),
+            pil_im=self.raw_pil_by_idx.get(idx),
+            font_title=self._pil_font_title,
+            font_badge=self._pil_font_badge,
+            font_btn=self._pil_font_btn,
         )
-        draw.text((cx, (btn_y0 + btn_y1) // 2), btn_txt, fill=btn_tcol, anchor="mm", font=self._pil_font_btn)
 
     def _rebuild_master_grid_image(self):
         """Dibuja todas las tarjetas sobre un único lienzo Pillow en RAM."""
@@ -1149,20 +1085,14 @@ class CoverPickerDialog(BaseGlassDialog):
             )
             base_im = pil_img
 
-        jewel = create_jewel_case(
-            base_im,
-            name=self.game_name,
-            size=box_size,
+        stage = compose_cover_preview_stage(
+            base_im=base_im,
+            game_name=self.game_name,
             fit_mode=self.fit_mode,
             crop_anchor=self.crop_anchor,
-            crop_offset=self.crop_offset
+            crop_offset=self.crop_offset,
+            box_size=box_size,
         )
-        flat_with_refl, _, _ = prepare_flat_cover(jewel, box_size, has_reflection=True)
-
-        stage = Image.new("RGBA", (240, 248), (11, 13, 19, 255))
-        ox = (240 - box_size) // 2
-        oy = 6
-        stage.paste(flat_with_refl, (ox, oy), flat_with_refl)
 
         self._preview_tk_ref = ImageTk.PhotoImage(stage)
         self.preview_canvas.delete("all")
@@ -1324,37 +1254,7 @@ class CoverPickerDialog(BaseGlassDialog):
 
     def _prepare_card_and_preview_images(self, im: Image.Image, is_wp: bool, card_w: int):
         """Pre-escala la miniatura de tarjeta y la imagen de vista previa en el hilo secundario (0 carga en el hilo UI)."""
-        iw, ih = im.size
-        orig_size = (iw, ih)
-
-        # 1. Imagen ligera para la vista previa en vivo (máx 600px de lado mayor para respuesta en <2ms)
-        max_prev = 600.0
-        if max(iw, ih) > max_prev:
-            sc_p = max_prev / float(max(iw, ih))
-            pw, ph = max(1, int(iw * sc_p)), max(1, int(ih * sc_p))
-            preview_im = im.convert("RGBA").resize((pw, ph), Image.Resampling.BILINEAR)
-        else:
-            preview_im = im.convert("RGBA")
-
-        # 2. Miniatura exacta lista para pegar con .paste() directo sobre la tarjeta
-        if is_wp:
-            max_tw = max(130, card_w - 22)
-            max_th = 114
-            th_h = int(max_tw * 9 / 16)
-            if th_h > max_th:
-                th_h = max_th
-                max_tw = int(max_th * 16 / 9)
-            card_thumb = adapt_wallpaper_to_widescreen(preview_im, width=max_tw, height=th_h)
-        else:
-            if iw > ih * 1.18:
-                max_tw = max(140, card_w - 24)
-                scale = min(float(max_tw) / max(1, iw), 124.0 / max(1, ih))
-            else:
-                scale = min(132.0 / max(1, iw), 132.0 / max(1, ih))
-            tw, th = max(1, int(iw * scale)), max(1, int(ih * scale))
-            card_thumb = preview_im.convert("RGB").resize((tw, th), Image.Resampling.BILINEAR)
-
-        return preview_im, card_thumb, orig_size
+        return prepare_card_and_preview_images(im, is_wp, card_w)
 
     def _load_thumbnails_async(self, candidates: List[Dict[str, Any]], gen: int, is_wp: bool):
         w = max(300, self.view_w)
@@ -1372,21 +1272,26 @@ class CoverPickerDialog(BaseGlassDialog):
             if not primary_u:
                 return
 
-            im = self._thumb_cache.get(primary_u)
+            with _THUMB_CACHE_LOCK:
+                cached_im = self._thumb_cache.get(primary_u)
+                im = cached_im.copy() if cached_im is not None else None
             if not im:
-                im = fetch_image_from_url(primary_u, fallback_url=fallback_u, timeout=2.2)
-                if im:
-                    if len(_GLOBAL_THUMB_CACHE) > 100:
-                        for _k in list(_GLOBAL_THUMB_CACHE.keys())[:30]:
-                            _GLOBAL_THUMB_CACHE.pop(_k, None)
-                    self._thumb_cache[primary_u] = im
+                fetched_im = fetch_image_from_url(primary_u, fallback_url=fallback_u, timeout=2.2)
+                if fetched_im:
+                    with _THUMB_CACHE_LOCK:
+                        if len(_GLOBAL_THUMB_CACHE) > 100:
+                            for _k in list(_GLOBAL_THUMB_CACHE.keys())[:30]:
+                                _GLOBAL_THUMB_CACHE.pop(_k, None)
+                        self._thumb_cache[primary_u] = fetched_im
+                    im = fetched_im.copy()
 
             if im and gen == self._search_generation:
                 try:
                     preview_im, card_thumb, orig_sz = self._prepare_card_and_preview_images(im, is_wp, card_w)
                     if primary_u == poster_u:
-                        self.hd_pil_by_idx[idx] = im
-                        self.full_res_loaded[idx] = True
+                        with self._worker_lock:
+                            self.hd_pil_by_idx[idx] = im
+                            self.full_res_loaded[idx] = True
                     self._action_queue.put(lambda i=idx, p=preview_im, c=card_thumb, s=orig_sz, g=gen: self._apply_thumbnail_to_card(i, p, c, s, g))
                 except Exception:
                     pass
@@ -1646,7 +1551,7 @@ class CoverPickerDialog(BaseGlassDialog):
 
             def _wp_worker():
                 os.makedirs(WALLPAPERS_DIR, exist_ok=True)
-                safe_name = "".join(c for c in self.game_name if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+                safe_name = sanitize_game_filename(self.game_name)
                 target_file_path = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
 
                 src_im = self.hd_pil_by_idx.get(chosen_idx)
@@ -1710,7 +1615,7 @@ class CoverPickerDialog(BaseGlassDialog):
 
         def _download_worker():
             os.makedirs(COVERS_DIR, exist_ok=True)
-            safe_name = "".join(c for c in self.game_name if c.isalnum() or c in (' ', '_', '-')).strip()
+            safe_name = sanitize_game_filename(self.game_name)
             target_file_path = os.path.join(COVERS_DIR, f"{safe_name}.png")
 
             src_im = self.hd_pil_by_idx.get(chosen_idx)

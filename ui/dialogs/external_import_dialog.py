@@ -12,7 +12,7 @@ from core.scanner import scan_directory_for_games, get_detected_games_folders
 from ui.controller_hud import get_button_icon_ctk
 from core.external_launchers import get_all_external_games, scan_emulator_roms, EMULATOR_PROFILES
 from core.cover_downloader import download_and_save_cover, download_and_save_wallpaper
-from core.config import COVERS_DIR, WALLPAPERS_DIR
+from core.config import COVERS_DIR, WALLPAPERS_DIR, sanitize_game_filename
 from ui.dialogs import browse_folder
 from ui.theme import (
     COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_GLASS_BORDER,
@@ -313,6 +313,13 @@ class ExternalImportDialog(BaseGlassDialog):
         threading.Thread(target=_worker, daemon=True).start()
 
     def _populate_candidates(self, games: List[Dict[str, Any]]):
+        if getattr(self, "_chunk_timer", None) is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+
         self.candidates = games
         self.items_vars.clear()
         self._row_frames.clear()
@@ -345,111 +352,130 @@ class ExternalImportDialog(BaseGlassDialog):
         summary_parts = [f"{p}: {cnt}" for p, cnt in counts.items()]
         self.lbl_summary.configure(text="  ·  ".join(summary_parts))
 
-        thumb_size = 36
-        for idx, g in enumerate(games):
-            row = ctk.CTkFrame(
-                self.scroll_frame,
-                fg_color="#18202e" if idx % 2 == 0 else "#141a26",
-                corner_radius=10,
-                border_width=1,
-                border_color="#242e42"
-            )
-            row.pack(fill="x", padx=4, pady=3)
-            row.grid_columnconfigure(3, weight=1)
-
-            # Col 0: Checkbox variable (marcado por defecto solo si es NUEVO)
-            is_new = not g.get("already_added", False)
-            chk_var = ctk.BooleanVar(value=is_new)
-            chk = ctk.CTkCheckBox(
-                row,
-                text="",
-                variable=chk_var,
-                width=24,
-                checkbox_width=20,
-                checkbox_height=20,
-                corner_radius=6,
-                fg_color=COLOR_CYAN_ACCENT,
-                hover_color=COLOR_IOS_BLUE_HOVER,
-                border_color="#455470",
-                command=self._update_selected_count
-            )
-            chk.grid(row=0, column=0, padx=(10, 6), pady=6)
-
-            # Col 1: Miniatura de carátula
-            cov_path = g.get("cover", "")
-            if cov_path and os.path.isfile(cov_path):
-                try:
-                    with Image.open(cov_path) as im_raw:
-                        raw_im = im_raw.copy().convert("RGBA").resize((thumb_size, thumb_size), Image.Resampling.BILINEAR)
-                except Exception:
-                    raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
-            else:
-                raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
-
-            photo_im = ImageTk.PhotoImage(raw_im)
-            self.thumb_refs.append(photo_im)
-            lbl_thumb = tk.Label(row, image=photo_im, bg=row.cget("fg_color"), width=thumb_size, height=thumb_size)
-            lbl_thumb.grid(row=0, column=1, padx=(0, 8), pady=6)
-
-            # Col 2: Badge de plataforma
-            platform = g.get("platform", "App")
-            if "Steam" in platform:
-                plat_color = "#0078f2"
-            elif "Epic" in platform:
-                plat_color = "#1f2937"
-            elif "GOG" in platform:
-                plat_color = "#6a1b9a"
-            elif "ROM" in platform:
-                plat_color = "#7c3aed"
-            else:
-                plat_color = "#0284c7"
-
-            badge = ctk.CTkLabel(
-                row,
-                text=f" {platform} ",
-                font=("Segoe UI Semibold", 10),
-                text_color="#ffffff",
-                fg_color=plat_color,
-                corner_radius=6
-            )
-            badge.grid(row=0, column=2, padx=(0, 8), pady=6)
-
-            # Col 3: Campo de nombre editable
-            name_entry = ctk.CTkEntry(
-                row,
-                font=("Segoe UI Semibold", 12),
-                fg_color="#101520",
-                border_color="#2e3b52",
-                border_width=1,
-                corner_radius=8,
-                text_color=COLOR_TEXT_MAIN
-            )
-            name_entry.insert(0, g.get("name", "Juego"))
-            name_entry.grid(row=0, column=3, sticky="ew", padx=4, pady=6)
-
-            # Col 4: Estado (NUEVO vs YA EN BIBLIOTECA)
-            if is_new:
-                st_lbl = ctk.CTkLabel(
-                    row,
-                    text="● NUEVO",
-                    font=("Segoe UI", 10, "bold"),
-                    text_color=COLOR_STATUS_SUCCESS
-                )
-            else:
-                st_lbl = ctk.CTkLabel(
-                    row,
-                    text="✓ EN BIBLIOTECA",
-                    font=("Segoe UI", 10, "bold"),
-                    text_color="#94a3b8"
-                )
-            st_lbl.grid(row=0, column=4, padx=(8, 12), pady=6)
-
-            self.items_vars.append((chk_var, name_entry, g))
-            self._row_frames.append(row)
+        initial_count = min(len(games), 25)
+        for idx in range(initial_count):
+            self._create_candidate_row(idx, games[idx])
 
         self._focused_row_idx = 0
         self._highlight_focused_row()
         self._update_selected_count()
+
+        if initial_count < len(games):
+            def _stream_batch_rows(start_idx: int):
+                if not self.winfo_exists():
+                    return
+                end_idx = min(start_idx + 25, len(self.candidates))
+                for k in range(start_idx, end_idx):
+                    self._create_candidate_row(k, self.candidates[k])
+                self._update_selected_count()
+                if end_idx < len(self.candidates):
+                    self._chunk_timer = self.after(15, lambda: _stream_batch_rows(end_idx))
+                else:
+                    self._chunk_timer = None
+
+            self._chunk_timer = self.after(15, lambda: _stream_batch_rows(initial_count))
+
+    def _create_candidate_row(self, idx: int, g: Dict[str, Any]):
+        thumb_size = 36
+        row = ctk.CTkFrame(
+            self.scroll_frame,
+            fg_color="#18202e" if idx % 2 == 0 else "#141a26",
+            corner_radius=10,
+            border_width=1,
+            border_color="#242e42"
+        )
+        row.pack(fill="x", padx=4, pady=3)
+        row.grid_columnconfigure(3, weight=1)
+
+        # Col 0: Checkbox variable (marcado por defecto solo si es NUEVO)
+        is_new = not g.get("already_added", False)
+        chk_var = ctk.BooleanVar(value=is_new)
+        chk = ctk.CTkCheckBox(
+            row,
+            text="",
+            variable=chk_var,
+            width=24,
+            checkbox_width=20,
+            checkbox_height=20,
+            corner_radius=6,
+            fg_color=COLOR_CYAN_ACCENT,
+            hover_color=COLOR_IOS_BLUE_HOVER,
+            border_color="#455470",
+            command=self._update_selected_count
+        )
+        chk.grid(row=0, column=0, padx=(10, 6), pady=6)
+
+        # Col 1: Miniatura de carátula
+        cov_path = g.get("cover", "")
+        if cov_path and os.path.isfile(cov_path):
+            try:
+                with Image.open(cov_path) as im_raw:
+                    raw_im = im_raw.copy().convert("RGBA").resize((thumb_size, thumb_size), Image.Resampling.BILINEAR)
+            except Exception:
+                raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
+        else:
+            raw_im = create_procedural_album(g.get("name", "Game"), size=thumb_size)
+
+        photo_im = ImageTk.PhotoImage(raw_im)
+        self.thumb_refs.append(photo_im)
+        lbl_thumb = tk.Label(row, image=photo_im, bg=row.cget("fg_color"), width=thumb_size, height=thumb_size)
+        lbl_thumb.grid(row=0, column=1, padx=(0, 8), pady=6)
+
+        # Col 2: Badge de plataforma
+        platform = g.get("platform", "App")
+        if "Steam" in platform:
+            plat_color = "#0078f2"
+        elif "Epic" in platform:
+            plat_color = "#1f2937"
+        elif "GOG" in platform:
+            plat_color = "#6a1b9a"
+        elif "ROM" in platform:
+            plat_color = "#7c3aed"
+        else:
+            plat_color = "#0284c7"
+
+        badge = ctk.CTkLabel(
+            row,
+            text=f" {platform} ",
+            font=("Segoe UI Semibold", 10),
+            text_color="#ffffff",
+            fg_color=plat_color,
+            corner_radius=6
+        )
+        badge.grid(row=0, column=2, padx=(0, 8), pady=6)
+
+        # Col 3: Campo de nombre editable
+        name_entry = ctk.CTkEntry(
+            row,
+            font=("Segoe UI Semibold", 12),
+            fg_color="#101520",
+            border_color="#2e3b52",
+            border_width=1,
+            corner_radius=8,
+            text_color=COLOR_TEXT_MAIN
+        )
+        name_entry.insert(0, g.get("name", "Juego"))
+        name_entry.grid(row=0, column=3, sticky="ew", padx=4, pady=6)
+
+        # Col 4: Estado (NUEVO vs YA EN BIBLIOTECA)
+        if is_new:
+            st_lbl = ctk.CTkLabel(
+                row,
+                text="● NUEVO",
+                font=("Segoe UI", 10, "bold"),
+                text_color=COLOR_STATUS_SUCCESS
+            )
+        else:
+            st_lbl = ctk.CTkLabel(
+                row,
+                text="✓ EN BIBLIOTECA",
+                font=("Segoe UI", 10, "bold"),
+                text_color="#94a3b8"
+            )
+        st_lbl.grid(row=0, column=4, padx=(8, 12), pady=6)
+
+        self.items_vars.append((chk_var, name_entry, g))
+        self._row_frames.append(row)
 
     def _update_selected_count(self):
         sel = sum(1 for chk_var, _, _ in self.items_vars if chk_var.get())
@@ -600,16 +626,17 @@ class ExternalImportDialog(BaseGlassDialog):
         def _download_artwork_worker():
             for g in selected_games:
                 name = g.get("name", "Game")
+                safe_name = sanitize_game_filename(name)
                 # Si es de Steam y tiene URLs oficiales, descargar y guardar en disco
                 cov_url = g.get("cover_url")
                 if cov_url and not g.get("cover"):
-                    target_cov = os.path.join(COVERS_DIR, f"{name}.png")
+                    target_cov = os.path.join(COVERS_DIR, f"{safe_name}.png")
                     if download_and_save_cover(cov_url, target_cov):
                         g["cover"] = target_cov
 
                 wp_url = g.get("wallpaper_url")
                 if wp_url and not g.get("wallpaper"):
-                    target_wp = os.path.join(WALLPAPERS_DIR, f"{name}_wallpaper.png")
+                    target_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
                     if download_and_save_wallpaper(wp_url, target_wp):
                         g["wallpaper"] = target_wp
 

@@ -64,18 +64,21 @@ class GameLibraryService:
     def refresh_if_modified(self) -> bool:
         """
         Comprueba si games.json ha sido modificado externamente (por el centinela o sincronización).
-        Si es así, recarga y actualiza metadatos (playtime, last_played) sin perder la referencia en memoria.
+        Si es así, recarga y actualiza metadatos (playtime, last_played, arte y colección) preservando referencias existentes.
         """
         try:
             current_mtime = get_games_file_mtime()
             if current_mtime <= self._file_mtime:
                 return False
 
+            self._file_mtime = current_mtime
             fresh_games = load_games_data()
             if not fresh_games:
+                if self.games:
+                    self.games.clear()
+                    return True
                 return False
 
-            self._file_mtime = current_mtime
             fresh_by_path: Dict[str, Dict[str, Any]] = {}
             fresh_by_name: Dict[str, Dict[str, Any]] = {}
             for fg in fresh_games:
@@ -87,13 +90,23 @@ class GameLibraryService:
                 if n:
                     fresh_by_name[n] = fg
 
+            # Actualizar en el lugar los juegos que ya están en memoria
+            existing_keys = set()
             for g in self.games:
                 gp = g.get("path")
                 norm_p = os.path.normcase(os.path.normpath(gp)) if gp else ""
                 fg = fresh_by_path.get(norm_p) or fresh_by_name.get(g.get("name", "").strip().lower())
                 if fg:
+                    existing_keys.add(norm_p or g.get("name", "").strip().lower())
                     g["playtime_minutes"] = fg.get("playtime_minutes", g.get("playtime_minutes", 0))
                     g["last_played"] = fg.get("last_played", g.get("last_played"))
+                    for field in ("cover", "wallpaper", "wallpaper_opacity", "wallpaper_blur", "monitor", "high_priority", "launch_args"):
+                        if field in fg:
+                            g[field] = fg[field]
+
+            # Si se añadieron o eliminaron juegos externamente, sincronizar la lista
+            if len(fresh_games) != len(self.games) or len(existing_keys) != len(self.games):
+                self.games[:] = fresh_games
 
             logger.info("Metadatos de biblioteca sincronizados con éxito desde el disco")
             return True

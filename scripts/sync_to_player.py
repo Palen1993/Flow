@@ -9,27 +9,68 @@ Garantia de seguridad:
 """
 import os
 import sys
+import time
 import shutil
 import subprocess
+import psutil
 
 BASE_DEV_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLAYER_APP_DIR = os.path.abspath(os.path.join(os.path.dirname(BASE_DEV_DIR), "GameFlow"))
 
+
+def stop_running_player_processes(target_dir: str) -> int:
+    """Detiene de forma segura instancias en ejecución (Launcher, Watcher, Sentinel) dentro de target_dir antes de actualizar."""
+    norm_target = os.path.normcase(os.path.abspath(target_dir))
+    target_names = {"gameflow launcher.exe", "gamepad_watcher.exe", "sentinel_process.exe"}
+    to_terminate = []
+
+    for proc in psutil.process_iter(["pid", "name", "exe"]):
+        try:
+            pname = (proc.info.get("name") or "").lower()
+            pexe = proc.info.get("exe") or ""
+            if pname in target_names or (pexe and os.path.normcase(os.path.abspath(pexe)).startswith(norm_target)):
+                if pexe and os.path.normcase(os.path.abspath(pexe)).startswith(norm_target):
+                    to_terminate.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    if not to_terminate:
+        return 0
+
+    print(f"  -> Cerrando {len(to_terminate)} proceso(s) residente(s) de GameFlow para liberar archivos...")
+    for p in to_terminate:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+
+    _, alive = psutil.wait_procs(to_terminate, timeout=3.5)
+    for p in alive:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    time.sleep(0.3)
+    return len(to_terminate)
+
+
 def create_desktop_shortcut(target_exe: str, working_dir: str, icon_path: str):
-    """Crea o actualiza el acceso directo en el Escritorio de Windows."""
-    desktop_dir = os.path.join(os.environ.get("USERPROFILE", os.path.expanduser("~")), "Desktop")
-    shortcut_path = os.path.join(desktop_dir, "GameFlow.lnk")
+    """Crea o actualiza el acceso directo en el Escritorio de Windows (compatible con OneDrive Desktop)."""
     try:
         ps_script = f'''
+        $DesktopPath = [Environment]::GetFolderPath('Desktop')
+        $ShortcutPath = Join-Path $DesktopPath "GameFlow.lnk"
         $WshShell = New-Object -ComObject WScript.Shell
-        $Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
+        $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
         $Shortcut.TargetPath = "{target_exe}"
         $Shortcut.WorkingDirectory = "{working_dir}"
         $Shortcut.IconLocation = "{icon_path}"
         $Shortcut.Description = "GameFlow Launcher - Tu centro de juegos de alto rendimiento"
         $Shortcut.Save()
+        Write-Output $ShortcutPath
         '''
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], check=True, capture_output=True)
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], check=True, capture_output=True, text=True)
+        shortcut_path = res.stdout.strip() or "Escritorio\\GameFlow.lnk"
         print(f"  [OK] Acceso directo creado en el Escritorio: {shortcut_path}")
         return True
     except Exception as e:
@@ -63,6 +104,7 @@ def sync_to_player(build_first: bool = True):
 
     # 2. Copiar binarios y dependencias del motor
     print("\n[2/4] Actualizando ejecutables y dependencias del motor...")
+    stop_running_player_processes(PLAYER_APP_DIR)
     for item in ["GameFlow Launcher.exe", "sentinel_process.exe", "gamepad_watcher.exe"]:
         src = os.path.join(dist_app, item)
         dst = os.path.join(PLAYER_APP_DIR, item)
