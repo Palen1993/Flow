@@ -94,25 +94,50 @@ class GamepadNavigationService:
                         pass
                 return
 
-            # Si el lanzador está minimizado: responder a Select, Start o Guía para restaurar
+            # Si el lanzador está minimizado: responder a Select, Start o Guía
             if getattr(self.app, "is_minimized", False):
+                if inputs.get("guide", False) and not prev.get("guide", False):
+                    try:
+                        from core.active_game_tracker import is_game_running
+                        in_game = is_game_running()
+                    except Exception:
+                        in_game = False
+                    if in_game and hasattr(self.app, "open_in_game_overlay"):
+                        self.app.open_in_game_overlay()
+                        self._prev_buttons = inputs
+                        return
+                    else:
+                        self.app.restore_window()
+                        self._prev_buttons = inputs
+                        return
+
                 if (
                     (inputs.get("back", False) and not prev.get("back", False))
                     or (inputs.get("start", False) and not prev.get("start", False))
-                    or (inputs.get("guide", False) and not prev.get("guide", False))
                 ):
                     self.app.restore_window()
-                self._prev_buttons = inputs
-                return
+                    self._prev_buttons = inputs
+                    return
 
-            # Botón Guía / Xbox / Nexus: Traer al frente
+            # Botón Guía / Xbox / Nexus: Abrir In-Game Overlay si hay juego activo, o restaurar lanzador
             if inputs.get("guide", False) and not prev.get("guide", False):
-                self.app.restore_window()
                 try:
-                    self.app.lift()
-                    self.app.focus_force()
+                    from core.active_game_tracker import is_game_running
+                    in_game = is_game_running()
                 except Exception:
-                    pass
+                    in_game = False
+
+                if in_game and hasattr(self.app, "open_in_game_overlay"):
+                    self.app.open_in_game_overlay()
+                    self._prev_buttons = inputs
+                    return
+                else:
+                    self.app.restore_window()
+                    try:
+                        self.app.lift()
+                        self.app.focus_force()
+                    except Exception:
+                        pass
 
             # Navegación horizontal en el carrusel Cover Flow
             move_left = inputs.get("left", False)

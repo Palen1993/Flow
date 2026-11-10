@@ -248,6 +248,21 @@ class App(ctk.CTk):
             on_select_filter=lambda fid: self.apply_filter(fid, keep_selection=True)
         )
 
+    def open_in_game_overlay(self):
+        """Abre o alterna el In-Game Overlay flotante con reloj, bateria y volumen al pulsar el boton Guia."""
+        self.close_active_menu()
+        if hasattr(self, "_in_game_overlay") and self._in_game_overlay and self._in_game_overlay.winfo_exists():
+            self._in_game_overlay.resume_game()
+            return
+
+        from ui.dialogs.in_game_overlay import InGameOverlayDialog
+        self._in_game_overlay = InGameOverlayDialog(
+            parent=self,
+            on_resume_callback=lambda: setattr(self, "_in_game_overlay", None),
+            on_return_to_launcher_callback=lambda: self.restore_window(),
+            on_exit_game_callback=lambda: self.restore_window()
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -454,6 +469,9 @@ class App(ctk.CTk):
         self.bind("<bracketright>", lambda e: self.cycle_filter(1))
         self.bind("<f>", lambda e: self.toggle_current_game_favorite())
         self.bind("<F>", lambda e: self.toggle_current_game_favorite())
+        self.bind("<o>", lambda e: self.open_in_game_overlay())
+        self.bind("<O>", lambda e: self.open_in_game_overlay())
+        self.bind("<F1>", lambda e: self.open_in_game_overlay())
         self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
@@ -1016,6 +1034,7 @@ class App(ctk.CTk):
         items = [
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
+            ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
             ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
             ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),

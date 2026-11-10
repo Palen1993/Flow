@@ -59,23 +59,34 @@
 * Píldora HUD superior izquierda en estilo Glassmorphism con indicador interactivo de colección, conteo de títulos y glifos adaptativos.
 * Diálogo modal accesible desde el menú de opciones `(X)` para seleccionar directamente cualquier colección.
 
+### 🪟 7. In-Game Gamepad Overlay (Botón Guía / Nexus / PS)
+* Al pulsar el botón central **Xbox / Guía / PS** (o tecla `O` / `F1`) durante una partida en ejecución, se despliega instantáneamente un menú flotante Glassmorphism en primer plano absoluto:
+  * **Reloj Digital y Fecha** en vivo en tiempo real.
+  * **Nivel de Batería del Mando** con indicador dinámico de carga / cable USB y modelo de mando detectado.
+  * **Control de Volumen Maestro del Sistema** ajustable directamente con la cruceta o gatillos superiores (`LB / RB`), y silencio rápido con `Y` / `Triángulo`.
+  * **Acciones Rápidas con Mando**:
+    * **▶️ Reanudar Partida** (devuelve el foco instantáneamente al juego activo).
+    * **🏠 Volver a GameFlow** (restaura la ventana del lanzador).
+    * **🛑 Cerrar Juego** (cierra el proceso del juego limpiamente registrando el tiempo de sesión).
+* Totalmente autónomo: funciona tanto si GameFlow permanece minimizado como si se utiliza el modo de cierre tras lanzar juego (`overlay.py` + `gamepad_watcher.pyw`).
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
 
-| Botón Xbox | Botón PlayStation | Acción en Pantalla Principal (Big Picture) | Acción en Diálogos y Menús |
+| Botón Xbox | Botón PlayStation | Acción en Pantalla Principal (Big Picture) | Acción en In-Game Overlay / Diálogos |
 | :---: | :---: | :--- | :--- |
-| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow | Navegar campos o columnas |
-| **D-Pad ↑ / ↓** | **Cruceta ↑ / ↓** | Selector de monitores / Menú | Subir / bajar filas |
-| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Abrir carpeta / Aceptar |
-| **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Atrás |
+| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow | Ajustar Volumen / Navegar campos |
+| **D-Pad ↑ / ↓** | **Cruceta ↑ / ↓** | Selector de monitores / Menú | Seleccionar opción (Reanudar / Lanzador / Salir) |
+| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Ejecutar acción seleccionada |
+| **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Reanudar juego |
 | **X** | **Cuadrado** | Abrir menú de opciones | Abrir teclado OSD / Marcar todo |
-| **Y** | **Triángulo** | Confirmar salida del lanzador | Salto rápido a carpeta Juegos / Cambiar monitor |
-| **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** (Favoritos, Estado, Plataforma, Género) | Cambiar de disco / Ajustar opacidad |
+| **Y** | **Triángulo** | Confirmar salida del lanzador | **Silenciar / Activar sonido (Mute)** / Carpeta Juegos |
+| **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** | **Bajar / Subir Volumen Maestro** (-5% / +5%) |
 | **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD (A-Z) | Ajustar borrosidad / desenfoque |
 | **Start** | **Options** | Alternar Pantalla Completa / Mini Dock | Seleccionar carpeta o guardar |
 | **Select / Back** | **Share / Touchpad** | Minimizar a la bandeja del sistema | Alternar Carátula 3D vs Wallpaper 16:9 |
-| **Guía / Xbox** | **PS Button** | Restaurar ventana y traer al frente | Restaurar foco |
+| **Guía / Xbox** | **PS Button** | Restaurar ventana del lanzador | **Abrir / Cerrar In-Game Overlay (en partida)** |
 
 ---
 
@@ -121,15 +132,18 @@ El ejecutable listo para usar se generará en `dist/GameFlow Launcher/` y el arc
 GameFlow/
 ├── assets/                 # Iconos vectoriales y efectos de sonido acústicos
 ├── core/
+│   ├── active_game_tracker.py # Rastreo de juegos activos para In-Game Overlay
+│   ├── audio_service.py    # Control de volumen maestro nativo COM / ctypes / keybd_event
 │   ├── config.py           # Persistencia atómica de configuración
 │   ├── cover_downloader.py # Búsqueda y filtrado estricto de carátulas/wallpapers HD
 │   ├── cover_resolver.py   # Extracción de iconos de ejecutables Win32
 │   ├── coverflow_engine.py # Motor matemático 3D, estuches de cristal y perspectiva
 │   ├── execution_service.py# Lanzamiento y centinela de procesos desacoplado
 │   ├── external_launchers.py# Parsers de Steam, Epic Games, GOG y ROMs
-│   └── library_service.py  # Gestión atómica de la biblioteca games.json
+│   ├── library_service.py  # Gestión atómica y caché lazy-loading de games.json
+│   └── platform_layer.py   # Capa de abstracción y mocks multiplataforma Windows/Linux/CI
 ├── ui/
-│   ├── dialogs/            # Diálogos modales Glassmorphism unificados (BaseGlassDialog)
+│   ├── dialogs/            # Diálogos Glassmorphism (InGameOverlay, Options, Scraper, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI
@@ -137,7 +151,9 @@ GameFlow/
 │   ├── theme.py            # Paleta de colores iOS Liquid Glass y Win32 helper
 │   └── window_manager.py   # Gestión de modo Big Picture y Mini Dock transparente
 ├── app.py                  # Ventana principal y despachador de eventos inter-hilo
+├── gamepad_watcher.pyw     # Centinela de fondo para botón Guía y atajos de mando
 ├── lanzador.py             # Punto de entrada de la aplicación
+├── overlay.py              # Lanzador standalone del In-Game Overlay
 └── requirements.txt        # Dependencias de producción
 ```
 

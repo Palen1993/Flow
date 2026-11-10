@@ -219,6 +219,32 @@ def launch_or_focus():
         p = subprocess.Popen([pythonw, launcher_path], cwd=DIR, creationflags=flags)
         log_watcher(f"launch_or_focus: exception fallback PID={p.pid}")
 
+
+def launch_or_focus_overlay():
+    """Lanza el In-Game Overlay flotante cuando se pulsa el botón Guía durante una partida."""
+    overlay_exe = os.path.join(DIR, "GameFlow Overlay.exe")
+    if getattr(sys, 'frozen', False) and os.path.isfile(overlay_exe):
+        try:
+            flags = (0x08000000 | 0x00000200)
+            subprocess.Popen([overlay_exe], cwd=DIR, creationflags=flags)
+            return
+        except Exception:
+            pass
+
+    pythonw = get_pythonw_executable()
+    overlay_script = os.path.join(DIR, "overlay.py")
+    if os.path.isfile(overlay_script):
+        try:
+            flags = (0x08000000 | 0x00000200)
+            subprocess.Popen([pythonw, overlay_script], cwd=DIR, creationflags=flags)
+            return
+        except Exception:
+            pass
+
+    # Fallback si no está el script de overlay
+    launch_or_focus()
+
+
 def main():
     _mutex = acquire_single_instance_mutex()
     ensure_gamebar_nexus_disabled()
@@ -244,12 +270,22 @@ def main():
         target_id = cfg.get("selected_controller_id", "any")
         is_conn, dev_name, inputs = poll_active_gamepad(target_id)
         
-        # 1. Detección de pulsación del botón Xbox / Guía (para invocar cuando está cerrado o en segundo plano)
+        # 1. Detección de pulsación del botón Xbox / Guía (Overlay en juego o lanzador en escritorio)
         curr_guide = inputs.get("guide", False)
         if curr_guide and not prev_guide:
             log_watcher("¡BOTÓN XBOX / GUÍA PULSADO!")
             if cfg.get("launch_on_xbox_button", True):
-                launch_or_focus()
+                try:
+                    from core.active_game_tracker import is_game_running
+                    in_game = is_game_running()
+                except Exception:
+                    in_game = False
+
+                if in_game:
+                    log_watcher("Partida en curso detectada: abriendo In-Game Overlay...")
+                    launch_or_focus_overlay()
+                else:
+                    launch_or_focus()
                 time.sleep(1.0)  # Evitar múltiples aperturas por mantener pulsado
         prev_guide = curr_guide
 
