@@ -70,6 +70,14 @@
     * **🛑 Cerrar Juego** (cierra el proceso del juego limpiamente registrando el tiempo de sesión).
 * Totalmente autónomo: funciona tanto si GameFlow permanece minimizado como si se utiliza el modo de cierre tras lanzar juego (`overlay.py` + `gamepad_watcher.pyw`).
 
+### ⏱️ 8. Estadísticas Avanzadas, Gráficas de Actividad y Metas Locales (S)
+* Accesible con tecla **S** o desde el menú de opciones `(X)`:
+  * **Métricas por Título**: Tiempo total acumulado, fecha de alta en la biblioteca, cantidad de veces iniciado, última sesión jugada (relativa y exacta) y promedio por partida.
+  * **Gráfica de Actividad Semanal y Mensual**: Visualización estilo consola (Steam / Nintendo Switch) con barras proporcionales en Canvas High-DPI para los últimos 7 días o 30 días, alternable con la cruceta o botones `LB / RB`.
+  * **Checklist de Metas y Logros Personales**: Lista interactiva para marcar tareas pendientes (ideal para RPGs y juegos de mundo abierto) con casillas `[✓]` / `[ ]`, barra de progreso porcentual, adición con teclado en pantalla OSD `(X)` y borrado `(Y)`.
+  * **Guía y Notas del Juego**: Bloc de notas integrado para guardar códigos, combinaciones de puertas, builds de personajes o misiones secundarias.
+* Persistencia atómica y fusión inteligente resistente a cierres o ejecuciones en segundo plano.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
@@ -141,9 +149,10 @@ GameFlow/
 │   ├── execution_service.py# Lanzamiento y centinela de procesos desacoplado
 │   ├── external_launchers.py# Parsers de Steam, Epic Games, GOG y ROMs
 │   ├── library_service.py  # Gestión atómica y caché lazy-loading de games.json
-│   └── platform_layer.py   # Capa de abstracción y mocks multiplataforma Windows/Linux/CI
+│   ├── platform_layer.py   # Capa de abstracción y mocks multiplataforma Windows/Linux/CI
+│   └── stats_service.py    # Métricas de tiempo, agregaciones semanales/mensuales y metas
 ├── ui/
-│   ├── dialogs/            # Diálogos Glassmorphism (InGameOverlay, Options, Scraper, etc.)
+│   ├── dialogs/            # Diálogos Glassmorphism (GameStats, InGameOverlay, Options, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI

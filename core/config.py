@@ -266,6 +266,25 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
                             mem_last = g.get("last_played")
                             if disk_last and (not mem_last or disk_last > mem_last):
                                 g["last_played"] = disk_last
+                            # Fusión de conteo de partidas
+                            disk_count = int(match.get("play_count", 0) or 0)
+                            mem_count = int(g.get("play_count", 0) or 0)
+                            if disk_count > mem_count:
+                                g["play_count"] = disk_count
+                            # Fusión de historial diario
+                            disk_daily = match.get("daily_playtime")
+                            if isinstance(disk_daily, dict):
+                                mem_daily = g.setdefault("daily_playtime", {})
+                                for d_k, d_v in disk_daily.items():
+                                    mem_daily[d_k] = max(int(d_v or 0), int(mem_daily.get(d_k, 0) or 0))
+                            # Preservar fecha de alta si existe en disco
+                            if match.get("date_added") and not g.get("date_added"):
+                                g["date_added"] = match["date_added"]
+                            # Preservar metas y notas si están en disco y no en memoria
+                            if match.get("goals") and not g.get("goals"):
+                                g["goals"] = match["goals"]
+                            if match.get("notes") and not g.get("notes"):
+                                g["notes"] = match["notes"]
             except Exception as e:
                 _get_logger().warning(f"Aviso en merge de playtime: {e}")
 
@@ -295,7 +314,8 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
 
 def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base: str = "") -> bool:
     """
-    Registra atómicamente el tiempo de juego transcurrido y la fecha de última sesión en games.json.
+    Registra atómicamente el tiempo de juego transcurrido, fecha de última sesión,
+    conteo de partidas e historial diario en games.json.
     Diseñado para ser invocado por el centinela independiente o hilos de monitorización.
     """
     if not game_path_or_exe and not exe_base:
@@ -307,19 +327,35 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
         games = load_games_data()
         added_mins = max(1, int(round(elapsed_seconds / 60.0)))
         today_str = time.strftime("%Y-%m-%d %H:%M")
+        date_today = time.strftime("%Y-%m-%d")
         updated = False
 
         target_norm = os.path.normcase(os.path.normpath(game_path_or_exe)) if game_path_or_exe else ""
         target_base = (exe_base or os.path.basename(game_path_or_exe) or "").lower()
+
+        def _apply_stats(game_obj: Dict[str, Any]):
+            prev_mins = int(game_obj.get("playtime_minutes", 0) or 0)
+            game_obj["playtime_minutes"] = prev_mins + added_mins
+            game_obj["last_played"] = today_str
+            # Incrementar contador de partidas
+            prev_count = int(game_obj.get("play_count", 0) or 0)
+            game_obj["play_count"] = prev_count + 1
+            # Acumular minutos en el día actual
+            daily = game_obj.setdefault("daily_playtime", {})
+            if not isinstance(daily, dict):
+                daily = {}
+                game_obj["daily_playtime"] = daily
+            daily[date_today] = int(daily.get(date_today, 0) or 0) + added_mins
+            # Asegurar fecha de añadido
+            if not game_obj.get("date_added"):
+                game_obj["date_added"] = date_today
 
         # 1. Emparejamiento por ruta canónica absoluta normalizada
         if target_norm:
             for g in games:
                 gp = g.get("path")
                 if gp and os.path.normcase(os.path.normpath(gp)) == target_norm:
-                    prev_mins = int(g.get("playtime_minutes", 0) or 0)
-                    g["playtime_minutes"] = prev_mins + added_mins
-                    g["last_played"] = today_str
+                    _apply_stats(g)
                     updated = True
                     break
 
@@ -328,13 +364,36 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
             for g in games:
                 gp = g.get("path")
                 if gp and os.path.basename(gp).lower() == target_base:
-                    prev_mins = int(g.get("playtime_minutes", 0) or 0)
-                    g["playtime_minutes"] = prev_mins + added_mins
-                    g["last_played"] = today_str
+                    _apply_stats(g)
                     updated = True
                     break
 
         if updated:
+            return save_games_data(games, merge_existing_playtime=False)
+        return False
+
+def increment_game_launch_count_atomic(game_path_or_name: str) -> bool:
+    """Incrementa atómicamente el contador de partidas iniciadas al lanzar un juego."""
+    with config_lock():
+        games = load_games_data()
+        target_norm = os.path.normcase(os.path.normpath(game_path_or_name)) if game_path_or_name else ""
+        target_name = game_path_or_name.strip().lower() if game_path_or_name else ""
+        date_today = time.strftime("%Y-%m-%d")
+
+        found = False
+        for g in games:
+            gp = g.get("path")
+            norm_p = os.path.normcase(os.path.normpath(gp)) if gp else ""
+            gn = g.get("name", "").strip().lower()
+            if (target_norm and norm_p == target_norm) or (target_name and gn == target_name):
+                curr = int(g.get("play_count", 0) or 0)
+                g["play_count"] = curr + 1
+                if not g.get("date_added"):
+                    g["date_added"] = date_today
+                found = True
+                break
+
+        if found:
             return save_games_data(games, merge_existing_playtime=False)
         return False
 

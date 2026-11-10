@@ -133,7 +133,8 @@ class GameLibraryService:
                     for field in (
                         "cover", "wallpaper", "wallpaper_opacity", "wallpaper_blur",
                         "monitor", "high_priority", "launch_args",
-                        "favorite", "status", "genre", "platform"
+                        "favorite", "status", "genre", "platform",
+                        "play_count", "date_added", "daily_playtime", "goals", "notes"
                     ):
                         if field in fg:
                             g[field] = fg[field]
@@ -165,6 +166,7 @@ class GameLibraryService:
         platform: str = "PC"
     ) -> int:
         """Añade un nuevo juego a la colección y persiste en disco. Devuelve el índice del nuevo juego."""
+        import time
         new_game = {
             "name": name,
             "path": path,
@@ -174,7 +176,13 @@ class GameLibraryService:
             "favorite": bool(favorite),
             "status": status or "Por jugar",
             "genre": genre or "",
-            "platform": platform or "PC"
+            "platform": platform or "PC",
+            "playtime_minutes": 0,
+            "play_count": 0,
+            "date_added": time.strftime("%Y-%m-%d"),
+            "daily_playtime": {},
+            "goals": [],
+            "notes": ""
         }
         if launch_args:
             new_game["launch_args"] = launch_args
@@ -387,6 +395,10 @@ class GameLibraryService:
         last_p = game.get("last_played")
         if last_p:
             parts.append(f"Última sesión: {last_p.split(' ')[0]}")
+        goals = game.get("goals")
+        if isinstance(goals, list) and len(goals) > 0:
+            comp = sum(1 for g in goals if isinstance(g, dict) and g.get("completed"))
+            parts.append(f"🎯 Metas: {comp}/{len(goals)}")
         return "   •   ".join(parts)
 
     def find_alphabetical_jump(

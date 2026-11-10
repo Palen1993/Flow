@@ -263,6 +263,34 @@ class App(ctk.CTk):
             on_exit_game_callback=lambda: self.restore_window()
         )
 
+    def open_game_stats_dialog(self):
+        """Abre la pantalla de estadísticas avanzadas, gráficas de tiempo y metas para el juego actual."""
+        self.close_active_menu()
+        if hasattr(self, "_stats_dialog") and self._stats_dialog and self._stats_dialog.winfo_exists():
+            try:
+                self._stats_dialog.lift()
+                self._stats_dialog.focus_force()
+            except Exception:
+                pass
+            return
+
+        if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
+            return
+
+        game = self.games[self.selected_index]
+        from ui.dialogs.game_stats_dialog import GameStatsDialog
+
+        def _on_updated(updated_game):
+            self.save_games()
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.update_ui_details(self.selected_index)
+
+        self._stats_dialog = GameStatsDialog(
+            parent=self,
+            game=game,
+            on_game_updated=_on_updated
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -469,6 +497,8 @@ class App(ctk.CTk):
         self.bind("<bracketright>", lambda e: self.cycle_filter(1))
         self.bind("<f>", lambda e: self.toggle_current_game_favorite())
         self.bind("<F>", lambda e: self.toggle_current_game_favorite())
+        self.bind("<s>", lambda e: self.open_game_stats_dialog())
+        self.bind("<S>", lambda e: self.open_game_stats_dialog())
         self.bind("<o>", lambda e: self.open_in_game_overlay())
         self.bind("<O>", lambda e: self.open_in_game_overlay())
         self.bind("<F1>", lambda e: self.open_in_game_overlay())
@@ -585,6 +615,14 @@ class App(ctk.CTk):
             return
 
         game = self.games[self.selected_index]
+        try:
+            from core.stats_service import increment_game_play_count
+            from core.config import increment_game_launch_count_atomic
+            increment_game_play_count(game)
+            increment_game_launch_count_atomic(game.get("path") or game.get("name", ""))
+        except Exception:
+            pass
+
         self.btn_launch.configure(state="disabled")
         self.set_status(f"Iniciando {game['name']}...")
 
@@ -1033,6 +1071,7 @@ class App(ctk.CTk):
 
         items = [
             (fav_icon, fav_label, self.toggle_current_game_favorite),
+            ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
             ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
