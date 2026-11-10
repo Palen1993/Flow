@@ -292,6 +292,8 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
                                 g["save_path"] = match["save_path"]
                             if match.get("last_backup") and not g.get("last_backup"):
                                 g["last_backup"] = match["last_backup"]
+                            if match.get("performance_mode") and not g.get("performance_mode"):
+                                g["performance_mode"] = match["performance_mode"]
             except Exception as e:
                 _get_logger().warning(f"Aviso en merge de playtime: {e}")
 

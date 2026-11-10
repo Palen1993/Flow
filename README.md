@@ -95,17 +95,28 @@
     * Genera automáticamente una copia de seguridad de protección (*pre-restore safety backup*) antes de sobrescribir archivos para garantizar que nunca pierdas datos.
   * **Selector de Carpeta Personalizada**: Posibilidad de indicar o cambiar la carpeta de guardado manualmente mediante el explorador OSD.
 
+### 🎛️ 10. Perfiles de Rendimiento y Modos de Energía (Handheld Mode)
+* Diseñado específicamente para consolas portátiles (**ASUS ROG Ally**, **Valve Steam Deck** con Windows, **Lenovo Legion Go**, **AYANEO**, **GPD Win**, **MSI Claw**, **OneXPlayer**) y portátiles gaming:
+  * **3 Modos de Rendimiento y Energía**:
+    * **🌱 Modo Batería (Eco)**: Plan Economizador (`~9W - 15W TDP`), maximiza la autonomía de batería para juegos 2D, emuladores retro y novelas visuales.
+    * **⚖️ Modo Equilibrado**: Plan Equilibrado (`~15W - 20W TDP`), balance óptimo de temperatura, FPS y ventiladores.
+    * **⚡ Modo Turbo (Rendimiento)**: Plan Alto Rendimiento (`~25W - 30W+ TDP`), libera toda la potencia de la APU CPU/GPU para títulos AAA exigentes.
+  * **Cambio en Caliente sin Reinicios**: Modificación instantánea de planes de energía mediante `powercfg /setactive` sin necesidad de permisos de Administrador ni bloatware propietario de fondo.
+  * **Perfiles Automáticos por Juego (Per-Game Profiles)**: Asigna un perfil preferido a cada título (`Por Defecto`, `Eco`, `Equilibrado`, `Turbo`). GameFlow lo aplica automáticamente al lanzar el juego y restaura tu perfil anterior al salir.
+  * **In-Game Quick Toggle**: Alterna perfiles en plena partida pulsando **X** (o tecla **P**) dentro del In-Game Overlay tras pulsar el botón Guía/Nexus.
+  * **Telemetría y Detección de Hardware**: Detección de la consola, nivel y estado de carga de la batería, tiempo restante estimado y telemetría de mando.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
 
 | Botón Xbox | Botón PlayStation | Acción en Pantalla Principal (Big Picture) | Acción en In-Game Overlay / Diálogos |
 | :---: | :---: | :--- | :--- |
-| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow | Ajustar Volumen / Navegar campos |
+| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow | Ajustar Volumen / Navegar tarjetas de perfil |
 | **D-Pad ↑ / ↓** | **Cruceta ↑ / ↓** | Selector de monitores / Menú | Seleccionar opción (Reanudar / Lanzador / Salir) |
-| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Ejecutar acción seleccionada |
+| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Activar perfil seleccionado |
 | **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Reanudar juego |
-| **X** | **Cuadrado** | Abrir menú de opciones | Abrir teclado OSD / Marcar todo |
+| **X** | **Cuadrado** | Abrir menú de opciones | **Cambiar Perfil de Rendimiento (Eco/Equilibrado/Turbo)** |
 | **Y** | **Triángulo** | Confirmar salida del lanzador | **Silenciar / Activar sonido (Mute)** / Carpeta Juegos |
 | **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** | **Bajar / Subir Volumen Maestro** (-5% / +5%) |
 | **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD (A-Z) | Ajustar borrosidad / desenfoque |
@@ -167,10 +178,11 @@ GameFlow/
 │   ├── external_launchers.py# Parsers de Steam, Epic Games, GOG y ROMs
 │   ├── library_service.py  # Gestión atómica y caché lazy-loading de games.json
 │   ├── platform_layer.py   # Capa de abstracción y mocks multiplataforma Windows/Linux/CI
+│   ├── power_service.py    # Detección de consolas portátiles, telemetría de batería y perfiles de energía
 │   ├── save_backup_service.py# Detección de carpetas de guardado, compresión zip y retención
 │   └── stats_service.py    # Métricas de tiempo, agregaciones semanales/mensuales y metas
 ├── ui/
-│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, GameStats, InGameOverlay, etc.)
+│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, GameStats, PerformanceProfile, InGameOverlay, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI

@@ -17,10 +17,11 @@ from ui.dialogs.external_import_dialog import ExternalImportDialog
 from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
 from ui.dialogs.collections_dialog import CollectionsFilterDialog
 from ui.dialogs.in_game_overlay import InGameOverlayDialog
-from ui.dialogs.game_stats_dialog import GameStatsDialog
 from ui.dialogs.save_backup_dialog import SaveBackupDialog
+from ui.dialogs.performance_dialog import PerformanceProfileDialog
 
 __all__ = [
+    "PerformanceProfileDialog",
     "SaveBackupDialog",
     "GameStatsDialog",
     "InGameOverlayDialog",

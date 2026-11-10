@@ -135,7 +135,7 @@ class GameLibraryService:
                         "monitor", "high_priority", "launch_args",
                         "favorite", "status", "genre", "platform",
                         "play_count", "date_added", "daily_playtime", "goals", "notes",
-                        "save_path", "last_backup"
+                        "save_path", "last_backup", "performance_mode"
                     ):
                         if field in fg:
                             g[field] = fg[field]

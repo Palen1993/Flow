@@ -319,6 +319,34 @@ class App(ctk.CTk):
             on_game_updated=_on_updated
         )
 
+    def open_performance_dialog(self):
+        """Abre el panel de Modos de Rendimiento y Energía (Handheld Mode / Perfiles de Batería)."""
+        self.close_active_menu()
+        if hasattr(self, "_perf_dialog") and self._perf_dialog and self._perf_dialog.winfo_exists():
+            try:
+                self._perf_dialog.lift()
+                self._perf_dialog.focus_force()
+            except Exception:
+                pass
+            return
+
+        game = None
+        if self.games and 0 <= self.selected_index < len(self.games):
+            game = self.games[self.selected_index]
+
+        from ui.dialogs.performance_dialog import PerformanceProfileDialog
+
+        def _on_updated(updated_game):
+            self.save_games()
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.update_ui_details(self.selected_index)
+
+        self._perf_dialog = PerformanceProfileDialog(
+            parent=self,
+            game=game,
+            on_game_updated=_on_updated
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -533,6 +561,8 @@ class App(ctk.CTk):
         self.bind("<o>", lambda e: self.open_in_game_overlay())
         self.bind("<O>", lambda e: self.open_in_game_overlay())
         self.bind("<F1>", lambda e: self.open_in_game_overlay())
+        self.bind("<p>", lambda e: self.open_performance_dialog())
+        self.bind("<P>", lambda e: self.open_performance_dialog())
         self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
@@ -649,8 +679,10 @@ class App(ctk.CTk):
         try:
             from core.stats_service import increment_game_play_count
             from core.config import increment_game_launch_count_atomic
+            from core.power_service import apply_game_performance_profile
             increment_game_play_count(game)
             increment_game_launch_count_atomic(game.get("path") or game.get("name", ""))
+            apply_game_performance_profile(game)
         except Exception:
             pass
 
@@ -1105,6 +1137,7 @@ class App(ctk.CTk):
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
             ("💾", "Copias de Seguridad (Save Backup)...", self.open_save_backup_dialog),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
+            ("🎛️", "Modos de Rendimiento y Energía (P)...", self.open_performance_dialog),
             ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
             ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
@@ -1314,6 +1347,11 @@ class App(ctk.CTk):
         bring_to_front_absolute(self.exit_dialog)
 
     def close_application(self):
+        try:
+            from core.power_service import restore_previous_performance_profile
+            restore_previous_performance_profile()
+        except Exception:
+            pass
         try:
             ensure_watcher_running()
         except Exception:
