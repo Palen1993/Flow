@@ -135,7 +135,8 @@ class GameLibraryService:
                         "monitor", "high_priority", "launch_args",
                         "favorite", "status", "genre", "platform",
                         "play_count", "date_added", "daily_playtime", "goals", "notes",
-                        "save_path", "last_backup", "performance_mode"
+                        "save_path", "last_backup", "performance_mode",
+                        "is_rom", "system_id", "emulator_path"
                     ):
                         if field in fg:
                             g[field] = fg[field]
@@ -165,7 +166,10 @@ class GameLibraryService:
         status: str = "Por jugar",
         genre: str = "",
         platform: str = "PC",
-        collections: Optional[List[str]] = None
+        collections: Optional[List[str]] = None,
+        is_rom: Optional[bool] = None,
+        system_id: Optional[str] = None,
+        emulator_path: Optional[str] = None
     ) -> int:
         """Añade un nuevo juego a la colección y persiste en disco. Devuelve el índice del nuevo juego."""
         import time
@@ -186,6 +190,22 @@ class GameLibraryService:
             "goals": [],
             "notes": ""
         }
+        if is_rom is not None:
+            new_game["is_rom"] = bool(is_rom)
+        else:
+            try:
+                from core.emulator_service import detect_system_for_file
+                sys_inf = detect_system_for_file(path)
+                if sys_inf:
+                    new_game["is_rom"] = True
+                    new_game["system_id"] = sys_inf["id"]
+            except Exception:
+                pass
+        if system_id:
+            new_game["system_id"] = system_id
+        if emulator_path:
+            new_game["emulator_path"] = emulator_path
+
         if collections:
             from core.collections_service import set_game_collections
             set_game_collections(new_game, collections)
@@ -217,7 +237,10 @@ class GameLibraryService:
         status: Optional[str] = None,
         genre: Optional[str] = None,
         platform: Optional[str] = None,
-        collections: Optional[List[str]] = None
+        collections: Optional[List[str]] = None,
+        is_rom: Optional[bool] = None,
+        system_id: Optional[str] = None,
+        emulator_path: Optional[str] = None
     ) -> bool:
         """Actualiza los metadatos de un juego existente y guarda en disco."""
         if 0 <= index < len(self.games):
@@ -230,6 +253,21 @@ class GameLibraryService:
                 "cover": cover,
                 "launch_args": launch_args
             })
+            if is_rom is not None:
+                existing["is_rom"] = bool(is_rom)
+            elif "is_rom" not in existing:
+                try:
+                    from core.emulator_service import detect_system_for_file
+                    sys_inf = detect_system_for_file(path)
+                    if sys_inf:
+                        existing["is_rom"] = True
+                        existing["system_id"] = sys_inf["id"]
+                except Exception:
+                    pass
+            if system_id is not None:
+                existing["system_id"] = system_id
+            if emulator_path is not None:
+                existing["emulator_path"] = emulator_path
             if wallpaper is not None:
                 if wallpaper:
                     existing["wallpaper"] = wallpaper

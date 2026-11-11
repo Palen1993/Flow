@@ -144,6 +144,30 @@
 * **Asignación de Juegos a Listas en Edición**:
   * En el diálogo de Añadir / Modificar juego (`AddEditGameDialog`), añade o quita fácilmente el título de cualquier colección personalizada.
 
+### 📺 14. Modo Kiosco y Shell de Consola Dedicada en Windows
+* Convierte cualquier PC, consola portátil (**ROG Ally, Steam Deck con Windows, Legion Go**) o bartop arcade en una **consola de videojuegos dedicada**:
+  * **Shell de Consola en Windows (`HKCU\...\Winlogon\Shell`)**: Al encender o iniciar sesión, Windows arranca directamente GameFlow en pantalla completa sin cargar el escritorio, barra de tareas o procesos innecesarios de `explorer.exe`. No requiere permisos de Administrador.
+  * **Inicio Automático con Windows (`Run`)**: Configuración con un solo toque para iniciar el lanzador automáticamente junto al sistema operativo.
+  * **Failsafe y Respaldo de Seguridad**: Botón rápido para lanzar el explorador de Windows (`explorer.exe`) bajo demanda en cualquier momento, tanto desde el panel de Modo Kiosco como desde el diálogo de confirmación de salida (`ConfirmExitDialog`).
+
+### 🕹️ 15. Soporte Universal de Emuladores y Lanzamiento de ROMs Retro
+* **Catálogo Integral de 16 Plataformas Clásicas y Modernas**:
+  * Super Nintendo (SNES), Nintendo (NES), Nintendo 64 (N64), GameCube, Wii, Game Boy / Color, Game Boy Advance (GBA), Nintendo DS (NDS), Nintendo 3DS, Nintendo Switch, PlayStation (PS1), PlayStation 2 (PS2), PlayStation Portable (PSP), PlayStation 3 (PS3), Sega Genesis / Mega Drive, Sega Dreamcast y Arcade (MAME / NeoGeo).
+* **Detección Automática por Extensión y Desambiguación Heurística**:
+  * Reconoce extensiones nativas (`.sfc`, `.nes`, `.gba`, `.n64`, `.rvz`, `.chd`, `.pbp`, `.cso`, etc.) y desambigua heurísticamente formatos compartidos (`.iso`, `.bin`, `.zip`) según la estructura de carpetas.
+* **Limpieza Inteligente de Nombres de ROMs**:
+  * Elimina automáticamente códigos de región, versiones y etiquetas de scene (ej: `'Super Mario World (USA) [!].sfc'` → `'Super Mario World'`).
+* **Integración con Emuladores Populares y RetroArch**:
+  * Detección automática y paso de argumentos optimizados para **RetroArch** (inyección de núcleos `.dll`), **Dolphin** (`-b -e`), **PCSX2** (`-nogui -fullscreen`), **DuckStation** (`-batch -fullscreen`), **PPSSPP**, **RPCS3**, **Snes9x**, **mGBA**, etc.
+* **Escaneo Masivo de Carpetas de ROMs**:
+  * En el importador de juegos, escanea carpetas enteras de ROMs asignando plataforma, género canónico y metadatos con un solo clic.
+
+### ⚡ 16. Descarga y Scraper Automático de Fondos Panorámicos 16:9 (SteamGridDB Heroes)
+* **Wallpapers de Alta Definición (1080p, 2K, 4K)**:
+  * Integración con la API oficial y pública de **SteamGridDB** para obtener automáticamente los fondos panorámicos (*Heroes 16:9*) oficiales de cada título.
+  * **Descarga Automática en 1 Clic**: Botón `⚡ Fondo 16:9 Auto` en el diálogo de edición para descargar y aplicar el arte ambiental panorámico al instante sin búsquedas manuales.
+  * **Descarga Masiva en Lote (`BatchSteamGridDBDialog`)**: Actualiza todas las carátulas verticales 3D y fondos panorámicos de toda tu colección a la vez.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando

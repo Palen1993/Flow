@@ -589,23 +589,23 @@ class ExternalImportDialog(BaseGlassDialog):
         if not folder:
             return
 
-        # Escanear por defecto con perfil RetroArch o el primer perfil coincidente
-        # Si no hay emulador instalado, se asocia genéricamente
-        roms = scan_emulator_roms(
-            emulator_exe="retroarch.exe",
-            roms_dir=folder,
-            profile_name="RetroArch"
-        )
-        if not roms:
-            roms = scan_emulator_roms(
-                emulator_exe="emulator.exe",
-                roms_dir=folder,
-                profile_name="PCSX2 (PlayStation 2)"
-            )
-
+        from core.emulator_service import scan_folder_for_roms
+        roms = scan_folder_for_roms(folder, recursive=True)
         if roms:
-            self.candidates.extend(roms)
-            self._populate_candidates(self.candidates)
+            new_roms = []
+            for r in roms:
+                rp = r.get("path", "")
+                norm_p = os.path.normcase(os.path.abspath(rp)) if rp else ""
+                if norm_p not in self.existing_paths:
+                    new_roms.append(r)
+            if new_roms:
+                self.candidates.extend(new_roms)
+                self._populate_candidates(self.candidates)
+                self.lbl_summary.configure(text=f"¡Se añadieron {len(new_roms)} ROM(s) detectadas a la lista!")
+            else:
+                self.lbl_summary.configure(text=f"Las {len(roms)} ROMs encontradas ya están en tu biblioteca.")
+        else:
+            self.lbl_summary.configure(text=f"No se detectaron ROMs con extensiones reconocidas en la carpeta.")
 
     def import_selected(self):
         selected_games: List[Dict[str, Any]] = []
@@ -639,6 +639,23 @@ class ExternalImportDialog(BaseGlassDialog):
                     target_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
                     if download_and_save_wallpaper(wp_url, target_wp):
                         g["wallpaper"] = target_wp
+
+                # Si no tiene carátula o fondo (ROMs retro o juegos locales), consultar SteamGridDB
+                if not g.get("cover") or not g.get("wallpaper"):
+                    try:
+                        from core.steamgriddb_client import fetch_steamgriddb_best_assets
+                        sgdb_assets = fetch_steamgriddb_best_assets(name, g.get("path"))
+                        if sgdb_assets:
+                            if not g.get("cover") and sgdb_assets.get("grid_url"):
+                                target_cov = os.path.join(COVERS_DIR, f"{safe_name}.png")
+                                if download_and_save_cover(sgdb_assets["grid_url"], target_cov):
+                                    g["cover"] = target_cov
+                            if not g.get("wallpaper") and sgdb_assets.get("hero_url"):
+                                target_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
+                                if download_and_save_wallpaper(sgdb_assets["hero_url"], target_wp):
+                                    g["wallpaper"] = target_wp
+                    except Exception:
+                        pass
 
             self._action_queue.put(("finish_import", selected_games))
 

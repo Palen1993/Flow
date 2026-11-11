@@ -27,7 +27,7 @@ from ui.coverflow_canvas import CoverFlowCanvas
 from ui.dropdowns import FloatingGlassDropdown, GlassDropdownButton, FloatingGlassMenu
 from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
-    GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog
+    GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog, KioskDialog
 )
 
 _GLOBAL_LAUNCHER_MUTEX = None

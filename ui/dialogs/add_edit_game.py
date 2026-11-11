@@ -141,7 +141,15 @@ class AddEditGameDialog(BaseGlassDialog):
             corner_radius=16, text_color=COLOR_TEXT_MUTED_LIGHT, font=font_button(11),
             command=self.browse_cover
         )
-        self.btn_cover.pack(pady=(2, 6))
+        self.btn_cover.pack(pady=(2, 4))
+
+        self.btn_auto_wallpaper = ctk.CTkButton(
+            left_frame, text="⚡ Fondo 16:9 Auto ", width=180, height=30,
+            fg_color="#142838", hover_color="#1e3d54", border_color="#2b597b", border_width=1.0,
+            corner_radius=15, text_color="#38bdf8", font=font_button(11),
+            command=self.download_auto_wallpaper
+        )
+        self.btn_auto_wallpaper.pack(pady=(2, 6))
 
         # Panel derecho: Configuración del juego
         right_frame = ctk.CTkFrame(content_frame, fg_color=COLOR_BG_CARD_SECONDARY, border_color=COLOR_BORDER_CARD, border_width=1.0, corner_radius=16)
@@ -310,6 +318,7 @@ class AddEditGameDialog(BaseGlassDialog):
         self._nav_controls = [
             ("btn", self.btn_online, lambda: self.download_online_hd_cover()),
             ("btn", self.btn_cover, lambda: self.browse_cover()),
+            ("btn", self.btn_auto_wallpaper, lambda: self.download_auto_wallpaper()),
             ("entry", self.name_entry, lambda: self._open_keyboard_for_entry(self.name_entry, "Nombre del Juego")),
             ("entry", self.path_entry, lambda: self._open_keyboard_for_entry(self.path_entry, "Ruta del Ejecutable")),
             ("btn", self.btn_browse_exe, lambda: self.browse_exe()),
@@ -318,6 +327,7 @@ class AddEditGameDialog(BaseGlassDialog):
             ("dropdown", self.status_dropdown, lambda: self.status_dropdown._toggle_dropdown()),
             ("entry", self.genre_entry, lambda: self._open_keyboard_for_entry(self.genre_entry, "Género del Juego")),
             ("entry", self.platform_entry, lambda: self._open_keyboard_for_entry(self.platform_entry, "Plataforma")),
+            ("entry", self.collections_entry, lambda: self._open_keyboard_for_entry(self.collections_entry, "Listas y Colecciones")),
             ("check", self.favorite_check, lambda: self.favorite_check.toggle()),
             ("check", self.priority_check, lambda: self.priority_check.toggle()),
             ("btn", self.btn_save, lambda: self.save()),
@@ -372,20 +382,88 @@ class AddEditGameDialog(BaseGlassDialog):
         exe_path = self.path_entry.get().strip()
         if not exe_path:
             return
-        if not self.name_entry.get().strip():
-            base = os.path.basename(exe_path)
-            name = os.path.splitext(base)[0]
-            self.name_entry.insert(0, name)
+        from core.emulator_service import detect_system_for_file, clean_rom_name, get_emulator_for_system
+        sys_info = detect_system_for_file(exe_path)
+        if sys_info:
+            clean_name = clean_rom_name(exe_path)
+            if not self.name_entry.get().strip():
+                self.name_entry.insert(0, clean_name)
+            if hasattr(self, "platform_entry"):
+                self.platform_entry.delete(0, 'end')
+                self.platform_entry.insert(0, sys_info["name"])
+            if hasattr(self, "genre_entry") and not self.genre_entry.get().strip():
+                self.genre_entry.insert(0, sys_info.get("default_genre", "Acción y Aventura"))
+            if hasattr(self, "args_entry") and not self.args_entry.get().strip():
+                emu_info = get_emulator_for_system(sys_info["id"])
+                if emu_info and emu_info.get("args_template"):
+                    self.args_entry.insert(0, emu_info["args_template"])
+        else:
+            if not self.name_entry.get().strip():
+                base = os.path.basename(exe_path)
+                name = os.path.splitext(base)[0]
+                self.name_entry.insert(0, name)
         if not self.current_cover_path or not os.path.isfile(self.current_cover_path):
             self.autodetect_cover()
 
     def browse_exe(self):
         cur_p = self.path_entry.get().strip()
-        filename = browse_file(parent=self, title="Seleccionar Ejecutable del Juego", initial_dir=cur_p, file_extensions=[".exe"])
+        from core.emulator_service import get_all_supported_rom_extensions
+        rom_exts = get_all_supported_rom_extensions()
+        allowed_exts = [".exe", ".bat", ".cmd", ".lnk"] + rom_exts
+        filename = browse_file(parent=self, title="Seleccionar Ejecutable o ROM de Juego", initial_dir=cur_p, file_extensions=allowed_exts)
         if filename:
             self.path_entry.delete(0, 'end')
             self.path_entry.insert(0, filename)
             self.auto_fill_name_from_exe()
+
+    def download_auto_wallpaper(self):
+        """Descarga automáticamente el fondo oficial 16:9 en alta resolución desde SteamGridDB o web."""
+        name = self.name_entry.get().strip()
+        if not name:
+            show_warning("Fondo Automático", "Escribe primero el nombre del juego.", parent=self)
+            return
+
+        from core.steamgriddb_client import fetch_steamgriddb_best_assets
+        from core.cover_downloader import download_and_save_wallpaper, search_wallpaper_candidates
+        from core.config import WALLPAPERS_DIR, sanitize_game_filename
+
+        safe_name = sanitize_game_filename(name)
+        target_wp = os.path.join(WALLPAPERS_DIR, f"{safe_name}_wallpaper.png")
+
+        self.btn_auto_wallpaper.configure(text="Descargando...", state="disabled")
+        self.update_idletasks()
+
+        def _worker():
+            success = False
+            # 1. SteamGridDB Hero oficial
+            assets = fetch_steamgriddb_best_assets(name)
+            if assets and assets.get("hero_url"):
+                if download_and_save_wallpaper(assets["hero_url"], target_wp):
+                    success = True
+
+            # 2. Fallback: búsqueda de wallpapers 1080p
+            if not success:
+                cands = search_wallpaper_candidates(name, max_results=3)
+                for c in cands:
+                    p_url = c.get("poster_url")
+                    if p_url and download_and_save_wallpaper(p_url, target_wp):
+                        success = True
+                        break
+
+            def _on_done():
+                if success and os.path.isfile(target_wp):
+                    self.current_wallpaper_path = target_wp
+                    self.btn_auto_wallpaper.configure(text="✓ Fondo Aplicado", state="normal")
+                    from ui.dialogs.glass_message_box import show_info
+                    show_info("Fondo 16:9 Descargado", f"Se descargó y aplicó un fondo panorámico en alta definición para '{name}'.", parent=self)
+                else:
+                    self.btn_auto_wallpaper.configure(text="⚡ Fondo 16:9 Auto", state="normal")
+                    show_warning("Fondo No Encontrado", f"No se encontró un fondo 16:9 automático para '{name}'. Puedes buscarlo con 'Arte / Wallpaper'.", parent=self)
+
+            self.after(0, _on_done)
+
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()
 
     def browse_cover(self):
         cur_c = self.current_cover_path
@@ -473,44 +551,46 @@ class AddEditGameDialog(BaseGlassDialog):
     def _get_nav_target(self, cur_idx: int, direction: str) -> int:
         """Navegación espacial 2D bidireccional optimizada para mando de consola."""
         has_del = (self.btn_delete is not None)
-        save_idx = 12
-        cancel_idx = 13
-        del_idx = 14 if has_del else -1
-        last_right = 11
+        save_idx = 14
+        cancel_idx = 15
+        del_idx = 16 if has_del else -1
+        last_right = 13
 
         if direction == "up":
             if cur_idx == 0:
                 return del_idx if has_del else cancel_idx
-            elif cur_idx == 1:
-                return 0
-            elif cur_idx == 2:
+            elif cur_idx in (1, 2):
+                return cur_idx - 1
+            elif cur_idx == 3:
                 return save_idx
-            elif 3 <= cur_idx <= last_right:
+            elif 4 <= cur_idx <= last_right:
                 return cur_idx - 1
             elif cur_idx in (save_idx, cancel_idx, del_idx):
                 return last_right
 
         elif direction == "down":
-            if cur_idx == 0:
-                return 1
-            elif cur_idx == 1:
+            if cur_idx in (0, 1):
+                return cur_idx + 1
+            elif cur_idx == 2:
                 return del_idx if has_del else cancel_idx
-            elif 2 <= cur_idx < last_right:
+            elif 3 <= cur_idx < last_right:
                 return cur_idx + 1
             elif cur_idx == last_right:
                 return save_idx
             elif cur_idx in (save_idx, cancel_idx, del_idx):
-                return 2
+                return 3
 
         elif direction == "left":
-            if cur_idx in (0, 1):
+            if cur_idx in (0, 1, 2):
                 return cur_idx
-            elif 2 <= cur_idx <= 4:
+            elif 3 <= cur_idx <= 5:
                 return 0
-            elif 5 <= cur_idx <= last_right:
+            elif 6 <= cur_idx <= 9:
                 return 1
+            elif 10 <= cur_idx <= last_right:
+                return 2
             elif cur_idx == save_idx:
-                return del_idx if has_del else 1
+                return del_idx if has_del else 2
             elif cur_idx == cancel_idx:
                 return save_idx
             elif cur_idx == del_idx:
@@ -518,10 +598,12 @@ class AddEditGameDialog(BaseGlassDialog):
 
         elif direction == "right":
             if cur_idx == 0:
-                return 2
+                return 3
             elif cur_idx == 1:
-                return 5
-            elif 2 <= cur_idx <= last_right:
+                return 6
+            elif cur_idx == 2:
+                return 10
+            elif 3 <= cur_idx <= last_right:
                 return cur_idx
             elif cur_idx == save_idx:
                 return cancel_idx
@@ -674,6 +756,11 @@ class AddEditGameDialog(BaseGlassDialog):
         if self.game_data:
             from core.collections_service import set_game_collections
             set_game_collections(self.game_data, colls_list)
+            from core.emulator_service import detect_system_for_file
+            sys_info = detect_system_for_file(path)
+            if sys_info:
+                self.game_data["is_rom"] = True
+                self.game_data["system_id"] = sys_info["id"]
 
         if self.callback:
             try:

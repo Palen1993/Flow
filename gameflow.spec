@@ -86,6 +86,9 @@ launcher_hiddenimports = list(set(hiddenimports_ctk + [
     'ui.dialogs.cloud_sync_dialog',
     'ui.dialogs.achievements_dialog',
     'ui.dialogs.collections_dialog',
+    'core.kiosk_service',
+    'core.emulator_service',
+    'ui.dialogs.kiosk_dialog',
 ]))
 
 watcher_hiddenimports = [

@@ -56,8 +56,11 @@ class GameExecutionService:
         monitor = int(game.get("monitor", 0) or 0)
         high_priority = bool(game.get("high_priority", True))
         custom_args = game.get("launch_args", "")
+        emulator_path = game.get("emulator_path", "")
+        is_rom = bool(game.get("is_rom", False))
+        system_id = game.get("system_id", "")
 
-        logger.info(f"Iniciando ejecución de '{game.get('name')}' (Monitor {monitor}, Prioridad={high_priority})")
+        logger.info(f"Iniciando ejecución de '{game.get('name')}' (Monitor {monitor}, Prioridad={high_priority}, ROM={is_rom})")
 
         threading.Thread(
             target=launch_game_thread,
@@ -66,7 +69,10 @@ class GameExecutionService:
                 "status_cb": status_cb,
                 "on_success_cb": _wrapped_success,
                 "on_error_cb": _wrapped_error,
-                "custom_args": custom_args
+                "custom_args": custom_args,
+                "emulator_path": emulator_path,
+                "is_rom": is_rom,
+                "system_id": system_id
             },
             daemon=True
         ).start()

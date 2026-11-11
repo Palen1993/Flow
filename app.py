@@ -46,6 +46,7 @@ from ui.dialogs import (
     AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
     ExternalImportDialog, BatchSteamGridDBDialog, CollectionsFilterDialog,
+    KioskDialog,
     invalidate_thumb_cache, show_info, show_error, ask_yes_no, browse_folder
 )
 from gamepad_manager import (
@@ -1247,10 +1248,22 @@ class App(ctk.CTk):
             ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
             ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
+            ("📺", "Modo Kiosco / Consola Dedicada...", self.open_kiosk_dialog),
             ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),
             ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog),
         ]
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
+
+    def open_kiosk_dialog(self):
+        self.close_active_menu()
+        if hasattr(self, "_kiosk_dialog") and self._kiosk_dialog and self._kiosk_dialog.winfo_exists():
+            try:
+                self._kiosk_dialog.lift()
+                self._kiosk_dialog.focus_force()
+            except Exception:
+                pass
+            return
+        self._kiosk_dialog = KioskDialog(self)
 
     def open_batch_steamgriddb_dialog(self):
         self.close_active_menu()

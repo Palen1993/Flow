@@ -692,13 +692,41 @@ def search_wallpaper_candidates(raw_query: str, max_results: int = 24) -> List[D
             pass
         return gog_res
 
+    def _fetch_sgdb_wp():
+        try:
+            from core.steamgriddb_client import fetch_steamgriddb_best_assets
+            assets = fetch_steamgriddb_best_assets(primary_term)
+            if assets and assets.get("hero_url"):
+                return [{
+                    "id": f"sgdb_hero_{assets.get('game_id', primary_term)}",
+                    "name": assets.get("matched_name", primary_term),
+                    "poster_url": assets["hero_url"],
+                    "thumb_url": assets["hero_url"],
+                    "is_square": False,
+                    "is_vertical": False,
+                    "is_widescreen": True,
+                    "source": "SteamGridDB 16:9",
+                    "pre_verified": True
+                }]
+        except Exception:
+            pass
+        return []
+
     found_keys = set()
     valid_candidates: List[Dict[str, Any]] = []
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        f_sgdb = executor.submit(_fetch_sgdb_wp)
         f_google = executor.submit(_fetch_google_wp)
         f_steam = executor.submit(_fetch_steam_wp)
         f_gog = executor.submit(_fetch_gog_wp)
+
+        # Priorizar SteamGridDB oficial
+        for sgr in f_sgdb.result():
+            k = sgr["poster_url"]
+            if k not in found_keys:
+                found_keys.add(k)
+                valid_candidates.append(sgr)
 
         for wr in f_google.result():
             k = wr["poster_url"]

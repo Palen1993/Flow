@@ -342,23 +342,36 @@ def spawn_detached_sentinel(pids: list, exe_base: str, target_monitor_rect: tupl
         return None
 
 def launch_game_thread(game_path: str, target_monitor_index: int, high_priority: bool, 
-                       status_cb=None, on_success_cb=None, on_error_cb=None, custom_args: str = ""):
+                       status_cb=None, on_success_cb=None, on_error_cb=None, custom_args: str = "",
+                       emulator_path: str = "", is_rom: bool = False, system_id: str = ""):
     """
     Hilo de ejecución para lanzar el juego, asignar prioridad alta,
     detectar activamente su ventana y blindar su posicionamiento en el monitor seleccionado.
-    Aplica la Defensa en 6 Capas:
-      1. Warping del cursor al monitor destino antes de la creación de ventana.
-      2. Inyección universal de variables de entorno SDL2/SDL3, parámetros de motor y argumentos personalizados.
-      3. Sincronización proactiva de archivos de configuración (.ini).
-      4. Intercepción activa multi-PID y formateo a Borderless Fullscreen sin desbordamientos.
-      5. Bypass DWM de hardware (Win + Shift + Flecha) como respaldo definitivo.
-      6. Centinela Desacoplado Independiente post-arranque (sin colisión de hilos) con registro de tiempo de juego.
+    Aplica la Defensa en 6 Capas con compatibilidad universal para ROMs retro y emuladores.
     """
     try:
         import shlex
         game_path = os.path.normpath(os.path.abspath(game_path))
         if not os.path.isfile(game_path):
-            raise FileNotFoundError(f"El ejecutable del juego no existe o la ruta no es accesible:\n{game_path}")
+            raise FileNotFoundError(f"El archivo del juego o ROM no existe o la ruta no es accesible:\n{game_path}")
+
+        # Detección y resolución de ROMs / Emuladores
+        from core.emulator_service import detect_system_for_file, build_rom_launch_command
+        detected_sys = detect_system_for_file(game_path)
+        actual_exe = game_path
+        actual_args = custom_args or ""
+
+        if is_rom or detected_sys is not None:
+            actual_exe, actual_args = build_rom_launch_command(
+                rom_path=game_path,
+                emulator_path=emulator_path or None,
+                system_id=system_id or (detected_sys["id"] if detected_sys else None),
+                custom_args=custom_args or None
+            )
+            logger.info(f"Configuración ROM detectada: Archivo='{game_path}', Emulador='{actual_exe}', Args='{actual_args}'")
+            if not os.path.isfile(actual_exe) and actual_exe != game_path:
+                logger.warning(f"El emulador '{actual_exe}' no existe en disco. Usando archivo directo.")
+                actual_exe = game_path
 
         monitors = get_monitors()
         target_monitor = None
@@ -377,12 +390,12 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
 
         # Capa 3: Sincronizar configuración interna (.ini) antes del arranque
         if target_monitor:
-            sync_game_display_config(game_path, target_monitor_index, target_monitor.get('rect'))
+            sync_game_display_config(actual_exe, target_monitor_index, target_monitor.get('rect'))
 
         if status_cb:
             status_cb("Iniciando ejecutable...")
-        logger.info(f"Iniciando {game_path}...")
-        game_dir = os.path.dirname(game_path)
+        logger.info(f"Iniciando {actual_exe} (Objetivo: {game_path})...")
+        game_dir = os.path.dirname(actual_exe) if os.path.isfile(actual_exe) else os.path.dirname(game_path)
         pid = None
 
         # Capa 2a: Variables de Entorno Universales (SDL2, SDL3, Bypass UAC en mando)
@@ -394,8 +407,8 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
         game_env["__COMPAT_LAYER"] = "RunAsInvoker"
 
         # Capa 2b: Detección de motor e inyección de parámetros universales + argumentos personalizados
-        engine = detect_game_engine(game_path)
-        cmd = [game_path]
+        engine = detect_game_engine(actual_exe)
+        cmd = [actual_exe]
         extra_args_list = []
 
         if target_monitor:
@@ -425,11 +438,11 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
                 extra_args_list.extend(source_params)
                 logger.info(f"Blindaje Source Engine inyectado: {' '.join(source_params)}")
 
-        if custom_args and custom_args.strip():
+        if actual_args and actual_args.strip():
             try:
-                user_tokens = shlex.split(custom_args.strip(), posix=False)
+                user_tokens = shlex.split(actual_args.strip(), posix=False)
             except Exception:
-                user_tokens = custom_args.strip().split()
+                user_tokens = actual_args.strip().split()
             cmd.extend(user_tokens)
             extra_args_list.extend(user_tokens)
 
@@ -445,15 +458,15 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
         except (OSError, PermissionError) as e:
             # Error 740: Requiere elevación como Administrador
             if getattr(e, 'winerror', None) == 740 or "requiere elevaci" in str(e).lower() or "elevation" in str(e).lower():
-                logger.info(f"{game_path} requiere elevación. Solicitando permisos de Administrador...")
+                logger.info(f"{actual_exe} requiere elevación. Solicitando permisos de Administrador...")
                 if status_cb:
                     status_cb("Solicitando permisos de Administrador...")
-                pid = launch_with_elevation(game_path, extra_args, game_dir)
+                pid = launch_with_elevation(actual_exe, extra_args, game_dir)
             else:
                 raise e
 
         # Si se inició mediante ShellExecuteW o proceso bootstrap, buscar PID por nombre de ejecutable
-        exe_base = os.path.basename(game_path).lower()
+        exe_base = os.path.basename(actual_exe).lower()
         if pid is None or not psutil.pid_exists(pid):
             time.sleep(1.0)
             for p in psutil.process_iter(['pid', 'name']):

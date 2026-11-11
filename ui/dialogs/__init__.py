@@ -23,8 +23,10 @@ from ui.dialogs.performance_dialog import PerformanceProfileDialog
 PerformanceDialog = PerformanceProfileDialog
 from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
 from ui.dialogs.achievements_dialog import AchievementsDialog
+from ui.dialogs.kiosk_dialog import KioskDialog
 
 __all__ = [
+    "KioskDialog",
     "AchievementsDialog",
     "CloudSyncDialog",
     "PerformanceProfileDialog",
