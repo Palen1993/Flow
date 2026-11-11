@@ -986,9 +986,10 @@ class CoverFlowCanvas(tk.Canvas):
         if n == 0:
             bg_col = (0, 0, 1) if getattr(self, "is_transparent_mode", False) else (12, 14, 19)
             bg = Image.new('RGB', (w, h), bg_col)
+            draw = ImageDraw.Draw(bg)
             filt_lbl = getattr(self, "ui_filter_label", "Todos")
             if filt_lbl and filt_lbl.strip().lower() != "todos":
-                msg = f"No hay juegos en la colección '{filt_lbl}'\nPulsa LB / RB para cambiar de colección o añade juegos con (X)"
+                msg = f"No hay juegos en la colección '{filt_lbl}'\nUsa ↑ / ↓ o LB / RB para cambiar de canal o añade juegos con (X)"
             else:
                 msg = "No hay juegos en la biblioteca\nHaz clic en 'Opciones' arriba a la derecha para agregar o escanear juegos"
             draw.text((w // 2, h // 2), msg, fill=(150, 160, 180), anchor='mm')

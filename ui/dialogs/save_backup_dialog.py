@@ -10,6 +10,7 @@ Diálogo modal Glassmorphism 100% navegable con mando para:
 """
 
 import os
+import sys
 import subprocess
 import tkinter as tk
 from typing import Dict, Any, Optional, Callable, List

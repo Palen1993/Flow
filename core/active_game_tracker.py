@@ -108,7 +108,7 @@ def _find_main_hwnd_for_pid(target_pid: int) -> Optional[int]:
         return None
 
     hwnds = []
-    from core.platform_layer import win32process, win32gui
+    from core.platform_layer import win32process
 
     def _enum_cb(hwnd, extra):
         if not win32gui.IsWindowVisible(hwnd):

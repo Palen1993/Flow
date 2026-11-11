@@ -11,6 +11,8 @@ Diálogo modal Glassmorphism 100% navegable con mando y teclado para:
 
 import os
 import threading
+import time
+from datetime import datetime
 import tkinter as tk
 from typing import Dict, Any, Optional, Callable, List
 import customtkinter as ctk

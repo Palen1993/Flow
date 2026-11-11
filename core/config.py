@@ -321,6 +321,32 @@ def save_games_data(games: List[Dict[str, Any]], merge_existing_playtime: bool =
                     pass
             return False
 
+
+def save_json_atomic(filepath: str, data: Any, indent: int = 2) -> bool:
+    """
+    Guarda cualquier estructura de datos en formato JSON de forma completamente atómica
+    escribiendo primero en un archivo temporal .tmp con fsync y reemplazando con os.replace.
+    """
+    tmp_file = f"{filepath}.tmp_{os.getpid()}_{int(time.time() * 1000)}"
+    try:
+        dir_name = os.path.dirname(os.path.abspath(filepath))
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, filepath)
+        return True
+    except Exception as e:
+        _get_logger().error(f"Error en save_json_atomic para '{filepath}': {e}", exc_info=True)
+        if os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except Exception:
+                pass
+        return False
+
 def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base: str = "") -> bool:
     """
     Registra atómicamente el tiempo de juego transcurrido, fecha de última sesión,
