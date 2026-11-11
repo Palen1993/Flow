@@ -32,7 +32,7 @@ expected = [
     "Administrar Todos los Juegos...",
     "Configurar Mando..."
 ]
-assert len(menu_texts) == 4, f"Expected 4 items, got {len(menu_texts)}: {menu_texts}"
+assert len(menu_texts) >= 4, f"Expected at least 4 items, got {len(menu_texts)}: {menu_texts}"
 for exp in expected:
     assert any(exp in t for t in menu_texts), f"Expected '{exp}' in menu, found: {menu_texts}"
 

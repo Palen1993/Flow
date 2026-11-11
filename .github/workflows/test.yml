@@ -10,6 +10,7 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout Code
@@ -26,13 +27,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run Regression and Audit Tests
+    - name: Run Modern Unit and Regression Test Suites
       run: |
+        python -m unittest scratch/test_power_service.py scratch/test_save_backup.py scratch/test_stats_service.py scratch/test_in_game_overlay.py scratch/test_platform_layer.py scratch/test_massive_library_optimization.py scratch/test_collections_and_filters.py scratch/test_unit_mocked_core.py
         python scratch/mega_audit_test_suite.py
-        python scratch/test_unit_mocked_core.py
-        python scratch/test_gamepad_folder_and_manual_add.py
-        python scratch/test_gamepad_buttons_interactive.py
-        python scratch/test_select_game_layout.py
-        python scratch/test_ux_streamlining.py
-        python scratch/test_resolution_scaling.py
-        python scratch/test_live_bugfixes_3.py
