@@ -183,7 +183,7 @@ class App(ctk.CTk):
                 return idx
         return 0
 
-    def refresh_shelves(self, keep_selection: bool = True):
+    def refresh_shelves(self, keep_selection: bool = True, transition_direction: int = 0):
         """Actualiza las estanterías del dashboard cargando la configuración y asigna el carrusel activo."""
         from core.collections_service import get_active_shelves
         prev_game = self.games[self.selected_index] if (hasattr(self, "games") and self.games and 0 <= self.selected_index < len(self.games)) else None
@@ -226,7 +226,7 @@ class App(ctk.CTk):
             self.cover_stage.ui_total_shelves = len(self.active_shelves)
             self.cover_stage.ui_filter_label = cur_shelf["name"]
             self.cover_stage.ui_filter_count = len(self.games)
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.cover_stage.set_games(self.games, target_index=self.selected_index, transition_direction=transition_direction)
 
         self.update_ui_details(self.selected_index)
 
@@ -261,7 +261,7 @@ class App(ctk.CTk):
             self.cover_stage.ui_total_shelves = len(self.active_shelves)
             self.cover_stage.ui_filter_label = new_shelf["name"]
             self.cover_stage.ui_filter_count = len(self.games)
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.cover_stage.set_games(self.games, target_index=self.selected_index, transition_direction=direction)
 
         self.update_ui_details(self.selected_index)
         self.set_status(f"Fila {self.current_shelf_idx + 1}/{len(self.active_shelves)}: {new_shelf.get('icon', '')} {new_shelf['name']} ({len(self.games)} juegos)")
@@ -272,10 +272,12 @@ class App(ctk.CTk):
 
     def apply_filter(self, filter_id: str, keep_selection: bool = True):
         """Aplica un filtro o selecciona la estantería correspondiente en el dashboard."""
+        old_idx = self.current_shelf_idx
         for idx, shelf in enumerate(self.active_shelves):
             if shelf["id"] == filter_id:
+                direction = 1 if idx > old_idx else (-1 if idx < old_idx else 0)
                 self.current_shelf_idx = idx
-                self.refresh_shelves(keep_selection=keep_selection)
+                self.refresh_shelves(keep_selection=keep_selection, transition_direction=direction)
                 return
         # Si no está en las estanterías activas, recargar estanterías
         self.refresh_shelves(keep_selection=keep_selection)
