@@ -5,10 +5,15 @@ Unit tests for Save Game Backup Service, Auto-Detection, Compression, Retention 
 import unittest
 from unittest.mock import MagicMock, patch
 import os
+import sys
 import json
 import zipfile
 import tempfile
 import time
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 from core.save_backup_service import (
     format_bytes_size,

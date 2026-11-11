@@ -106,6 +106,14 @@
   * **In-Game Quick Toggle**: Alterna perfiles en plena partida pulsando **X** (o tecla **P**) dentro del In-Game Overlay tras pulsar el botón Guía/Nexus.
   * **Telemetría y Detección de Hardware**: Detección de la consola, nivel y estado de carga de la batería, tiempo restante estimado y telemetría de mando.
 
+### ☁️ 11. Sincronización de Partidas en la Nube (Cloud Save Sync)
+* Compatible con **Microsoft OneDrive**, **Google Drive**, **Dropbox**, **Carpetas Locales / NAS en red** y servidores **Nextcloud / WebDAV**:
+  * **Sincronización Automática en Segundo Plano**: Al terminar una partida o crear un backup local, GameFlow sube de forma asíncrona la copia comprimida `.zip` sin congelar el juego ni la interfaz.
+  * **Autodetección Inteligente de Proveedores**: Identifica automáticamente las rutas de instalación de OneDrive (`%USERPROFILE%\OneDrive`), Google Drive (`G:\My Drive`) y Dropbox en Windows.
+  * **Soporte Nativo WebDAV (Nextcloud / ownCloud)**: Implementación 100% en biblioteca estándar de Python sin dependencias pesadas externas, con validación de tokens de aplicación y certificados.
+  * **Sincronización Completa de la Biblioteca**: Botón "Sincronizar Toda la Biblioteca Ahora" para respaldar todos los títulos con un solo clic.
+  * **Panel de Configuración y Diagnóstico**: Prueba de conexión en tiempo real con comprobación de permisos de escritura, indicadores visuales de copia sincronizada (`☁️ En la Nube`) y descarga directa de partidas remotas.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
@@ -170,6 +178,7 @@ GameFlow/
 ├── core/
 │   ├── active_game_tracker.py # Rastreo de juegos activos para In-Game Overlay
 │   ├── audio_service.py    # Control de volumen maestro nativo COM / ctypes / keybd_event
+│   ├── cloud_sync_service.py # Sincronización en la nube (OneDrive, GDrive, Dropbox, WebDAV)
 │   ├── config.py           # Persistencia atómica de configuración
 │   ├── cover_downloader.py # Búsqueda y filtrado estricto de carátulas/wallpapers HD
 │   ├── cover_resolver.py   # Extracción de iconos de ejecutables Win32
@@ -182,7 +191,7 @@ GameFlow/
 │   ├── save_backup_service.py# Detección de carpetas de guardado, compresión zip y retención
 │   └── stats_service.py    # Métricas de tiempo, agregaciones semanales/mensuales y metas
 ├── ui/
-│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, GameStats, PerformanceProfile, InGameOverlay, etc.)
+│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, CloudSync, GameStats, PerformanceProfile, InGameOverlay, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI

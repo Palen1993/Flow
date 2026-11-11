@@ -191,7 +191,11 @@ try:
         "ui/dialogs/cover_picker_dialog.py", "ui/dialogs/gamepad_config_dialog.py",
         "ui/dialogs/scan_results.py", "ui/dialogs/select_game_to_edit.py",
         "ui/dialogs/on_screen_keyboard.py", "ui/dialogs/external_import_dialog.py", "ui/dialogs/base_dialog.py", "core/external_launchers.py", "ui/modal_manager.py", "core/logger.py",
-        "core/library_service.py", "core/execution_service.py", "ui/window_manager.py", "ui/gamepad_service.py"
+        "core/library_service.py", "core/execution_service.py", "ui/window_manager.py", "ui/gamepad_service.py",
+        "core/save_backup_service.py", "ui/dialogs/save_backup_dialog.py",
+        "core/stats_service.py", "ui/dialogs/game_stats_dialog.py",
+        "core/power_service.py", "ui/dialogs/performance_dialog.py",
+        "core/cloud_sync_service.py", "ui/dialogs/cloud_sync_dialog.py"
     ]
     for rel_path in files_to_check:
         full_p = os.path.join(BASE_DIR, rel_path)
@@ -205,13 +209,15 @@ try:
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
-        OnScreenKeyboardDialog, ExternalImportDialog
+        OnScreenKeyboardDialog, ExternalImportDialog,
+        SaveBackupDialog, GameStatsDialog, PerformanceDialog, CloudSyncDialog
     )
     for dlg_cls in (
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
         OnScreenKeyboardDialog, ExternalImportDialog,
+        SaveBackupDialog, GameStatsDialog, PerformanceDialog, CloudSyncDialog,
         FloatingGlassDropdown, FloatingGlassMenu
     ):
         assert hasattr(dlg_cls, "handle_gamepad_input"), f"{dlg_cls.__name__} no implementa handle_gamepad_input"

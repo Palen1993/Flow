@@ -347,6 +347,28 @@ class App(ctk.CTk):
             on_game_updated=_on_updated
         )
 
+    def open_cloud_sync_dialog(self):
+        """Abre el panel de Sincronización de Partidas en la Nube (Cloud Save Sync)."""
+        self.close_active_menu()
+        if hasattr(self, "_cloud_sync_dialog") and self._cloud_sync_dialog and self._cloud_sync_dialog.winfo_exists():
+            try:
+                self._cloud_sync_dialog.lift()
+                self._cloud_sync_dialog.focus_force()
+            except Exception:
+                pass
+            return
+
+        from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
+
+        def _on_sync_done():
+            self.update_ui_details(self.selected_index)
+
+        self._cloud_sync_dialog = CloudSyncDialog(
+            parent=self,
+            games=self.games,
+            on_sync_completed=_on_sync_done
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -1136,6 +1158,7 @@ class App(ctk.CTk):
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
             ("💾", "Copias de Seguridad (Save Backup)...", self.open_save_backup_dialog),
+            ("☁️", "Sincronización en la Nube (Cloud Sync)...", self.open_cloud_sync_dialog),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
             ("🎛️", "Modos de Rendimiento y Energía (P)...", self.open_performance_dialog),
             ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),

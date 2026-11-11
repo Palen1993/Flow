@@ -363,6 +363,13 @@ def create_save_backup(
         except Exception:
             pass
 
+        # Gancho de Sincronización en la Nube (Cloud Save Sync)
+        try:
+            from core.cloud_sync_service import maybe_auto_sync_backup
+            maybe_auto_sync_backup(game, zip_path)
+        except Exception as cse:
+            logger.debug(f"Aviso en hook de auto-sync de nube: {cse}")
+
         logger.info(f"Copia de seguridad creada para '{game.get('name')}': {zip_name} ({total_files} archivos)")
         return {
             "success": True,

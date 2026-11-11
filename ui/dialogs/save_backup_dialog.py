@@ -228,8 +228,8 @@ class SaveBackupDialog(BaseGlassDialog):
 
         btn_open_folder = ctk.CTkButton(
             actions_row,
-            text="📂  Abrir Carpeta de Backups",
-            width=165,
+            text="📂  Abrir Carpeta",
+            width=135,
             height=34,
             font=font_button(11),
             fg_color=COLOR_BTN_SECONDARY_BG,
@@ -240,6 +240,21 @@ class SaveBackupDialog(BaseGlassDialog):
             command=self._open_backup_folder_in_explorer
         )
         btn_open_folder.pack(side="right")
+
+        self.btn_cloud_sync = ctk.CTkButton(
+            actions_row,
+            text="☁️  Nube / Cloud Sync (RB)",
+            width=175,
+            height=34,
+            font=font_button(11),
+            fg_color=COLOR_BTN_SECONDARY_BG,
+            hover_color=COLOR_BTN_SECONDARY_HOVER,
+            border_color=COLOR_CYAN_BORDER,
+            border_width=1,
+            corner_radius=10,
+            command=self._open_cloud_sync
+        )
+        self.btn_cloud_sync.pack(side="right", padx=(0, 8))
 
         # ---------------- Contenedor Desplazable de Copias ----------------
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -255,7 +270,7 @@ class SaveBackupDialog(BaseGlassDialog):
 
         self.lbl_shortcuts = ctk.CTkLabel(
             self.footer_bar,
-            text="Cruceta (↑ / ↓): Navegar  │  (A): Crear Copia  │  (Start): Restaurar Seleccionada  │  (Y): Eliminar  │  (X): Cambiar Carpeta  │  (B): Cerrar",
+            text="Cruceta (↑ / ↓): Navegar  │  (A): Crear Copia  │  (Start): Restaurar  │  (RB): Nube ☁️  │  (Y): Eliminar  │  (X): Carpeta  │  (B): Cerrar",
             font=font_body(11),
             text_color=COLOR_TEXT_DIM
         )
@@ -305,6 +320,10 @@ class SaveBackupDialog(BaseGlassDialog):
             lbl_empty.pack(pady=8)
             return
 
+        from core.cloud_sync_service import load_cloud_config
+        cloud_cfg = load_cloud_config()
+        synced_map = cloud_cfg.get("synced_files", {})
+
         for idx, b in enumerate(self.backups_list):
             card = ctk.CTkFrame(
                 self.scroll_frame,
@@ -333,12 +352,13 @@ class SaveBackupDialog(BaseGlassDialog):
             )
             lbl_zip_name.pack(anchor="w")
 
-            meta_line = f"📅 {b['date_formatted']}   •   💾 {b['size_formatted']}   •   📄 {b['total_files']} archivos   •   {b['comment']}"
+            cloud_tag = "   •   ☁️ En la Nube" if b["name"] in synced_map else ""
+            meta_line = f"📅 {b['date_formatted']}   •   💾 {b['size_formatted']}   •   📄 {b['total_files']} archivos   •   {b['comment']}{cloud_tag}"
             lbl_zip_meta = ctk.CTkLabel(
                 info_subcol,
                 text=meta_line,
                 font=font_body(10),
-                text_color=COLOR_TEXT_DIM,
+                text_color=COLOR_CYAN_ACCENT if b["name"] in synced_map else COLOR_TEXT_DIM,
                 anchor="w"
             )
             lbl_zip_meta.pack(anchor="w")
@@ -518,6 +538,12 @@ class SaveBackupDialog(BaseGlassDialog):
         except Exception as e:
             show_info("Carpeta de Backups", f"Ubicación en disco:\n{b_dir}", parent=self)
 
+    def _open_cloud_sync(self):
+        feedback_click()
+        from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
+        all_games = getattr(self.parent, "games", [self.game]) if self.parent else [self.game]
+        CloudSyncDialog(parent=self, games=all_games, on_sync_completed=self._refresh_backups)
+
     # =========================================================================
     # MANEJADOR DE MANDO DE CONSOLA (GAMEPAD DISPATCHER)
     # =========================================================================
@@ -527,6 +553,7 @@ class SaveBackupDialog(BaseGlassDialog):
         - Cruceta Arriba/Abajo: Seleccionar copia en la lista
         - A: Si no hay copias, crea copia; si hay copias seleccionadas, botón crear o restaurar
         - Start: Restaurar la copia actualmente seleccionada
+        - RB / LB: Abrir panel de Sincronización en la Nube (Cloud Sync)
         - Y: Eliminar la copia seleccionada
         - X: Cambiar carpeta de guardado (examinar)
         - B / Back: Cerrar diálogo
@@ -534,6 +561,12 @@ class SaveBackupDialog(BaseGlassDialog):
         if (inputs.get("b", False) and not prev_inputs.get("b", False)) or \
            (inputs.get("back", False) and not prev_inputs.get("back", False)):
             self.close()
+            return True
+
+        # Botón RB / LB: Abrir panel de Cloud Sync
+        if (inputs.get("rb", False) and not prev_inputs.get("rb", False)) or \
+           (inputs.get("lb", False) and not prev_inputs.get("lb", False)):
+            self._open_cloud_sync()
             return True
 
         # Cruceta arriba / abajo

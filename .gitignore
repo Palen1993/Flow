@@ -29,6 +29,9 @@ build/
 games.json
 games.json.bak
 gamepad_config.json
+game_stats.json
+cloud_sync.json
+save_backups/
 *.lnk
 .portable
 covers/*
