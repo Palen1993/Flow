@@ -151,13 +151,17 @@ class GamepadNavigationService:
                     self.app.cover_stage.next_cover()
                     self._last_move_ts = now
 
-            # Cruceta Arriba: En Big Picture abre selector de monitores; en Mini transparente no hace nada
-            if inputs.get("up", False) and not prev.get("up", False):
-                if not getattr(self.app, "is_mini_mode", False):
-                    if hasattr(self.app, "monitor_dropdown"):
-                        self.app.monitor_dropdown._toggle_dropdown()
-                    else:
-                        self.app.toggle_top_menu()
+            # Navegación vertical entre estanterías / carruseles (Cruceta Arriba / Abajo)
+            move_up = inputs.get("up", False)
+            move_down = inputs.get("down", False)
+            if move_up and not move_down:
+                if not prev.get("up", False):
+                    if hasattr(self.app, "cycle_shelf"):
+                        self.app.cycle_shelf(-1)
+            elif move_down and not move_up:
+                if not prev.get("down", False):
+                    if hasattr(self.app, "cycle_shelf"):
+                        self.app.cycle_shelf(1)
 
             # Botón A / Cruz: Iniciar juego
             if inputs.get("a", False) and not prev.get("a", False):

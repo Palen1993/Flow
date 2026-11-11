@@ -867,11 +867,15 @@ class CoverFlowCanvas(tk.Canvas):
             filt_lbl = getattr(self, "ui_filter_label", "Todos")
             filt_cnt = getattr(self, "ui_filter_count", len(self.games))
             top_h = max(28, int(round(36 * scale)))
+            s_idx = getattr(self, "ui_shelf_index", 0)
+            s_tot = getattr(self, "ui_total_shelves", 1)
             filt_img, filt_boxes = render_filter_capsule(
                 filter_label=filt_lbl,
                 count=filt_cnt,
                 family=fam,
-                height=top_h
+                height=top_h,
+                shelf_index=s_idx,
+                total_shelves=s_tot
             )
             filt_x = int(18 * scale)
             filt_y = int(14 * scale)

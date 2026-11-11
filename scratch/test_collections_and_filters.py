@@ -185,18 +185,23 @@ class TestCollectionsAndFilters(unittest.TestCase):
         self.assertEqual(steam_games[idx]["name"], "DOOM Eternal")
 
     def test_render_filter_capsule_xbox_and_ps(self):
-        # Renderizado para Xbox (LB / RB)
-        img_xb, boxes_xb = render_filter_capsule("Favoritos", 4, family="xbox", height=36)
+        # Renderizado multi-estantería (total_shelves > 1: flechas y 3 zonas interactivas)
+        img_xb, boxes_xb = render_filter_capsule("Favoritos", 4, family="xbox", height=36, shelf_index=0, total_shelves=3)
         self.assertIsNotNone(img_xb)
         self.assertEqual(len(boxes_xb), 3)
-        self.assertEqual(boxes_xb[0][4], "filter_prev")
+        self.assertIn(boxes_xb[0][4], ("filter_prev", "shelf_prev"))
         self.assertEqual(boxes_xb[1][4], "filter_menu")
-        self.assertEqual(boxes_xb[2][4], "filter_next")
+        self.assertIn(boxes_xb[2][4], ("filter_next", "shelf_next"))
 
-        # Renderizado para PlayStation (L1 / R1)
-        img_ps, boxes_ps = render_filter_capsule("Por Jugar", 8, family="playstation", height=36)
+        # Renderizado para PlayStation
+        img_ps, boxes_ps = render_filter_capsule("Por Jugar", 8, family="playstation", height=36, shelf_index=1, total_shelves=3)
         self.assertIsNotNone(img_ps)
         self.assertEqual(len(boxes_ps), 3)
+
+        # Renderizado mono-estantería (total_shelves = 1: sin flechas, 1 sola zona para abrir menú de filtros)
+        img_single, boxes_single = render_filter_capsule("Todos", 10, total_shelves=1)
+        self.assertEqual(len(boxes_single), 1)
+        self.assertEqual(boxes_single[0][4], "filter_menu")
 
 
 if __name__ == "__main__":

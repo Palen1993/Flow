@@ -127,8 +127,22 @@
   * **Caché Offline Inteligente**:
     * Almacena logros e iconos en disco (`achievements_cache.json`) para una navegación 100% instantánea y fluida sin latencia de red.
   * **Filtros Rápidos y Navegación por Mando**:
-    * Alterna con `LB / RB` entre `Todos`, `Desbloqueados 🟢`, `Bloqueados 🔒` y `Secretos ❓`.
-    * Vinculación rápida de Steam AppID o RetroAchievements GameID mediante diálogo modal `(Start)`.
+### 🗂️ 13. Navegación 2D por Estanterías Multi-Carrusel y Taxonomía Canónica
+* **Navegación 2D Estilo Consola Moderna**:
+  * **Eje Horizontal (`← / →`)**: Desplaza suavemente las carátulas 3D Cover Flow del canal o lista actual con efecto de reflejo e inercia.
+  * **Eje Vertical (`↑ / ↓`)**: Cambia instantáneamente entre las diferentes estanterías y canales habilitados (Todos los Juegos, Favoritos, Recientes, Por Jugar, Plataformas, Géneros canónicos y Listas personalizadas).
+  * **Memoria de Posición por Canal**: Al alternar de fila verticalmente, cada carrusel recuerda con precisión la carátula que estabas visualizando.
+  * **Regla de Consistencia Dinámica**: Si solo hay una lista o estantería habilitada en la configuración, no baja ni sube a otro carrusel, manteniendo la interfaz limpia y minimalista.
+* **Panel de Configuración de Estanterías y Filtros**:
+  * Accesible haciendo clic en la cápsula superior izquierda o pulsando `LB / RB` / menú de filtros.
+  * **Activación/Desactivación Selectiva**: Muestra u oculta canales con un solo toque (`[✓] Habilitada`).
+  * **Reordenación Vertical**: Sube o baja la jerarquía de las filas con botones `▲ Subir` / `▼ Bajar` (o `LB / RB` en mando).
+  * **Listas Personalizadas**: Crea colecciones a tu medida (ej: "Juegos Cooperativos", "GOTYs", "Indies Favoritos") con teclado en pantalla OSK.
+* **Taxonomía Canónica de Géneros Normalizada**:
+  * Clasificación inteligente y profesional que agrupa cualquier metadato o subgénero en 10 grandes categorías universales (Acción y Aventura, Rol (RPG), Plataformas y Metroidvania, Shooter y Disparos, Estrategia y Táctica, Simulación y Gestión, Carreras y Deportes, Lucha y Combate, Terror y Suspenso, Puzles y Casual).
+  * Evita la proliferación caótica y redundante de etiquetas manteniendo una organización impecable.
+* **Asignación de Juegos a Listas en Edición**:
+  * En el diálogo de Añadir / Modificar juego (`AddEditGameDialog`), añade o quita fácilmente el título de cualquier colección personalizada.
 
 ---
 
@@ -136,13 +150,13 @@
 
 | Botón Xbox | Botón PlayStation | Acción en Pantalla Principal (Big Picture) | Acción en In-Game Overlay / Diálogos |
 | :---: | :---: | :--- | :--- |
-| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow | Ajustar Volumen / Navegar tarjetas de perfil |
-| **D-Pad ↑ / ↓** | **Cruceta ↑ / ↓** | Selector de monitores / Menú | Seleccionar opción (Reanudar / Lanzador / Salir) |
-| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Activar perfil seleccionado |
+| **D-Pad ← / →** | **Cruceta ← / →** | Desplazar carátulas del Cover Flow actual | Ajustar Volumen / Navegar tarjetas de perfil |
+| **D-Pad ↑ / ↓** | **Cruceta ↑ / ↓** | **Navegar verticalmente entre carruseles / estanterías (↑ / ↓)** | Seleccionar opción / Reordenar estanterías |
+| **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Activar / Alternar estantería |
 | **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Reanudar juego |
-| **X** | **Cuadrado** | Abrir menú de opciones | **Cambiar Perfil de Rendimiento (Eco/Equilibrado/Turbo)** |
+| **X** | **Cuadrado** | Abrir menú de opciones | **Cambiar Perfil de Rendimiento / Nueva Lista** |
 | **Y** | **Triángulo** | **Abrir Logros y Trofeos (Steam / Retro)** | **Silenciar / Activar sonido (Mute)** / Carpeta Juegos |
-| **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** | **Bajar / Subir Volumen Maestro** (-5% / +5%) |
+| **LB / RB** | **L1 / R1** | **Cambiar Carrusel / Estantería** | **Subir / Bajar Posición en Estanterías** / Volumen (-5%/+5%) |
 | **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD (A-Z) | Ajustar borrosidad / desenfoque |
 | **Start** | **Options** | Alternar Pantalla Completa / Mini Dock | Seleccionar carpeta o guardar |
 | **Select / Back** | **Share / Touchpad** | Minimizar a la bandeja del sistema | Alternar Carátula 3D vs Wallpaper 16:9 |

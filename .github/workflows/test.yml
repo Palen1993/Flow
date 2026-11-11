@@ -29,5 +29,5 @@ jobs:
 
     - name: Run Modern Unit and Regression Test Suites
       run: |
-        python -m unittest scratch/test_achievements_service.py scratch/test_cloud_sync.py scratch/test_power_service.py scratch/test_save_backup.py scratch/test_stats_service.py scratch/test_in_game_overlay.py scratch/test_platform_layer.py scratch/test_massive_library_optimization.py scratch/test_collections_and_filters.py scratch/test_unit_mocked_core.py
+        python -m unittest scratch/test_multi_shelf_navigation.py scratch/test_achievements_service.py scratch/test_cloud_sync.py scratch/test_power_service.py scratch/test_save_backup.py scratch/test_stats_service.py scratch/test_in_game_overlay.py scratch/test_platform_layer.py scratch/test_massive_library_optimization.py scratch/test_collections_and_filters.py scratch/test_unit_mocked_core.py
         python scratch/mega_audit_test_suite.py

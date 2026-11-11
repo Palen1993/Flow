@@ -73,12 +73,14 @@ class App(ctk.CTk):
         # Configurar icono personalizado en barra de tareas y ventana
         self.window_manager.setup_app_icon()
 
-        # Cargar colección de juegos en memoria y preparar filtros
+        # Cargar colección de juegos en memoria y preparar estanterías multi-carrusel
         self.library.load()
         self.current_filter_id = "all"
         self.available_filters = self.library.get_available_filters()
-        self.filtered_games = self.library.filter_games(self.current_filter_id)
-        self.games = self.filtered_games
+        self.active_shelves: List[Dict[str, Any]] = []
+        self.current_shelf_idx: int = 0
+        self._shelf_selected_indices: Dict[str, int] = {}
+        self.games = self.library.games
         self.monitors = get_monitors()
         self.selected_index = 0
         self.exit_dialog = None
@@ -91,6 +93,7 @@ class App(ctk.CTk):
         self.bind("<FocusIn>", lambda e: self.refresh_games_from_disk_if_modified() if e.widget == self else None)
 
         self.create_widgets()
+        self.refresh_shelves(keep_selection=False)
         self.bind_events()
         self._start_gamepad_loop()
         self.after(50, self._poll_action_queue)
@@ -163,7 +166,7 @@ class App(ctk.CTk):
         """Sincroniza metadatos de juegos actualizados en disco por el centinela sin reiniciar la selección."""
         res = self.library.refresh_if_modified()
         if res:
-            self.apply_filter(self.current_filter_id, keep_selection=True)
+            self.refresh_shelves(keep_selection=True)
         return res
 
     def _get_library_index_for_game(self, game: Optional[Dict[str, Any]]) -> int:
@@ -179,13 +182,29 @@ class App(ctk.CTk):
                 return idx
         return 0
 
-    def apply_filter(self, filter_id: str, keep_selection: bool = True):
-        """Aplica un filtro o colección a la biblioteca (Todos, Favoritos, Estado, Plataforma o Género)."""
-        prev_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
-        self.current_filter_id = filter_id
-        self.available_filters = self.library.get_available_filters()
-        self.filtered_games = self.library.filter_games(filter_id)
-        self.games = self.filtered_games
+    def refresh_shelves(self, keep_selection: bool = True):
+        """Actualiza las estanterías del dashboard cargando la configuración y asigna el carrusel activo."""
+        from core.collections_service import get_active_shelves
+        prev_game = self.games[self.selected_index] if (hasattr(self, "games") and self.games and 0 <= self.selected_index < len(self.games)) else None
+        self.active_shelves = get_active_shelves(self.library.games)
+
+        if not self.active_shelves:
+            all_sorted = sorted(self.library.games, key=lambda g: (g.get("name") or "").lower())
+            self.active_shelves = [{
+                "id": "all",
+                "name": "Todos los Juegos",
+                "icon": "🎮",
+                "enabled": True,
+                "count": len(all_sorted),
+                "games": all_sorted
+            }]
+
+        if self.current_shelf_idx >= len(self.active_shelves):
+            self.current_shelf_idx = 0
+
+        cur_shelf = self.active_shelves[self.current_shelf_idx]
+        self.games = cur_shelf["games"]
+        self.current_filter_id = cur_shelf["id"]
 
         new_idx = 0
         if keep_selection and prev_game:
@@ -195,43 +214,73 @@ class App(ctk.CTk):
                 if (pg_path and g.get("path") == pg_path) or (pg_name and (g.get("name") or "").strip().lower() == pg_name):
                     new_idx = i
                     break
+        else:
+            new_idx = self._shelf_selected_indices.get(cur_shelf["id"], 0)
 
-        active_filt = next(
-            (f for f in self.available_filters if f["id"] == filter_id),
-            {"label": "Todos", "count": len(self.games), "icon": "🎮"}
-        )
+        new_idx = max(0, min(new_idx, len(self.games) - 1)) if self.games else 0
+        self.selected_index = new_idx
 
         if hasattr(self, "cover_stage") and self.cover_stage:
-            self.cover_stage.ui_filter_label = active_filt.get("label", "Todos")
+            self.cover_stage.ui_shelf_index = self.current_shelf_idx
+            self.cover_stage.ui_total_shelves = len(self.active_shelves)
+            self.cover_stage.ui_filter_label = cur_shelf["name"]
             self.cover_stage.ui_filter_count = len(self.games)
-            self.cover_stage.set_games(self.games, target_index=new_idx)
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
 
-        self.selected_index = new_idx if self.games else 0
         self.update_ui_details(self.selected_index)
 
-    def cycle_filter(self, direction: int):
-        """Cambia cíclicamente de colección/filtro con los botones LB/RB del mando o teclas Q/E."""
-        filters = self.library.get_available_filters()
-        if not filters:
+    def cycle_shelf(self, direction: int):
+        """
+        Navega verticalmente entre los carruseles/listas de juegos habilitadas (↑ / ↓).
+        Si solo hay 1 lista habilitada, no cambia de fila (tal como especificó el usuario).
+        """
+        if len(self.active_shelves) <= 1:
             return
-        cur_id = self.current_filter_id
-        cur_idx = 0
-        for i, f in enumerate(filters):
-            if f["id"] == cur_id:
-                cur_idx = i
-                break
-        next_idx = (cur_idx + direction) % len(filters)
-        next_filt = filters[next_idx]
+
+        cur_shelf_id = self.active_shelves[self.current_shelf_idx]["id"]
+        self._shelf_selected_indices[cur_shelf_id] = self.selected_index
+
+        self.current_shelf_idx = (self.current_shelf_idx + direction) % len(self.active_shelves)
         try:
-            from core.feedback import feedback_click
+            from core.feedback import feedback_click, trigger_haptic
             feedback_click()
+            trigger_haptic()
         except Exception:
             pass
-        self.apply_filter(next_filt["id"], keep_selection=True)
-        self.set_status(f"Colección: {next_filt.get('icon', '🏷️')} {next_filt.get('label', 'Todos')} ({len(self.games)} juegos)")
+
+        new_shelf = self.active_shelves[self.current_shelf_idx]
+        self.games = new_shelf["games"]
+        self.current_filter_id = new_shelf["id"]
+
+        target_h = self._shelf_selected_indices.get(new_shelf["id"], 0)
+        self.selected_index = max(0, min(target_h, len(self.games) - 1)) if self.games else 0
+
+        if hasattr(self, "cover_stage") and self.cover_stage:
+            self.cover_stage.ui_shelf_index = self.current_shelf_idx
+            self.cover_stage.ui_total_shelves = len(self.active_shelves)
+            self.cover_stage.ui_filter_label = new_shelf["name"]
+            self.cover_stage.ui_filter_count = len(self.games)
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+
+        self.update_ui_details(self.selected_index)
+        self.set_status(f"Fila {self.current_shelf_idx + 1}/{len(self.active_shelves)}: {new_shelf.get('icon', '')} {new_shelf['name']} ({len(self.games)} juegos)")
+
+    def cycle_filter(self, direction: int):
+        """Alias para cambiar de estantería verticalmente con LB/RB o atajos de hombros."""
+        self.cycle_shelf(direction)
+
+    def apply_filter(self, filter_id: str, keep_selection: bool = True):
+        """Aplica un filtro o selecciona la estantería correspondiente en el dashboard."""
+        for idx, shelf in enumerate(self.active_shelves):
+            if shelf["id"] == filter_id:
+                self.current_shelf_idx = idx
+                self.refresh_shelves(keep_selection=keep_selection)
+                return
+        # Si no está en las estanterías activas, recargar estanterías
+        self.refresh_shelves(keep_selection=keep_selection)
 
     def open_collections_dialog(self):
-        """Abre el diálogo modal de exploración y filtrado rápido de colecciones."""
+        """Abre el diálogo modal de configuración de estanterías y filtros del dashboard."""
         self.close_active_menu()
         if hasattr(self, "_collections_dialog") and self._collections_dialog and self._collections_dialog.winfo_exists():
             try:
@@ -240,12 +289,13 @@ class App(ctk.CTk):
             except Exception:
                 pass
             return
-        filters = self.library.get_available_filters()
+
+        cur_shelf_id = self.active_shelves[self.current_shelf_idx]["id"] if self.active_shelves else "all"
         self._collections_dialog = CollectionsFilterDialog(
             self,
-            filters=filters,
-            current_filter_id=self.current_filter_id,
-            on_select_filter=lambda fid: self.apply_filter(fid, keep_selection=True)
+            all_games=self.library.games,
+            current_shelf_id=cur_shelf_id,
+            on_shelves_updated=lambda: self.refresh_shelves(keep_selection=True)
         )
 
     def open_in_game_overlay(self):
@@ -585,6 +635,8 @@ class App(ctk.CTk):
     def bind_events(self):
         self.bind("<Left>", lambda e: self.cover_stage.prev_cover())
         self.bind("<Right>", lambda e: self.cover_stage.next_cover())
+        self.bind("<Up>", lambda e: self.cycle_shelf(-1))
+        self.bind("<Down>", lambda e: self.cycle_shelf(1))
         self.bind("<Return>", lambda e: self.launch_current_game())
         self.bind("<space>", lambda e: self.launch_current_game())
         self.bind("<Home>", lambda e: self.cover_stage.select_index(0))
@@ -629,10 +681,10 @@ class App(ctk.CTk):
             self._show_battery_info()
         elif action == "launch":
             self.launch_current_game()
-        elif action == "filter_prev":
-            self.cycle_filter(-1)
-        elif action == "filter_next":
-            self.cycle_filter(1)
+        elif action in ("filter_prev", "shelf_prev"):
+            self.cycle_shelf(-1)
+        elif action in ("filter_next", "shelf_next"):
+            self.cycle_shelf(1)
         elif action == "filter_menu":
             self.open_collections_dialog()
         elif action == "start":
@@ -1324,7 +1376,7 @@ class App(ctk.CTk):
             self,
             self.monitors,
             game_data=game,
-            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None, fav=False, st="Por jugar", gen="", plat="PC": self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb, fav, st, gen, plat),
+            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None, fav=False, st="Por jugar", gen="", plat="PC", colls=None: self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb, fav, st, gen, plat, colls),
             delete_callback=lambda: self.delete_specific_game(index, confirm=False),
             on_close_callback=return_callback
         )
@@ -1335,29 +1387,30 @@ class App(ctk.CTk):
     def on_game_added(
         self, name, path, monitor, high_priority, cover, launch_args: str = "",
         wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None,
-        favorite: bool = False, status: str = "Por jugar", genre: str = "", platform: str = "PC"
+        favorite: bool = False, status: str = "Por jugar", genre: str = "", platform: str = "PC", collections: Optional[List[str]] = None
     ):
         new_index = self.library.add_game(
             name, path, monitor, high_priority, cover, launch_args,
             wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur,
-            favorite=favorite, status=status, genre=genre, platform=platform
+            favorite=favorite, status=status, genre=genre, platform=platform, collections=collections
         )
         invalidate_thumb_cache()
-        self.apply_filter(self.current_filter_id, keep_selection=False)
+        self.refresh_shelves(keep_selection=False)
         self.set_status(f"Juego '{name}' añadido con éxito.")
 
     def on_specific_game_edited(
         self, index: int, name: str, path: str, monitor: int, high_priority: bool, cover: str, launch_args: str = "",
         wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None,
-        favorite: Optional[bool] = None, status: Optional[str] = None, genre: Optional[str] = None, platform: Optional[str] = None
+        favorite: Optional[bool] = None, status: Optional[str] = None, genre: Optional[str] = None, platform: Optional[str] = None,
+        collections: Optional[List[str]] = None
     ):
         if self.library.update_game(
             index, name, path, monitor, high_priority, cover, launch_args,
             wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur,
-            favorite=favorite, status=status, genre=genre, platform=platform
+            favorite=favorite, status=status, genre=genre, platform=platform, collections=collections
         ):
             invalidate_thumb_cache()
-            self.apply_filter(self.current_filter_id, keep_selection=True)
+            self.refresh_shelves(keep_selection=True)
             self.set_status(f"Juego '{name}' actualizado.")
 
     def on_game_edited(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):

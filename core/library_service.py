@@ -164,7 +164,8 @@ class GameLibraryService:
         favorite: bool = False,
         status: str = "Por jugar",
         genre: str = "",
-        platform: str = "PC"
+        platform: str = "PC",
+        collections: Optional[List[str]] = None
     ) -> int:
         """Añade un nuevo juego a la colección y persiste en disco. Devuelve el índice del nuevo juego."""
         import time
@@ -185,6 +186,9 @@ class GameLibraryService:
             "goals": [],
             "notes": ""
         }
+        if collections:
+            from core.collections_service import set_game_collections
+            set_game_collections(new_game, collections)
         if launch_args:
             new_game["launch_args"] = launch_args
         if wallpaper:
@@ -212,7 +216,8 @@ class GameLibraryService:
         favorite: Optional[bool] = None,
         status: Optional[str] = None,
         genre: Optional[str] = None,
-        platform: Optional[str] = None
+        platform: Optional[str] = None,
+        collections: Optional[List[str]] = None
     ) -> bool:
         """Actualiza los metadatos de un juego existente y guarda en disco."""
         if 0 <= index < len(self.games):
@@ -242,6 +247,9 @@ class GameLibraryService:
                 existing["genre"] = genre
             if platform is not None:
                 existing["platform"] = platform
+            if collections is not None:
+                from core.collections_service import set_game_collections
+                set_game_collections(existing, collections)
             self.games[index] = existing
             self.save()
             return True

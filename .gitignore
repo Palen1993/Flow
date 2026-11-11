@@ -33,6 +33,7 @@ game_stats.json
 cloud_sync.json
 achievements_config.json
 achievements_cache.json
+collections_config.json
 save_backups/
 *.lnk
 .portable

@@ -251,9 +251,20 @@ class AddEditGameDialog(BaseGlassDialog):
         self.platform_entry.insert(0, self.current_platform or "PC")
         self.platform_entry.grid(row=7, column=1, padx=(0, 12), pady=5, sticky="ew")
 
+        # Listas y Colecciones
+        ctk.CTkLabel(right_frame, text="Listas/Colección:").grid(row=8, column=0, padx=12, pady=5, sticky="w")
+        from core.collections_service import get_game_collections
+        self.collections_entry = ctk.CTkEntry(
+            right_frame, placeholder_text="Ej. Cooperativos, Backlog...",
+            fg_color=COLOR_BG_DARK, border_color=COLOR_GLASS_HOVER, corner_radius=12, text_color=COLOR_TEXT_MAIN
+        )
+        cur_colls = ", ".join(get_game_collections(self.game_data)) if self.game_data else ""
+        self.collections_entry.insert(0, cur_colls)
+        self.collections_entry.grid(row=8, column=1, padx=(0, 12), pady=5, sticky="ew")
+
         # Opciones y Favorito
         check_box = ctk.CTkFrame(right_frame, fg_color="transparent")
-        check_box.grid(row=8, column=0, columnspan=2, padx=12, pady=6, sticky="w")
+        check_box.grid(row=9, column=0, columnspan=2, padx=12, pady=6, sticky="w")
 
         self.favorite_var = ctk.BooleanVar(value=self.current_favorite)
         self.favorite_check = ctk.CTkCheckBox(check_box, text="⭐ Favorito", variable=self.favorite_var)
@@ -658,24 +669,37 @@ class AddEditGameDialog(BaseGlassDialog):
         gen_val = self.genre_entry.get().strip() if hasattr(self, "genre_entry") else ""
         plat_val = self.platform_entry.get().strip() if hasattr(self, "platform_entry") else "PC"
 
+        colls_raw = self.collections_entry.get().strip() if hasattr(self, "collections_entry") else ""
+        colls_list = [c.strip() for c in colls_raw.split(",") if c.strip()]
+        if self.game_data:
+            from core.collections_service import set_game_collections
+            set_game_collections(self.game_data, colls_list)
+
         if self.callback:
             try:
                 self.callback(
                     name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
                     self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur,
-                    fav_val, st_val, gen_val, plat_val
+                    fav_val, st_val, gen_val, plat_val, colls_list
                 )
             except TypeError:
                 try:
                     self.callback(
                         name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
-                        self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur
+                        self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur,
+                        fav_val, st_val, gen_val, plat_val
                     )
                 except TypeError:
                     try:
-                        self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                        self.callback(
+                            name, path, monitor_index, high_priority, self.current_cover_path, launch_args,
+                            self.current_wallpaper_path, self.current_wallpaper_opacity, self.current_wallpaper_blur
+                        )
                     except TypeError:
-                        self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
+                        try:
+                            self.callback(name, path, monitor_index, high_priority, self.current_cover_path, launch_args)
+                        except TypeError:
+                            self.callback(name, path, monitor_index, high_priority, self.current_cover_path)
         self.destroy()
 
     def confirm_delete(self):
