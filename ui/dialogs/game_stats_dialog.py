@@ -89,7 +89,8 @@ class GameStatsDialog(BaseGlassDialog):
         cover_path = self.game.get("cover")
         if cover_path and os.path.isfile(cover_path):
             try:
-                pil_img = Image.open(cover_path).resize((40, 40), Image.Resampling.LANCZOS)
+                with Image.open(cover_path) as raw_im:
+                    pil_img = raw_im.resize((40, 40), Image.Resampling.LANCZOS)
                 self._thumb_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(40, 40))
                 lbl_icon = ctk.CTkLabel(self.header_bar, image=self._thumb_img, text="")
                 lbl_icon.pack(side="left", padx=(0, 10))

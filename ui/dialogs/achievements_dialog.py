@@ -99,7 +99,8 @@ class AchievementsDialog(BaseGlassDialog):
         cover_path = self.game.get("cover")
         if cover_path and os.path.isfile(cover_path):
             try:
-                pil_img = Image.open(cover_path).resize((44, 44), Image.Resampling.LANCZOS)
+                with Image.open(cover_path) as raw_im:
+                    pil_img = raw_im.resize((44, 44), Image.Resampling.LANCZOS)
                 self._thumb_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(44, 44))
                 lbl_icon = ctk.CTkLabel(self.header_bar, image=self._thumb_img, text="")
                 lbl_icon.pack(side="left", padx=(0, 12))
@@ -284,6 +285,8 @@ class AchievementsDialog(BaseGlassDialog):
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_data_loaded(self, data: Dict[str, Any]):
+        if not self.winfo_exists():
+            return
         self.is_loading = False
         self.achievements_data = data
         self.btn_refresh.configure(text="🔄 Refrescar (X)")

@@ -451,6 +451,8 @@ class AddEditGameDialog(BaseGlassDialog):
                         break
 
             def _on_done():
+                if not self.winfo_exists():
+                    return
                 if success and os.path.isfile(target_wp):
                     self.current_wallpaper_path = target_wp
                     self.btn_auto_wallpaper.configure(text="✓ Fondo Aplicado", state="normal")
@@ -460,7 +462,8 @@ class AddEditGameDialog(BaseGlassDialog):
                     self.btn_auto_wallpaper.configure(text="⚡ Fondo 16:9 Auto", state="normal")
                     show_warning("Fondo No Encontrado", f"No se encontró un fondo 16:9 automático para '{name}'. Puedes buscarlo con 'Arte / Wallpaper'.", parent=self)
 
-            self.after(0, _on_done)
+            if self.winfo_exists():
+                self.after(0, _on_done)
 
         import threading
         threading.Thread(target=_worker, daemon=True).start()

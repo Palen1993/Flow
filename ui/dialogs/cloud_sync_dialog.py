@@ -509,6 +509,8 @@ class CloudSyncDialog(BaseGlassDialog):
             success, msg = test_cloud_connection(cfg)
 
             def _update_ui():
+                if not self.winfo_exists():
+                    return
                 if success:
                     self.lbl_conn_status.configure(text=f"🟢 {msg}", text_color=COLOR_STATUS_SUCCESS)
                     try:
@@ -518,7 +520,8 @@ class CloudSyncDialog(BaseGlassDialog):
                 else:
                     self.lbl_conn_status.configure(text=f"🔴 Error: {msg}", text_color=COLOR_STATUS_DANGER)
 
-            self.after(0, _update_ui)
+            if self.winfo_exists():
+                self.after(0, _update_ui)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -538,14 +541,17 @@ class CloudSyncDialog(BaseGlassDialog):
         self.lbl_sync_progress.configure(text="Iniciando sincronización...")
 
         def _progress(idx, total, g_name):
-            self.after(0, lambda: self.lbl_sync_progress.configure(
-                text=f"Sincronizando [{idx}/{total}]: {g_name}..."
-            ))
+            if self.winfo_exists():
+                self.after(0, lambda: self.lbl_sync_progress.configure(
+                    text=f"Sincronizando [{idx}/{total}]: {g_name}..."
+                ) if self.winfo_exists() else None)
 
         def _worker():
             res = sync_all_games(self.games, progress_cb=_progress)
 
             def _done():
+                if not self.winfo_exists():
+                    return
                 self.sync_in_progress = False
                 self.btn_sync_now.configure(state="normal")
                 up = res.get("total_uploaded", 0)
@@ -565,7 +571,8 @@ class CloudSyncDialog(BaseGlassDialog):
                 if self.on_sync_completed:
                     self.on_sync_completed()
 
-            self.after(0, _done)
+            if self.winfo_exists():
+                self.after(0, _done)
 
         threading.Thread(target=_worker, daemon=True).start()
 
