@@ -31,6 +31,8 @@ games.json.bak
 gamepad_config.json
 game_stats.json
 cloud_sync.json
+achievements_config.json
+achievements_cache.json
 save_backups/
 *.lnk
 .portable

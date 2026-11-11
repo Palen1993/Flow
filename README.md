@@ -114,6 +114,22 @@
   * **Sincronización Completa de la Biblioteca**: Botón "Sincronizar Toda la Biblioteca Ahora" para respaldar todos los títulos con un solo clic.
   * **Panel de Configuración y Diagnóstico**: Prueba de conexión en tiempo real con comprobación de permisos de escritura, indicadores visuales de copia sincronizada (`☁️ En la Nube`) y descarga directa de partidas remotas.
 
+### 🏆 12. Logros y Trofeos (Steam API & RetroAchievements)
+* Panel unificado de logros y trofeos accesible con tecla **Y** o desde el menú de opciones `(X)`:
+  * **Integración Oficial con Steam**:
+    * **Autodetección de Cuenta en Windows**: Localiza automáticamente el `SteamID64` y el perfil del usuario activo analizando `Steam/config/loginusers.vdf` y carpetas `userdata`.
+    * **Extracción de Esquema y Progreso**: Muestra nombres, descripciones, estado de desbloqueo, fechas de obtención y rareza global (`💎 4.2% Muy Raro`) mediante Steam Web API o perfil público XML.
+  * **Integración con RetroAchievements**:
+    * Soporte para juegos retro y emuladores (NES, SNES, Genesis, PS1, PS2, N64, GBA, etc.).
+    * Consulta en tiempo real de badges oficiales, puntuación RetroPoints / Hardcore y fechas de obtención.
+  * **Fallback a Metas Locales**:
+    * Para juegos independientes o sin conexión a APIs, las metas personales definidas en GameFlow actúan automáticamente como logros locales con medallas y puntuación.
+  * **Caché Offline Inteligente**:
+    * Almacena logros e iconos en disco (`achievements_cache.json`) para una navegación 100% instantánea y fluida sin latencia de red.
+  * **Filtros Rápidos y Navegación por Mando**:
+    * Alterna con `LB / RB` entre `Todos`, `Desbloqueados 🟢`, `Bloqueados 🔒` y `Secretos ❓`.
+    * Vinculación rápida de Steam AppID o RetroAchievements GameID mediante diálogo modal `(Start)`.
+
 ---
 
 ## 🎮 Tabla de Controles de Mando
@@ -125,7 +141,7 @@
 | **A** | **Cruz** | **Iniciar juego seleccionado** | Confirmar / Activar perfil seleccionado |
 | **B** | **Círculo** | Volver al modo Mini transparente | Cancelar / Salir / Reanudar juego |
 | **X** | **Cuadrado** | Abrir menú de opciones | **Cambiar Perfil de Rendimiento (Eco/Equilibrado/Turbo)** |
-| **Y** | **Triángulo** | Confirmar salida del lanzador | **Silenciar / Activar sonido (Mute)** / Carpeta Juegos |
+| **Y** | **Triángulo** | **Abrir Logros y Trofeos (Steam / Retro)** | **Silenciar / Activar sonido (Mute)** / Carpeta Juegos |
 | **LB / RB** | **L1 / R1** | **Cambiar Colección / Filtro** | **Bajar / Subir Volumen Maestro** (-5% / +5%) |
 | **LT / RT** | **L2 / R2** | Salto alfabético rápido con HUD (A-Z) | Ajustar borrosidad / desenfoque |
 | **Start** | **Options** | Alternar Pantalla Completa / Mini Dock | Seleccionar carpeta o guardar |
@@ -176,6 +192,7 @@ El ejecutable listo para usar se generará en `dist/GameFlow Launcher/` y el arc
 GameFlow/
 ├── assets/                 # Iconos vectoriales y efectos de sonido acústicos
 ├── core/
+│   ├── achievements_service.py # Logros y trofeos (Steam API & RetroAchievements)
 │   ├── active_game_tracker.py # Rastreo de juegos activos para In-Game Overlay
 │   ├── audio_service.py    # Control de volumen maestro nativo COM / ctypes / keybd_event
 │   ├── cloud_sync_service.py # Sincronización en la nube (OneDrive, GDrive, Dropbox, WebDAV)
@@ -191,7 +208,7 @@ GameFlow/
 │   ├── save_backup_service.py# Detección de carpetas de guardado, compresión zip y retención
 │   └── stats_service.py    # Métricas de tiempo, agregaciones semanales/mensuales y metas
 ├── ui/
-│   ├── dialogs/            # Diálogos Glassmorphism (SaveBackup, CloudSync, GameStats, PerformanceProfile, InGameOverlay, etc.)
+│   ├── dialogs/            # Diálogos Glassmorphism (Achievements, SaveBackup, CloudSync, GameStats, PerformanceProfile, etc.)
 │   ├── controller_hud.py   # Glifos dinámicos vectoriales Xbox / PlayStation
 │   ├── coverflow_canvas.py # Lienzo interactivo Cover Flow con reflejos y sombras
 │   ├── display_scale.py    # Escalado dinámico multi-pantalla y High-DPI

@@ -195,7 +195,8 @@ try:
         "core/save_backup_service.py", "ui/dialogs/save_backup_dialog.py",
         "core/stats_service.py", "ui/dialogs/game_stats_dialog.py",
         "core/power_service.py", "ui/dialogs/performance_dialog.py",
-        "core/cloud_sync_service.py", "ui/dialogs/cloud_sync_dialog.py"
+        "core/cloud_sync_service.py", "ui/dialogs/cloud_sync_dialog.py",
+        "core/achievements_service.py", "ui/dialogs/achievements_dialog.py"
     ]
     for rel_path in files_to_check:
         full_p = os.path.join(BASE_DIR, rel_path)
@@ -210,7 +211,8 @@ try:
         GamepadConfigDialog, ScanResultsDialog, SelectGameToEditDialog,
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
         OnScreenKeyboardDialog, ExternalImportDialog,
-        SaveBackupDialog, GameStatsDialog, PerformanceDialog, CloudSyncDialog
+        SaveBackupDialog, GameStatsDialog, PerformanceDialog, CloudSyncDialog,
+        AchievementsDialog
     )
     for dlg_cls in (
         AddEditGameDialog, ConfirmExitDialog, CoverPickerDialog,
@@ -218,6 +220,7 @@ try:
         ControllerInfoDialog, GlassMessageBox, GlassFolderBrowserDialog,
         OnScreenKeyboardDialog, ExternalImportDialog,
         SaveBackupDialog, GameStatsDialog, PerformanceDialog, CloudSyncDialog,
+        AchievementsDialog,
         FloatingGlassDropdown, FloatingGlassMenu
     ):
         assert hasattr(dlg_cls, "handle_gamepad_input"), f"{dlg_cls.__name__} no implementa handle_gamepad_input"

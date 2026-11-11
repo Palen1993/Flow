@@ -194,7 +194,7 @@ class GameStatsDialog(BaseGlassDialog):
 
         self.lbl_shortcuts = ctk.CTkLabel(
             self.footer_bar,
-            text="Cruceta: Navegar  │  (LB / RB): Cambiar Pestaña  │  (A): Seleccionar  │  (B): Cerrar",
+            text="Cruceta: Navegar  │  (LB / RB): Pestañas  │  (Y): Logros y Trofeos  │  (A): Seleccionar  │  (B): Cerrar",
             font=font_body(11),
             text_color=COLOR_TEXT_DIM
         )
@@ -309,7 +309,7 @@ class GameStatsDialog(BaseGlassDialog):
         btn_open_backup = ctk.CTkButton(
             tab0_footer,
             text="💾  Copias de Seguridad...",
-            width=175,
+            width=165,
             height=26,
             font=font_button(11),
             fg_color=COLOR_BTN_SECONDARY_BG,
@@ -321,9 +321,28 @@ class GameStatsDialog(BaseGlassDialog):
         )
         btn_open_backup.pack(side="right")
 
+        btn_open_achievements = ctk.CTkButton(
+            tab0_footer,
+            text="🏆  Logros y Trofeos (Y)...",
+            width=165,
+            height=26,
+            font=font_button(11),
+            fg_color=COLOR_BTN_SECONDARY_BG,
+            hover_color=COLOR_BTN_SECONDARY_HOVER,
+            border_color=COLOR_BTN_SECONDARY_BORDER,
+            border_width=1,
+            corner_radius=8,
+            command=self._open_achievements_dialog
+        )
+        btn_open_achievements.pack(side="right", padx=(0, 8))
+
     def _open_save_backup_dialog(self):
         from ui.dialogs.save_backup_dialog import SaveBackupDialog
         SaveBackupDialog(self, self.game, on_game_updated=self.on_game_updated)
+
+    def _open_achievements_dialog(self):
+        from ui.dialogs.achievements_dialog import AchievementsDialog
+        AchievementsDialog(self, self.game, on_game_updated=self.on_game_updated)
 
     def _set_chart_mode(self, mode: str):
         if self.chart_mode == mode:
@@ -837,6 +856,9 @@ class GameStatsDialog(BaseGlassDialog):
                 return True
             if inputs.get("right", False) and not prev_inputs.get("right", False):
                 self._set_chart_mode("monthly")
+                return True
+            if inputs.get("y", False) and not prev_inputs.get("y", False):
+                self._open_achievements_dialog()
                 return True
 
         # Pestaña 1: Metas

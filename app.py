@@ -369,6 +369,34 @@ class App(ctk.CTk):
             on_sync_completed=_on_sync_done
         )
 
+    def open_achievements_dialog(self):
+        """Abre el panel de Logros y Trofeos (Steam & RetroAchievements) para el juego seleccionado."""
+        self.close_active_menu()
+        if hasattr(self, "_achievements_dialog") and self._achievements_dialog and self._achievements_dialog.winfo_exists():
+            try:
+                self._achievements_dialog.lift()
+                self._achievements_dialog.focus_force()
+            except Exception:
+                pass
+            return
+
+        if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
+            return
+
+        game = self.games[self.selected_index]
+        from ui.dialogs.achievements_dialog import AchievementsDialog
+
+        def _on_updated(updated_game):
+            self.save_games()
+            self.cover_stage.set_games(self.games, target_index=self.selected_index)
+            self.update_ui_details(self.selected_index)
+
+        self._achievements_dialog = AchievementsDialog(
+            parent=self,
+            game=game,
+            on_game_updated=_on_updated
+        )
+
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
         self.close_active_menu()
@@ -585,6 +613,8 @@ class App(ctk.CTk):
         self.bind("<F1>", lambda e: self.open_in_game_overlay())
         self.bind("<p>", lambda e: self.open_performance_dialog())
         self.bind("<P>", lambda e: self.open_performance_dialog())
+        self.bind("<y>", lambda e: self.open_achievements_dialog())
+        self.bind("<Y>", lambda e: self.open_achievements_dialog())
         self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
@@ -1157,6 +1187,7 @@ class App(ctk.CTk):
         items = [
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
+            ("🏆", "Logros y Trofeos (Y)...", self.open_achievements_dialog),
             ("💾", "Copias de Seguridad (Save Backup)...", self.open_save_backup_dialog),
             ("☁️", "Sincronización en la Nube (Cloud Sync)...", self.open_cloud_sync_dialog),
             ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),

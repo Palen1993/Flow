@@ -22,8 +22,10 @@ from ui.dialogs.save_backup_dialog import SaveBackupDialog
 from ui.dialogs.performance_dialog import PerformanceProfileDialog
 PerformanceDialog = PerformanceProfileDialog
 from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
+from ui.dialogs.achievements_dialog import AchievementsDialog
 
 __all__ = [
+    "AchievementsDialog",
     "CloudSyncDialog",
     "PerformanceProfileDialog",
     "PerformanceDialog",
