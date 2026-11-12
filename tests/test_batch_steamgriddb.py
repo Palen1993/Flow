@@ -7,6 +7,9 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+import tempfile
+import shutil
+
 import customtkinter as ctk
 from core.cover_downloader import fetch_steamgriddb_best_assets, download_and_apply_steamgriddb_media
 from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
@@ -15,6 +18,10 @@ from ui.dialogs.batch_steamgriddb_dialog import BatchSteamGridDBDialog
 class TestBatchSteamGridDB(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        import core.cover_resolver as cover_res_mod
+        cls._tmp_covers = tempfile.mkdtemp(prefix="gf_batch_covers_")
+        cls._covers_patcher = patch.object(cover_res_mod, "COVERS_DIR", cls._tmp_covers)
+        cls._covers_patcher.start()
         cls.app = ctk.CTk()
         cls.app.withdraw()
 
@@ -24,6 +31,11 @@ class TestBatchSteamGridDB(unittest.TestCase):
             cls.app.destroy()
         except Exception:
             pass
+        try:
+            cls._covers_patcher.stop()
+        except Exception:
+            pass
+        shutil.rmtree(cls._tmp_covers, ignore_errors=True)
 
     def test_1_fetch_steamgriddb_best_assets_live(self):
         """Verifica que la API pública oficial de SteamGridDB resuelve carátulas (grids) y wallpapers (heroes)."""

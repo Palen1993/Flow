@@ -154,8 +154,11 @@ def force_foreground_window(hwnd: int, keep_topmost: Optional[bool] = None) -> b
     superando el bloqueo de primer plano de Windows (AttachThreadInput + HWND_TOPMOST).
     Restaura el estado no-topmost original cuando corresponde para no bloquear otras ventanas en modo completo.
     """
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        return False
+    user32 = windll.user32
+    kernel32 = windll.kernel32
 
     root = user32.GetAncestor(hwnd, 2)  # GA_ROOT
     if root:

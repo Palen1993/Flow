@@ -10,12 +10,23 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+import tempfile
+import shutil
+import core.cover_resolver as cover_res_mod
+import core.coverflow_engine as cover_eng_mod
 import tkinter as tk
 from ui.coverflow_canvas import CoverFlowCanvas
 
 class TestCarouselTransitionAnimation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._tmp_assets = tempfile.mkdtemp()
+        cls._orig_covers = cover_res_mod.COVERS_DIR
+        cls._orig_jewels = cover_eng_mod.JEWELS_CACHE_DIR
+        cover_res_mod.COVERS_DIR = os.path.join(cls._tmp_assets, "covers")
+        cover_eng_mod.JEWELS_CACHE_DIR = os.path.join(cls._tmp_assets, "jewels")
+        os.makedirs(cover_res_mod.COVERS_DIR, exist_ok=True)
+        os.makedirs(cover_eng_mod.JEWELS_CACHE_DIR, exist_ok=True)
         try:
             cls.root = tk.Tk()
             cls.root.withdraw()
@@ -25,6 +36,9 @@ class TestCarouselTransitionAnimation(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cover_res_mod.COVERS_DIR = cls._orig_covers
+        cover_eng_mod.JEWELS_CACHE_DIR = cls._orig_jewels
+        shutil.rmtree(cls._tmp_assets, ignore_errors=True)
         if getattr(cls, "has_tk", False) and cls.root:
             try:
                 cls.root.destroy()

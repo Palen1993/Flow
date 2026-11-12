@@ -13,14 +13,26 @@ def main():
     )
     staged_files = res.stdout.strip().splitlines()
 
+    personal_files = {
+        "games.json",
+        "games.json.bak",
+        "gamepad_config.json",
+        "game_stats.json",
+        "cloud_sync.json",
+        "achievements_config.json",
+        "achievements_cache.json",
+        "collections_config.json",
+        ".portable",
+    }
+
     blocked = []
     for f in staged_files:
         f_norm = f.strip().replace("\\", "/").lower()
-        if f_norm in ("games.json", "games.json.bak", "gamepad_config.json", ".portable"):
+        if f_norm in personal_files:
             blocked.append(f)
-        elif f_norm.startswith("covers/") and not f_norm.endswith(".gitkeep"):
+        elif f_norm.startswith(("covers/", "wallpapers/")) and not f_norm.endswith(".gitkeep"):
             blocked.append(f)
-        elif f_norm.startswith("wallpapers/") and not f_norm.endswith(".gitkeep"):
+        elif f_norm.startswith(("save_backups/", ".cache/")):
             blocked.append(f)
         elif f_norm.endswith((".log", ".bak", ".lnk", ".tmp")):
             blocked.append(f)

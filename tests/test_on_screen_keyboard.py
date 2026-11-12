@@ -38,15 +38,20 @@ class MockRootApp(ctk.CTk):
         return None
 
 class TestOnScreenKeyboard(unittest.TestCase):
-    def setUp(self):
-        self.app = MockRootApp()
-        self.app.update()
+    @classmethod
+    def setUpClass(cls):
+        cls.app = MockRootApp()
+        cls.app.update()
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         try:
-            self.app.destroy()
+            cls.app.destroy()
         except Exception:
             pass
+
+    def setUp(self):
+        self.app._modal_stack.clear()
 
     def test_01_init_and_stack_registration(self):
         """Verifica que el teclado virtual se registra en la pila modal O(1)."""

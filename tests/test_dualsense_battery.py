@@ -100,7 +100,7 @@ class TestDualSenseBattery(unittest.TestCase):
         self.assertEqual(res_bt["text"], "70% (Cargando)")
 
     def test_04_cache_ttl_behavior(self):
-        with patch("gamepad_manager._query_sony_hid_battery") as mock_query:
+        with patch("core.gamepad_hid._query_sony_hid_battery") as mock_query:
             mock_query.return_value = {
                 "connected": True, "percent": 75, "is_charging": False,
                 "level": "medium", "icon": "🔋", "text": "75%"

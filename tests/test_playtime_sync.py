@@ -27,6 +27,7 @@ class TestPlaytimeSynchronization(unittest.TestCase):
         except Exception:
             pass
 
+    @unittest.skipUnless(os.name == "nt", "Win32 kernel32 mutex solo disponible en Windows")
     def test_01_config_lock_context(self):
         """Verifica que config_lock adquiere y libera el mutex del kernel sin excepciones."""
         with config_mod.config_lock(timeout_ms=1000) as acquired:
@@ -59,6 +60,7 @@ class TestPlaytimeSynchronization(unittest.TestCase):
         self.assertEqual(alpha["playtime_minutes"], 40)
         self.assertTrue(alpha["last_played"].startswith("2026-"))
 
+    @unittest.skipUnless(os.name == "nt", "Resolución de rutas con barra invertida Windows requiere Windows")
     def test_03_record_game_session_fallback_by_exe(self):
         """Verifica el registro de sesión por nombre de ejecutable si la ruta difiere ligeramente."""
         initial_games = [

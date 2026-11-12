@@ -41,6 +41,11 @@ class TestCloudSyncService(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.cloud_folder = os.path.join(self.temp_dir, "CloudStorage")
         os.makedirs(self.cloud_folder, exist_ok=True)
+        self._cfg_patcher = patch(
+            "core.cloud_sync_service.CLOUD_SYNC_CONFIG_FILE",
+            os.path.join(self.temp_dir, "cloud_sync.json"),
+        )
+        self._cfg_patcher.start()
 
         self.game = {
             "name": "Hollow Knight",
@@ -69,6 +74,10 @@ class TestCloudSyncService(unittest.TestCase):
         }
 
     def tearDown(self):
+        try:
+            self._cfg_patcher.stop()
+        except Exception:
+            pass
         try:
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         except Exception:

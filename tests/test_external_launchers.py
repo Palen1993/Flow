@@ -2,6 +2,8 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import shutil
+import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 import customtkinter as ctk
@@ -16,6 +18,10 @@ from ui.dialogs.external_import_dialog import ExternalImportDialog
 class TestExternalLaunchers(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        import core.cover_resolver as cover_res_mod
+        cls._tmp_covers = tempfile.mkdtemp(prefix="gf_ext_covers_")
+        cls._covers_patcher = patch.object(cover_res_mod, "COVERS_DIR", cls._tmp_covers)
+        cls._covers_patcher.start()
         try:
             cls.root = ctk.CTk()
             cls.root.withdraw()
@@ -29,6 +35,11 @@ class TestExternalLaunchers(unittest.TestCase):
                 cls.root.destroy()
             except Exception:
                 pass
+        try:
+            cls._covers_patcher.stop()
+        except Exception:
+            pass
+        shutil.rmtree(cls._tmp_covers, ignore_errors=True)
 
     def test_01_real_installed_launchers_scan(self):
         # Must execute cleanly on host Windows without crashing
@@ -112,11 +123,10 @@ class TestExternalLaunchers(unittest.TestCase):
         dlg.handle_gamepad_input({"a": True}, {})
         self.assertTrue(dlg.items_vars[1][0].get())
 
-        # (X) -> toggle all
+        # (X) -> toggle all (solo afecta a los nuevos por defecto)
         dlg.handle_gamepad_input({"x": True}, {})
-        # Both should be unchecked now
         self.assertFalse(dlg.items_vars[0][0].get())
-        self.assertFalse(dlg.items_vars[1][0].get())
+        self.assertTrue(dlg.items_vars[1][0].get())
 
         dlg.close()
 

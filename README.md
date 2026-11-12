@@ -253,11 +253,17 @@ GameFlow/
 │   ├── gamepad_service.py  # Bucle de despacho y navegación a 40 Hz
 │   ├── theme.py            # Paleta de colores iOS Liquid Glass y Win32 helper
 │   └── window_manager.py   # Gestión de modo Big Picture y Mini Dock transparente
+├── tests/                  # Suite automatizada de pruebas unitarias, UI e integración
 ├── app.py                  # Ventana principal y despachador de eventos inter-hilo
 ├── gamepad_watcher.pyw     # Centinela de fondo para botón Guía y atajos de mando
 ├── lanzador.py             # Punto de entrada de la aplicación
 ├── overlay.py              # Lanzador standalone del In-Game Overlay
 └── requirements.txt        # Dependencias de producción
+```
+
+### Ejecutar la Suite de Pruebas
+```powershell
+python tests/run_all_tests.py
 ```
 
 ---

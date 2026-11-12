@@ -87,8 +87,8 @@ class TestEditDialogUsability(unittest.TestCase):
         )
         try:
             self.assertIsNotNone(dlg.btn_delete)
-            del_idx = 10
-            self.assertEqual(dlg._nav_controls[del_idx][1], dlg.btn_delete)
+            del_idx = next(i for i, c in enumerate(dlg._nav_controls) if c[1] == dlg.btn_delete)
+            save_idx = next(i for i, c in enumerate(dlg._nav_controls) if c[1] == dlg.btn_save)
             
             # Inicialmente está en 0 (btn_online)
             self.assertEqual(dlg._focused_idx, 0)
@@ -100,11 +100,11 @@ class TestEditDialogUsability(unittest.TestCase):
                     mock_confirm.assert_not_called()
                     mock_dl.assert_called_once()
 
-            # Navegar hacia abajo: 0 -> 1 (btn_cover)
+            # Navegar hacia abajo: 0 -> 1 (btn_cover) -> 2 (btn_auto_wallpaper) -> del_idx (btn_delete)
             dlg.handle_gamepad_input({"down": True}, {"down": False})
             self.assertEqual(dlg._focused_idx, 1)
-
-            # Navegar hacia abajo desde btn_cover -> 10 (btn_delete)
+            dlg.handle_gamepad_input({"down": True}, {"down": False})
+            self.assertEqual(dlg._focused_idx, 2)
             dlg.handle_gamepad_input({"down": True}, {"down": False})
             self.assertEqual(dlg._focused_idx, del_idx)
             
@@ -118,17 +118,17 @@ class TestEditDialogUsability(unittest.TestCase):
                 dlg.handle_gamepad_input({"a": True}, {"a": False})
                 mock_confirm.assert_called_once()
 
-            # Moverse a la derecha desde btn_delete -> 8 (btn_save)
+            # Moverse a la derecha desde btn_delete -> save_idx (btn_save)
             dlg.handle_gamepad_input({"right": True}, {"right": False})
-            self.assertEqual(dlg._focused_idx, 8)
+            self.assertEqual(dlg._focused_idx, save_idx)
             
-            # Desde btn_save, moverse a la izquierda -> vuelve a 10 (btn_delete)
+            # Desde btn_save, moverse a la izquierda -> vuelve a del_idx (btn_delete)
             dlg.handle_gamepad_input({"left": True}, {"left": False})
             self.assertEqual(dlg._focused_idx, del_idx)
 
-            # Desde btn_delete, subir -> vuelve a 1 (btn_cover)
+            # Desde btn_delete, subir -> va a la última fila de la columna derecha
             dlg.handle_gamepad_input({"up": True}, {"up": False})
-            self.assertEqual(dlg._focused_idx, 1)
+            self.assertEqual(dlg._focused_idx, save_idx - 1)
         finally:
             dlg.destroy()
 

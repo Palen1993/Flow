@@ -13,8 +13,10 @@ from ui.theme import bring_to_front_absolute
 from ui.dialogs import ConfirmExitDialog
 from ui.dropdowns import FloatingGlassMenu
 
-user32 = ctypes.windll.user32
+_windll = getattr(ctypes, "windll", None)
+user32 = _windll.user32 if _windll else None
 
+@unittest.skipUnless(os.name == "nt", "Win32 Z-Order HWND tests solo disponibles en Windows")
 class TestZOrderAndMiniRules(unittest.TestCase):
     def setUp(self):
         self.root = app.App()

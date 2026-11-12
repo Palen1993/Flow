@@ -12,11 +12,13 @@ import app
 from ui.dropdowns import FloatingGlassMenu, FloatingGlassDropdown
 from ui.dialogs import ConfirmExitDialog
 
-user32 = ctypes.windll.user32
+_windll = getattr(ctypes, "windll", None)
+user32 = _windll.user32 if _windll else None
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 
+@unittest.skipUnless(os.name == "nt", "Win32 taskbar HWND styles solo disponibles en Windows")
 class TestTaskbarAndModalFix(unittest.TestCase):
     def setUp(self):
         self.root = app.App()
