@@ -64,7 +64,7 @@ class DummyApp(ctk.CTk):
         return None
 
     def _gamepad_tick(self):
-        if self.winfo_exists():
+        if getattr(self, "_ticks_active", False) and self.winfo_exists():
             self.after(20, self._gamepad_tick)
         self.tick_count += 1
         self.gamepad_service.tick(target_id="any", enable_nav=True)
@@ -79,6 +79,7 @@ class TestLiveBugfixes3(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.app._ticks_active = False
         try:
             cls.app.destroy()
         except Exception:
@@ -110,8 +111,12 @@ class TestLiveBugfixes3(unittest.TestCase):
         def fake_poll(_target_id="any"):
             return True, "Xbox Controller", dict(getattr(self, "_sim_inputs", {}))
 
-        with patch("ui.gamepad_service.poll_active_gamepad", side_effect=fake_poll):
-            self.app._gamepad_tick()
+        self.app._ticks_active = True
+        try:
+            with patch("ui.gamepad_service.poll_active_gamepad", side_effect=fake_poll):
+                self.app._gamepad_tick()
+        finally:
+            self.app._ticks_active = False
 
         self.assertTrue(rom_browser_navigated["closed"], "El selector de carpetas ROMs debe cerrarse con el botón B del mando durante wait_window()")
         self.assertEqual(self.app._get_topmost_active_modal(), parent_modal, "Al cerrar el selector de ROMs, el modal padre debe recuperar la cima de la pila")
@@ -152,6 +157,11 @@ class TestLiveBugfixes3(unittest.TestCase):
         Verifica que el filtro de relevancia rechace sets físicos de LEGO y otros juegos genéricos,
         y que search_cover_candidates devuelva tanto carátulas como Key Art 1080p HD del juego exacto.
         """
+        import html
+        import json
+        from unittest.mock import MagicMock
+        import core.cover_downloader as cd
+
         q = "LEGO Batman Legacy of the Dark Knight"
         # Juguetes físicos de LEGO o juegos sin relación deben ser rechazados al 100%
         self.assertFalse(_is_candidate_relevant(
@@ -186,7 +196,46 @@ class TestLiveBugfixes3(unittest.TestCase):
             q
         ))
 
-        covs = search_cover_candidates(q)
+        cd._CANDIDATES_CACHE.clear()
+
+        def _make_iusc(meta_dict, w=1200, h=1600):
+            m_attr = html.escape(json.dumps(meta_dict), quote=True)
+            return f'<a class="iusc" m="{m_attr}" href="/images/search?expw={w}&exph={h}"></a>'
+
+        bing_covers_html = "".join([
+            _make_iusc({"murl": "https://www.lego.com/cdn/cs/set/assets/31153.png", "turl": "https://ex/t0.jpg", "t": "Modern House 31153 | Official LEGO Shop", "desc": "set"}),
+            _make_iusc({"murl": "https://ex/lego-batman-cover-1.jpg", "turl": "https://ex/t1.jpg", "t": "LEGO Batman Legacy of the Dark Knight Cover Art", "desc": "game cover"}),
+            _make_iusc({"murl": "https://ex/lego-batman-cover-2.jpg", "turl": "https://ex/t2.jpg", "t": "LEGO Batman Legacy of the Dark Knight Box Art", "desc": "box art"}),
+            _make_iusc({"murl": "https://ex/lego-batman-cover-3.jpg", "turl": "https://ex/t3.jpg", "t": "LEGO Batman Legacy of the Dark Knight Poster", "desc": "poster"}),
+            _make_iusc({"murl": "https://ex/lego-batman-cover-4.jpg", "turl": "https://ex/t4.jpg", "t": "LEGO Batman Legacy of the Dark Knight Key Art", "desc": "key art"}),
+        ]).encode("utf-8")
+
+        bing_wp_html = "".join([
+            _make_iusc({"murl": "https://ex/lego-batman-wp-1920x1080.jpg", "turl": "https://ex/wt1.jpg", "t": "LEGO Batman Legacy of the Dark Knight 1080p Wallpaper", "desc": "wallpaper"}, w=1920, h=1080),
+            _make_iusc({"murl": "https://ex/lego-batman-wp-4k.jpg", "turl": "https://ex/wt2.jpg", "t": "LEGO Batman Legacy of the Dark Knight Key Art 4K", "desc": "key art"}, w=3840, h=2160),
+            _make_iusc({"murl": "https://ex/lego-batman-thumb.jpg", "turl": "https://ex/wt3.jpg", "t": "LEGO Batman Legacy of the Dark Knight Thumb", "desc": "thumb"}, w=474, h=266),
+        ]).encode("utf-8")
+
+        def _fake_urlopen(req, timeout=2.0):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            resp = MagicMock()
+            resp.status = 200
+            resp.__enter__ = lambda s: s
+            resp.__exit__ = lambda s, *a: False
+            if "bing.com/images/search" in url:
+                resp.read.return_value = bing_wp_html if "aspect-wide" in url else bing_covers_html
+                return resp
+            if "store.steampowered.com" in url:
+                resp.read.return_value = json.dumps({
+                    "results_html": '<a data-ds-appid="221"><span class="title">LEGO Batman Legacy of the Dark Knight</span></a>'
+                }).encode("utf-8")
+                return resp
+            raise OSError("offline in unit test")
+
+        with patch("urllib.request.urlopen", side_effect=_fake_urlopen), \
+             patch("core.cover_downloader.search_steamgriddb_covers", return_value=[]):
+            covs = search_cover_candidates(q)
+
         self.assertGreater(len(covs), 5)
         sources = {c.get("source") for c in covs}
         self.assertIn("Key Art 1080p HD", sources, "search_cover_candidates debe incluir imágenes 1080p HD / Key Art del juego")

@@ -18,9 +18,17 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 
+from unittest.mock import patch
+
 @unittest.skipUnless(os.name == "nt", "Win32 taskbar HWND styles solo disponibles en Windows")
 class TestTaskbarAndModalFix(unittest.TestCase):
     def setUp(self):
+        self._patchers = [
+            patch("app.ensure_watcher_running"),
+            patch("app.ensure_gamebar_nexus_disabled"),
+        ]
+        for p in self._patchers:
+            p.start()
         self.root = app.App()
         self.root.deiconify()
         self.root.update()
@@ -30,6 +38,11 @@ class TestTaskbarAndModalFix(unittest.TestCase):
             self.root.destroy()
         except Exception:
             pass
+        for p in reversed(getattr(self, "_patchers", [])):
+            try:
+                p.stop()
+            except Exception:
+                pass
 
     def test_01_push_and_pop_modal(self):
         dummy = ctk.CTkFrame(self.root)

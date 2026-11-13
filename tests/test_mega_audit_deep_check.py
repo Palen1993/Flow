@@ -23,9 +23,19 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 
+from unittest.mock import patch
+
 @unittest.skipUnless(os.name == "nt", "Win32 HWND styles solo disponibles en Windows")
 class TestMegaAuditDeepCheck(unittest.TestCase):
     def setUp(self):
+        self._patchers = [
+            patch("app.ensure_watcher_running"),
+            patch("app.ensure_gamebar_nexus_disabled"),
+            patch.object(CoverPickerDialog, "_start_search", lambda s: None),
+            patch.object(ExternalImportDialog, "_start_scan_thread", lambda s: None),
+        ]
+        for p in self._patchers:
+            p.start()
         self.root = app.App()
         self.root.deiconify()
         self.root.update()
@@ -35,6 +45,11 @@ class TestMegaAuditDeepCheck(unittest.TestCase):
             self.root.destroy()
         except Exception:
             pass
+        for p in reversed(getattr(self, "_patchers", [])):
+            try:
+                p.stop()
+            except Exception:
+                pass
 
     def _check_window_styles(self, widget, name: str):
         self.assertTrue(widget.winfo_exists(), f"{name} debe existir.")

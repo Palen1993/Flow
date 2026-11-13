@@ -152,6 +152,11 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 
 > Mantén esta sección actualizada en orden cronológico inverso al completar cada tarea.
 
+- **2026-11-13 (CI Fix) — Corrección de bloqueos e intolerancia de red en CI (`windows-latest`):**
+  - `gamepad_manager.ensure_watcher_running()`: añadido `stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True` para evitar herencia de pipes abiertos con `subprocess.run(..., capture_output=True)` y soporte de la variable de entorno `GAMEFLOW_DISABLE_WATCHER=1` para tests.
+  - `tests/run_all_tests.py`: configurado `PYTHONIOENCODING=utf-8`, `GAMEFLOW_DISABLE_WATCHER=1` y manejo explícito de `subprocess.TimeoutExpired` para reportar logs previos si una suite excede el límite.
+  - `tests/test_live_bugfixes_3.py`: detenida limpiamente la animación `_gamepad_tick` en `DummyApp` y sustituidas las consultas HTTP reales a Bing en `test_3` por respuestas HTML/JSON mockeadas manteniendo intacta la validación de parsing, relevancia (`_is_candidate_relevant`) y etiquetas HD 1080p.
+  - `tests/test_mega_audit_deep_check.py`, `tests/test_taskbar_modal_fix.py`, `tests/test_zorder_and_mini_rules.py`: desactivados `ensure_watcher_running`, `ensure_gamebar_nexus_disabled` e hilos de escaneo/búsqueda de fondo en `setUp`/`tearDown` durante pruebas de UI en Windows.
 - **2026-11-13 (`c984c7e`) — Rotación 3D vertical entre estanterías y crossfade de fondo:**
   - Añadidas [`render_vertical_shelf_tilt()`](core/coverflow_engine.py) y [`scale_alpha_mask()`](core/coverflow_engine.py) en `core/coverflow_engine.py` con perspectiva en eje X convergente al centro visual (`center_x_in_crop`), sombreado de profundidad, LUT en C (`mask.point(lut)`) y protección de color clave transparente.
   - Refactorizado `ui/coverflow_canvas.py` (`_compose_shelf_layer`, `_extract_shelf_crops`, `_draw_outgoing_shelf_3d`, `_get_incoming_shelf_crops`, `_blend_transition_bg`, `_present_frame`) para rotar en 3D tanto el carrusel saliente como el entrante con física `k=6.8` y crossfade suave entre fondos/wallpapers.

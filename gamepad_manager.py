@@ -113,6 +113,9 @@ def ensure_gamebar_nexus_disabled(force: bool = False):
 
 def ensure_watcher_running():
     """Asegura que el proceso en segundo plano gamepad_watcher esté activo sin duplicarse."""
+    if os.environ.get("GAMEFLOW_DISABLE_WATCHER") == "1":
+        return
+
     try:
         import psutil
         for p in psutil.process_iter(['name', 'cmdline']):
@@ -134,9 +137,17 @@ def ensure_watcher_running():
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         watcher_exe = os.path.join(base_dir, "gamepad_watcher.exe")
         flags = (0x08000000 | 0x00000200) if os.name == 'nt' else 0
+        popen_kwargs = {
+            "cwd": base_dir,
+            "creationflags": flags,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
 
         if getattr(sys, 'frozen', False) and os.path.isfile(watcher_exe):
-            subprocess.Popen([watcher_exe], cwd=base_dir, creationflags=flags)
+            subprocess.Popen([watcher_exe], **popen_kwargs)
             return
 
         watcher_path = os.path.join(base_dir, "gamepad_watcher.pyw")
@@ -144,7 +155,7 @@ def ensure_watcher_running():
             return
             
         pythonw = get_pythonw_executable()
-        subprocess.Popen([pythonw, watcher_path], cwd=base_dir, creationflags=flags)
+        subprocess.Popen([pythonw, watcher_path], **popen_kwargs)
     except Exception:
         pass
 

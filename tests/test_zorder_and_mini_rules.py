@@ -16,9 +16,17 @@ from ui.dropdowns import FloatingGlassMenu
 _windll = getattr(ctypes, "windll", None)
 user32 = _windll.user32 if _windll else None
 
+from unittest.mock import patch
+
 @unittest.skipUnless(os.name == "nt", "Win32 Z-Order HWND tests solo disponibles en Windows")
 class TestZOrderAndMiniRules(unittest.TestCase):
     def setUp(self):
+        self._patchers = [
+            patch("app.ensure_watcher_running"),
+            patch("app.ensure_gamebar_nexus_disabled"),
+        ]
+        for p in self._patchers:
+            p.start()
         self.root = app.App()
         self.root.deiconify()
         time.sleep(0.12)
@@ -29,6 +37,11 @@ class TestZOrderAndMiniRules(unittest.TestCase):
             self.root.destroy()
         except Exception:
             pass
+        for p in reversed(getattr(self, "_patchers", [])):
+            try:
+                p.stop()
+            except Exception:
+                pass
 
     def _get_zorder(self, h1, h2):
         curr = user32.GetTopWindow(0)
