@@ -230,5 +230,28 @@ class TestGamepadHidAndCropEngineModules(unittest.TestCase):
         self.assertEqual(stage.size, (240, 248))
 
 
+class TestTkImageCacheAcrossRoots(unittest.TestCase):
+    def test_ctk_image_caches_survive_root_destroy_and_recreation(self):
+        import customtkinter as ctk
+        from ui.controller_hud import get_button_icon_ctk
+        from ui.dialogs.select_game_to_edit import get_game_thumbnail_ctk
+
+        sample_game = {"name": "Regression Test Game"}
+
+        for _ in range(2):
+            root = ctk.CTk()
+            try:
+                root.withdraw()
+                icon = get_button_icon_ctk("x", family="xbox", size=18, scale=1.0)
+                thumb = get_game_thumbnail_ctk(sample_game, size=32)
+                btn1 = ctk.CTkButton(root, text="Icon", image=icon)
+                btn2 = ctk.CTkButton(root, text="Thumb", image=thumb)
+                btn1.pack()
+                btn2.pack()
+                root.update_idletasks()
+            finally:
+                root.destroy()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

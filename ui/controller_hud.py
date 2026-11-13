@@ -1,6 +1,7 @@
 import math
 import re
-from typing import Dict, List, Optional, Tuple
+import tkinter as tk
+from typing import Any, Dict, List, Optional, Tuple
 import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont
 
@@ -9,6 +10,7 @@ from gamepad_manager import get_connected_controller_family
 
 _ICON_PIL_CACHE: Dict[Tuple[str, str, int], Image.Image] = {}
 _ICON_CTK_CACHE: Dict[Tuple[str, str, int], ctk.CTkImage] = {}
+_ICON_CTK_TK_APP: Optional[Any] = None
 _STRIP_CACHE: Dict[Tuple[str, int], Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]] = {}
 
 
@@ -183,6 +185,7 @@ def get_button_icon_ctk(btn_key: str, family: Optional[str] = None, size: int = 
     Devuelve un objeto CTkImage listo para incrustar en cualquier CTkButton o CTkLabel
     (ej: Cancelar con el circulito real (B) / (◯), Guardar con (Start), Aplicar con (A) / (✕), etc.).
     """
+    global _ICON_CTK_TK_APP
     from ui.display_scale import get_active_display_scale
     if family is None:
         family = get_connected_controller_family()
@@ -190,6 +193,18 @@ def get_button_icon_ctk(btn_key: str, family: Optional[str] = None, size: int = 
     k = btn_key.lower()
     sc = scale if scale is not None else get_active_display_scale()
     eff_size = max(14, int(round(size * sc)))
+
+    current_tk = getattr(tk._default_root, "tk", None)
+    if current_tk is None:
+        _ICON_CTK_CACHE.clear()
+        _ICON_CTK_TK_APP = None
+        pil_img = render_button_icon_pil(k, fam, size=eff_size)
+        return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(pil_img.width, pil_img.height))
+
+    if current_tk is not _ICON_CTK_TK_APP:
+        _ICON_CTK_CACHE.clear()
+        _ICON_CTK_TK_APP = current_tk
+
     cache_key = (k, fam, eff_size)
     cached = _ICON_CTK_CACHE.get(cache_key)
     if cached is not None:

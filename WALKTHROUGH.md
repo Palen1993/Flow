@@ -152,7 +152,11 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 
 > Mantén esta sección actualizada en orden cronológico inverso al completar cada tarea.
 
-- **2026-11-13 (`2832ae8` / CI Fix) — Corrección de bloqueos e intolerancia de red/plataforma en CI (`windows-latest`):**
+- **2026-11-13 (CI Fix / `CTkImage` cache) — Invalidación de cachés globales `CTkImage` al cambiar de raíz Tcl (`_tkinter.TclError: image "pyimageN" doesn't exist`):**
+  - En suites Windows donde `unittest` crea y destruye múltiples instancias sucesivas de `app.App()` (`test_mega_audit_deep_check.py`, `test_taskbar_modal_fix.py`, `test_zorder_and_mini_rules.py`), `_ICON_CTK_CACHE` en [`ui/controller_hud.py`](ui/controller_hud.py) devolvía un `CTkImage` ligado al intérprete Tcl ya destruido.
+  - Se vincularon `_ICON_CTK_CACHE` (`_ICON_CTK_TK_APP` en [`get_button_icon_ctk()`](ui/controller_hud.py)) y `_GLOBAL_THUMB_CACHE` (`_THUMB_CACHE_TK_APP` en [`get_game_thumbnail_ctk()`](ui/dialogs/select_game_to_edit.py)) a `tk._default_root.tk`, limpiando automáticamente la caché `CTkImage` cuando cambia o desaparece la raíz Tk activa (sin invalidar `_ICON_PIL_CACHE`).
+  - Añadido test de regresión `TestTkImageCacheAcrossRoots` en `tests/test_unit_mocked_core.py`.
+- **2026-11-13 (`2832ae8`, `a2dc195` / CI Fix) — Corrección de bloqueos e intolerancia de red/plataforma en CI (`windows-latest`):**
   - `gamepad_manager.ensure_watcher_running()`: añadido `stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True` para evitar herencia de pipes abiertos con `subprocess.run(..., capture_output=True)` y soporte de la variable de entorno `GAMEFLOW_DISABLE_WATCHER=1` para tests.
   - `core/system._read_wmi_friendly_names_powershell()`: añadido `-NoProfile -NonInteractive`, `stdin=subprocess.DEVNULL` y `timeout=3`.
   - `tests/run_all_tests.py`: configurado `PYTHONIOENCODING=utf-8`, `GAMEFLOW_DISABLE_WATCHER=1`, `unittest -v` y manejo explícito de `subprocess.TimeoutExpired` para reportar logs previos si una suite excede el límite.

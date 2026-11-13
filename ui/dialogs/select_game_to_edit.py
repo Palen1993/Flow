@@ -22,9 +22,16 @@ from ui.theme import (
 
 # Caché global en memoria de miniaturas para evitar lecturas de disco y reescalados LANCZOS redundantes
 _GLOBAL_THUMB_CACHE: Dict[str, ctk.CTkImage] = {}
+_THUMB_CACHE_TK_APP: Optional[Any] = None
 
 def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage:
     """Retorna una miniatura CTkImage pre-escalada desde caché en memoria para máximo rendimiento con >100 juegos."""
+    global _THUMB_CACHE_TK_APP
+    current_tk = getattr(tk._default_root, "tk", None)
+    if current_tk is not _THUMB_CACHE_TK_APP:
+        _GLOBAL_THUMB_CACHE.clear()
+        _THUMB_CACHE_TK_APP = current_tk
+
     cover_p = game.get("cover")
     name = game.get("name", "Juego")
     mtime = 0.0
@@ -34,9 +41,10 @@ def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage
         except Exception:
             mtime = 0.0
     cache_key = f"{cover_p or name}_{size}_{mtime}"
-    cached = _GLOBAL_THUMB_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
+    if current_tk is not None:
+        cached = _GLOBAL_THUMB_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
     thumb_img = None
     try:
@@ -52,7 +60,8 @@ def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage
         proc = create_procedural_album(name, size=size)
         thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(size, size))
 
-    _GLOBAL_THUMB_CACHE[cache_key] = thumb_img
+    if current_tk is not None:
+        _GLOBAL_THUMB_CACHE[cache_key] = thumb_img
     return thumb_img
 
 def invalidate_thumb_cache(cover_path: Optional[str] = None):
