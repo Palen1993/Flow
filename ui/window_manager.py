@@ -220,9 +220,17 @@ class WindowStateService:
             except Exception:
                 pass
             cover_stage.display_scale = max(0.75, min(2.5, ch / 1080.0))
-            cover_stage.base_size = max(180, min(int(ch * 0.44), int(cw * 0.36)))
+            is_stack = hasattr(cover_stage, "_is_vertical_stack_active") and cover_stage._is_vertical_stack_active()
+            h_ratio = 0.42 if is_stack else 0.44
+            cover_stage.base_size = max(180, min(int(ch * h_ratio), int(cw * 0.36)))
+            if hasattr(cover_stage, "_shelf_strip_cache"):
+                cover_stage._shelf_strip_cache.clear()
+            if hasattr(cover_stage, "_bg_slot_warp_cache"):
+                cover_stage._bg_slot_warp_cache.clear()
             cover_stage._rebuild_background(cw, ch)
             cover_stage._rebuild_rendered_cache()
+            if is_stack and hasattr(cover_stage, "_prewarm_neighbor_shelves_async"):
+                cover_stage._prewarm_neighbor_shelves_async()
             cover_stage.redraw(force_w=cw, force_h=ch)
 
         try:

@@ -226,6 +226,11 @@ class App(ctk.CTk):
             self.cover_stage.ui_total_shelves = len(self.active_shelves)
             self.cover_stage.ui_filter_label = cur_shelf["name"]
             self.cover_stage.ui_filter_count = len(self.games)
+            self.cover_stage.set_shelves_context(
+                self.active_shelves,
+                self.current_shelf_idx,
+                self._shelf_selected_indices,
+            )
             self.cover_stage.set_games(self.games, target_index=self.selected_index, transition_direction=transition_direction)
 
         self.update_ui_details(self.selected_index)
@@ -261,6 +266,11 @@ class App(ctk.CTk):
             self.cover_stage.ui_total_shelves = len(self.active_shelves)
             self.cover_stage.ui_filter_label = new_shelf["name"]
             self.cover_stage.ui_filter_count = len(self.games)
+            self.cover_stage.set_shelves_context(
+                self.active_shelves,
+                self.current_shelf_idx,
+                self._shelf_selected_indices,
+            )
             self.cover_stage.set_games(self.games, target_index=self.selected_index, transition_direction=direction)
 
         self.update_ui_details(self.selected_index)
@@ -674,6 +684,10 @@ class App(ctk.CTk):
 
     def on_cover_selected(self, index: int):
         self.selected_index = index
+        if getattr(self, "active_shelves", None) and 0 <= self.current_shelf_idx < len(self.active_shelves):
+            cur_sid = self.active_shelves[self.current_shelf_idx].get("id")
+            if cur_sid is not None:
+                self._shelf_selected_indices[cur_sid] = index
         self.update_ui_details(index)
 
     def _on_canvas_hud_action(self, action: str):

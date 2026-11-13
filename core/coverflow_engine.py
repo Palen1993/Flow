@@ -313,15 +313,42 @@ def scale_alpha_mask(mask: Image.Image, alpha_scale: float) -> Image.Image:
     return mask.point(lut)
 
 
+_IDENTITY_256_LUT = list(range(256))
+_V_ALPHA_1PX_CACHE: Dict[Tuple[int, int, int, int], bytes] = {}
+
+
+def _get_vertical_alpha_bytes(target_h: int, tilt_dir: int, a_scale: float, sin_t: float) -> bytes:
+    key = (target_h, -1 if tilt_dir < 0 else 1, int(round(a_scale * 100)), int(round(sin_t * 100)))
+    cached = _V_ALPHA_1PX_CACHE.get(key)
+    if cached is not None:
+        return cached
+    denom = max(1, target_h - 1)
+    alpha_vals = bytearray(target_h)
+    fade_strength = 0.55 * sin_t
+    is_up = tilt_dir < 0
+    for y in range(target_h):
+        frac = y / denom
+        recede_f = (1.0 - frac) if is_up else frac
+        a_f = a_scale * (1.0 - fade_strength * recede_f)
+        alpha_vals[y] = max(0, min(255, int(round(255.0 * a_f))))
+    res = bytes(alpha_vals)
+    if len(_V_ALPHA_1PX_CACHE) >= 512:
+        _V_ALPHA_1PX_CACHE.clear()
+    _V_ALPHA_1PX_CACHE[key] = res
+    return res
+
+
 def render_vertical_shelf_tilt(
     shelf_body: Image.Image,
     tilt: float,
     tilt_dir: int,
     center_x_in_crop: float,
     alpha_scale: float = 1.0,
+    brightness_scale: float = 1.0,
     max_angle_rad: float = 1.18,
     resample: Optional[Image.Resampling] = None,
     transparent_key_safe: bool = False,
+    out_scale: float = 1.0,
 ) -> Tuple[Image.Image, Image.Image, int]:
     """
     Aplica proyección 3D de rotación vertical (eje X) a una fila de carátulas de carrusel:
@@ -334,71 +361,68 @@ def render_vertical_shelf_tilt(
         return empty, empty.getchannel("A"), 1
 
     cw, sh = shelf_body.size
+    o_scale = max(0.1, float(out_scale))
+    out_w = cw if abs(o_scale - 1.0) <= 0.015 else max(8, int(round(cw * o_scale)))
+    base_h = float(sh) if out_w == cw else float(max(8, int(round(sh * o_scale))))
     t = max(0.0, min(1.0, float(tilt)))
     a_scale = max(0.0, min(1.0, float(alpha_scale)))
+    b_scale = max(0.05, min(1.0, float(brightness_scale)))
 
     if t <= 0.01:
         src = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
-        if transparent_key_safe:
-            src = prevent_transparency_color_collision(src)
+        out_h = int(round(base_h))
+        if out_w != cw or out_h != sh:
+            src = src.resize((out_w, out_h), resample or Image.Resampling.BILINEAR)
+        if b_scale < 0.99 or transparent_key_safe:
+            rgb_lut = [int(v * b_scale) for v in range(256)] if b_scale < 0.99 else _IDENTITY_256_LUT
+            b_lut = [2 if x == 1 else x for x in rgb_lut] if transparent_key_safe else rgb_lut
+            src = src.point(rgb_lut + rgb_lut + b_lut + _IDENTITY_256_LUT)
         mask = scale_alpha_mask(src.getchannel("A"), a_scale)
-        return src, mask, sh
+        return src, mask, out_h
 
     theta = t * max_angle_rad
     cos_t = math.cos(theta)
     sin_t = math.sin(theta)
-    target_h = max(8, int(round(sh * max(0.32, cos_t))))
+    target_h = max(8, int(round(base_h * max(0.28, cos_t))))
 
     # Estrechamiento perspectivo del borde lejano convergiendo hacia el eje central de pantalla
-    taper = 0.34 * sin_t
-    cx_crop = max(0.0, min(float(cw), float(center_x_in_crop)))
+    taper = 0.36 * sin_t
+    scale_x = float(out_w) / float(cw)
+    cx_crop = max(0.0, min(float(out_w), float(center_x_in_crop) * scale_x))
     left_rec = cx_crop * taper
-    right_rec = float(cw) - (float(cw) - cx_crop) * taper
+    right_rec = float(out_w) - (float(out_w) - cx_crop) * taper
     if right_rec - left_rec < 4.0:
-        half_min = min(2.0, float(cw) * 0.4)
+        half_min = min(2.0, float(out_w) * 0.4)
         left_rec = max(0.0, cx_crop - half_min)
-        right_rec = min(float(cw), cx_crop + half_min)
+        right_rec = min(float(out_w), cx_crop + half_min)
 
     pb = [(0.0, 0.0), (float(cw), 0.0), (float(cw), float(sh)), (0.0, float(sh))]
     if tilt_dir < 0:
         # Rotando hacia arriba: el borde superior retrocede y se estrecha, el inferior queda al frente
-        pa = [(left_rec, 0.0), (right_rec, 0.0), (float(cw), float(target_h)), (0.0, float(target_h))]
+        pa = [(left_rec, 0.0), (right_rec, 0.0), (float(out_w), float(target_h)), (0.0, float(target_h))]
     else:
         # Rotando hacia abajo: el borde inferior retrocede y se estrecha, el superior queda al frente
-        pa = [(0.0, 0.0), (float(cw), 0.0), (right_rec, float(target_h)), (left_rec, float(target_h))]
+        pa = [(0.0, 0.0), (float(out_w), 0.0), (right_rec, float(target_h)), (left_rec, float(target_h))]
 
     coeffs = find_perspective_coeffs(pa, pb)
     if resample is None:
-        # En resoluciones 720p/ventana usa BILINEAR nítido; en 1080p/4K mantiene 60fps fluidos con NEAREST
-        resample = Image.Resampling.BILINEAR if (cw * target_h <= 340_000) else Image.Resampling.NEAREST
+        # En resoluciones 720p/ventana usa BILINEAR nítido; en 1080p/4K mantiene >60fps fluidos con NEAREST
+        resample = Image.Resampling.BILINEAR if (out_w * target_h <= 260_000) else Image.Resampling.NEAREST
 
     src_rgba = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
-    warped = src_rgba.transform((cw, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
+    warped = src_rgba.transform((out_w, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
 
-    # Sombreado de profundidad y desvanecimiento gradual más marcado hacia el borde que rota alejándose
-    max_dark = int(165 * sin_t)
-    denom = max(1, target_h - 1)
-    grad_vals = bytearray(target_h)
-    alpha_vals = bytearray(target_h)
-    for y in range(target_h):
-        frac = y / denom
-        recede_f = (1.0 - frac) if tilt_dir < 0 else frac
-        grad_vals[y] = int(max_dark * recede_f)
-        a_f = a_scale * (1.0 - 0.55 * sin_t * recede_f)
-        alpha_vals[y] = max(0, min(255, int(round(255.0 * a_f))))
+    # Atenuación de brillo en nivel C (point LUT) + desvanecimiento gradual en borde lejano
+    eff_bright = max(0.08, b_scale * (1.0 - 0.16 * sin_t))
+    if eff_bright < 0.99 or transparent_key_safe:
+        rgb_lut = [int(v * eff_bright) for v in range(256)] if eff_bright < 0.99 else _IDENTITY_256_LUT
+        b_lut = [2 if x == 1 else x for x in rgb_lut] if transparent_key_safe else rgb_lut
+        warped = warped.point(rgb_lut + rgb_lut + b_lut + _IDENTITY_256_LUT)
 
     src_a = warped.getchannel("A")
-    v_alpha = Image.frombytes("L", (1, target_h), bytes(alpha_vals)).resize((cw, target_h), Image.Resampling.NEAREST)
+    alpha_bytes = _get_vertical_alpha_bytes(target_h, tilt_dir, a_scale, sin_t)
+    v_alpha = Image.frombytes("L", (1, target_h), alpha_bytes).resize((out_w, target_h), Image.Resampling.NEAREST)
     final_a = ImageChops.multiply(src_a, v_alpha)
-
-    if max_dark > 4:
-        shade_l = Image.frombytes("L", (1, target_h), bytes(grad_vals)).resize((cw, target_h), Image.Resampling.NEAREST)
-        shade_mask = ImageChops.multiply(shade_l, src_a)
-        black_fill = Image.new("RGBA", (cw, target_h), (6, 8, 14, 255))
-        warped.paste(black_fill, (0, 0), shade_mask)
-
-    if transparent_key_safe:
-        warped = prevent_transparency_color_collision(warped)
 
     return warped, final_a, target_h
 
