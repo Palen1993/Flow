@@ -115,10 +115,12 @@ def _read_wmi_friendly_names_powershell() -> Dict[str, str]:
             'ConvertTo-Json'
         )
         result = subprocess.run(
-            ["powershell", "-Command", ps_script],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            timeout=3,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
         )
         if result.returncode == 0 and result.stdout.strip():
             data = json.loads(result.stdout)

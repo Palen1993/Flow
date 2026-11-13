@@ -30,7 +30,7 @@ def main() -> int:
         t0 = time.time()
         try:
             res = subprocess.run(
-                [sys.executable, "-m", "unittest", test_path],
+                [sys.executable, "-m", "unittest", "-v", test_path],
                 cwd=BASE_DIR,
                 env=env,
                 capture_output=True,

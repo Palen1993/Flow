@@ -23,9 +23,14 @@ from unittest.mock import patch
 @unittest.skipUnless(os.name == "nt", "Win32 taskbar HWND styles solo disponibles en Windows")
 class TestTaskbarAndModalFix(unittest.TestCase):
     def setUp(self):
+        fake_monitors = [{"id": 0, "device": "\\\\.\\DISPLAY1", "name": "CI Display (Principal)", "raw_name": "CI Display", "is_primary": True, "rect": (0, 0, 1920, 1080)}]
         self._patchers = [
             patch("app.ensure_watcher_running"),
             patch("app.ensure_gamebar_nexus_disabled"),
+            patch("app.force_foreground_window", return_value=True),
+            patch("app.get_monitors", return_value=fake_monitors),
+            patch.object(app.App, "_start_gamepad_loop", lambda s: None),
+            patch.object(app.App, "_poll_battery_status", lambda s: None),
         ]
         for p in self._patchers:
             p.start()
