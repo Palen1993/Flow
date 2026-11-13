@@ -226,6 +226,8 @@ El ejecutable listo para usar se generará en `dist/GameFlow Launcher/` y el arc
 
 ## 🏗️ Arquitectura del Proyecto
 
+> **Guía Técnica y Contexto Rápido (IA / Desarrolladores):** Consulta [**`WALKTHROUGH.md`**](WALKTHROUGH.md) para ver el mapa completo de módulos, flujos de datos, invariantes técnicas, comandos de build/test y el historial vivo de cambios y arreglos.
+
 ```text
 GameFlow/
 ├── assets/                 # Iconos vectoriales y efectos de sonido acústicos
