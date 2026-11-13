@@ -152,9 +152,10 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 
 > Mantén esta sección actualizada en orden cronológico inverso al completar cada tarea.
 
-- **2026-11-13 (CI Fix / `CTkImage` cache) — Invalidación de cachés globales `CTkImage` al cambiar de raíz Tcl (`_tkinter.TclError: image "pyimageN" doesn't exist`):**
-  - En suites Windows donde `unittest` crea y destruye múltiples instancias sucesivas de `app.App()` (`test_mega_audit_deep_check.py`, `test_taskbar_modal_fix.py`, `test_zorder_and_mini_rules.py`), `_ICON_CTK_CACHE` en [`ui/controller_hud.py`](ui/controller_hud.py) devolvía un `CTkImage` ligado al intérprete Tcl ya destruido.
+- **2026-11-13 (`e0feb7e` + CI Fix) — Invalidación de cachés `CTkImage` entre raíces Tcl y desbloqueo de `open_select_game_dialog` en CI limpia:**
+  - En suites Windows donde `unittest` crea y destruye múltiples instancias sucesivas de `app.App()` (`test_mega_audit_deep_check.py`, `test_taskbar_modal_fix.py`, `test_zorder_and_mini_rules.py`), `_ICON_CTK_CACHE` en [`ui/controller_hud.py`](ui/controller_hud.py) devolvía un `CTkImage` ligado al intérprete Tcl ya destruido (`_tkinter.TclError: image "pyimageN" doesn't exist`).
   - Se vincularon `_ICON_CTK_CACHE` (`_ICON_CTK_TK_APP` en [`get_button_icon_ctk()`](ui/controller_hud.py)) y `_GLOBAL_THUMB_CACHE` (`_THUMB_CACHE_TK_APP` en [`get_game_thumbnail_ctk()`](ui/dialogs/select_game_to_edit.py)) a `tk._default_root.tk`, limpiando automáticamente la caché `CTkImage` cuando cambia o desaparece la raíz Tk activa (sin invalidar `_ICON_PIL_CACHE`).
+  - En [`tests/test_mega_audit_deep_check.py`](tests/test_mega_audit_deep_check.py) (`test_02_single_instance_guards_in_app`), si `library.games` está vacía en CI limpia, se inyecta un juego dummy en memoria para evitar que `open_select_game_dialog()` bloquee indefinidamente en `show_info().wait_window()`.
   - Añadido test de regresión `TestTkImageCacheAcrossRoots` en `tests/test_unit_mocked_core.py`.
 - **2026-11-13 (`2832ae8`, `a2dc195` / CI Fix) — Corrección de bloqueos e intolerancia de red/plataforma en CI (`windows-latest`):**
   - `gamepad_manager.ensure_watcher_running()`: añadido `stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True` para evitar herencia de pipes abiertos con `subprocess.run(..., capture_output=True)` y soporte de la variable de entorno `GAMEFLOW_DISABLE_WATCHER=1` para tests.

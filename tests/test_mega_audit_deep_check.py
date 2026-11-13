@@ -173,7 +173,11 @@ class TestMegaAuditDeepCheck(unittest.TestCase):
         self.assertIs(gp1, gp2, "open_gamepad_config_dialog debe reutilizar la instancia")
         gp1.destroy()
 
-        # Probar open_select_game_dialog
+        # Probar open_select_game_dialog (asegurar biblioteca no vacía en CI limpia para no bloquear en show_info.wait_window)
+        if not self.root.library.games:
+            sample_game = {"name": "CI Sample Game", "path": "C:/Games/sample.exe", "monitor": 0}
+            self.root.library.games = [sample_game]
+            self.root.games = [sample_game]
         self.root.open_select_game_dialog()
         sel1 = getattr(self.root, "_select_dialog", None)
         self.assertIsNotNone(sel1)
