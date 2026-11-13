@@ -302,6 +302,107 @@ def render_cover_flow_element(base_album: Image.Image, size: int = 230, angle_fa
     return render_cover_flow_from_flat(flat_cover, size, angle_factor, has_reflection=has_reflection)
 
 
+def scale_alpha_mask(mask: Image.Image, alpha_scale: float) -> Image.Image:
+    """Escala una máscara 'L' usando una LUT C-level sin lambdas por píxel."""
+    factor = max(0.0, min(1.0, float(alpha_scale)))
+    if factor >= 0.995:
+        return mask
+    if factor <= 0.0:
+        return Image.new("L", mask.size, 0)
+    lut = [int(v * factor) for v in range(256)]
+    return mask.point(lut)
+
+
+def render_vertical_shelf_tilt(
+    shelf_body: Image.Image,
+    tilt: float,
+    tilt_dir: int,
+    center_x_in_crop: float,
+    alpha_scale: float = 1.0,
+    max_angle_rad: float = 1.18,
+    resample: Optional[Image.Resampling] = None,
+    transparent_key_safe: bool = False,
+) -> Tuple[Image.Image, Image.Image, int]:
+    """
+    Aplica proyección 3D de rotación vertical (eje X) a una fila de carátulas de carrusel:
+      - tilt_dir < 0: el carrusel rota hacia arriba (el borde superior retrocede en profundidad).
+      - tilt_dir >= 0: el carrusel rota hacia abajo (el borde inferior retrocede en profundidad).
+    Las líneas de fuga convergen simétricamente hacia center_x_in_crop (centro visual de pantalla).
+    """
+    if not shelf_body or shelf_body.width <= 0 or shelf_body.height <= 0:
+        empty = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        return empty, empty.getchannel("A"), 1
+
+    cw, sh = shelf_body.size
+    t = max(0.0, min(1.0, float(tilt)))
+    a_scale = max(0.0, min(1.0, float(alpha_scale)))
+
+    if t <= 0.01:
+        src = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
+        if transparent_key_safe:
+            src = prevent_transparency_color_collision(src)
+        mask = scale_alpha_mask(src.getchannel("A"), a_scale)
+        return src, mask, sh
+
+    theta = t * max_angle_rad
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    target_h = max(8, int(round(sh * max(0.32, cos_t))))
+
+    # Estrechamiento perspectivo del borde lejano convergiendo hacia el eje central de pantalla
+    taper = 0.34 * sin_t
+    cx_crop = max(0.0, min(float(cw), float(center_x_in_crop)))
+    left_rec = cx_crop * taper
+    right_rec = float(cw) - (float(cw) - cx_crop) * taper
+    if right_rec - left_rec < 4.0:
+        half_min = min(2.0, float(cw) * 0.4)
+        left_rec = max(0.0, cx_crop - half_min)
+        right_rec = min(float(cw), cx_crop + half_min)
+
+    pb = [(0.0, 0.0), (float(cw), 0.0), (float(cw), float(sh)), (0.0, float(sh))]
+    if tilt_dir < 0:
+        # Rotando hacia arriba: el borde superior retrocede y se estrecha, el inferior queda al frente
+        pa = [(left_rec, 0.0), (right_rec, 0.0), (float(cw), float(target_h)), (0.0, float(target_h))]
+    else:
+        # Rotando hacia abajo: el borde inferior retrocede y se estrecha, el superior queda al frente
+        pa = [(0.0, 0.0), (float(cw), 0.0), (right_rec, float(target_h)), (left_rec, float(target_h))]
+
+    coeffs = find_perspective_coeffs(pa, pb)
+    if resample is None:
+        # En resoluciones 720p/ventana usa BILINEAR nítido; en 1080p/4K mantiene 60fps fluidos con NEAREST
+        resample = Image.Resampling.BILINEAR if (cw * target_h <= 340_000) else Image.Resampling.NEAREST
+
+    src_rgba = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
+    warped = src_rgba.transform((cw, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
+
+    # Sombreado de profundidad y desvanecimiento gradual más marcado hacia el borde que rota alejándose
+    max_dark = int(165 * sin_t)
+    denom = max(1, target_h - 1)
+    grad_vals = bytearray(target_h)
+    alpha_vals = bytearray(target_h)
+    for y in range(target_h):
+        frac = y / denom
+        recede_f = (1.0 - frac) if tilt_dir < 0 else frac
+        grad_vals[y] = int(max_dark * recede_f)
+        a_f = a_scale * (1.0 - 0.55 * sin_t * recede_f)
+        alpha_vals[y] = max(0, min(255, int(round(255.0 * a_f))))
+
+    src_a = warped.getchannel("A")
+    v_alpha = Image.frombytes("L", (1, target_h), bytes(alpha_vals)).resize((cw, target_h), Image.Resampling.NEAREST)
+    final_a = ImageChops.multiply(src_a, v_alpha)
+
+    if max_dark > 4:
+        shade_l = Image.frombytes("L", (1, target_h), bytes(grad_vals)).resize((cw, target_h), Image.Resampling.NEAREST)
+        shade_mask = ImageChops.multiply(shade_l, src_a)
+        black_fill = Image.new("RGBA", (cw, target_h), (6, 8, 14, 255))
+        warped.paste(black_fill, (0, 0), shade_mask)
+
+    if transparent_key_safe:
+        warped = prevent_transparency_color_collision(warped)
+
+    return warped, final_a, target_h
+
+
 def adapt_wallpaper_to_widescreen(
     img: Image.Image,
     width: int = 1920,

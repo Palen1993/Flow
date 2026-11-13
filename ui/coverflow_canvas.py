@@ -9,7 +9,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
 from core.coverflow_engine import (
     create_procedural_album, create_jewel_case, prepare_flat_cover,
     render_cover_flow_from_flat, prevent_transparency_color_collision,
-    compose_big_picture_wallpaper_bg, get_cached_jewel_case, invalidate_jewel_case_cache
+    compose_big_picture_wallpaper_bg, get_cached_jewel_case, invalidate_jewel_case_cache,
+    render_vertical_shelf_tilt, scale_alpha_mask
 )
 from core.cover_resolver import resolve_game_cover
 from ui.theme import COLOR_BG_CANVAS, COLOR_TRANS_KEY
@@ -82,6 +83,13 @@ class CoverFlowCanvas(tk.Canvas):
         self.is_shelf_animating = False
         self._outgoing_covers_layer: Optional[Image.Image] = None
         self._outgoing_alpha_mask: Optional[Image.Image] = None
+        self._outgoing_body_crop: Optional[Image.Image] = None
+        self._outgoing_body_x: int = 0
+        self._outgoing_refl_crop: Optional[Image.Image] = None
+        self._outgoing_refl_mask: Optional[Image.Image] = None
+        self._outgoing_size: int = 0
+        self._outgoing_bg: Optional[Image.Image] = None
+        self._incoming_shelf_cache: Optional[Tuple[Tuple[Any, ...], Image.Image, int, Optional[Image.Image], Optional[Image.Image]]] = None
         
         # Interacción arrastre (swipe)
         self.drag_start_x = 0
@@ -218,13 +226,108 @@ class CoverFlowCanvas(tk.Canvas):
                 0.0: (flat_cover, sz),
                 1.0: (w_right, w_rw)
             }
+            self._incoming_shelf_cache = None
         self.redraw()
 
+    def _clear_outgoing_shelf(self):
+        """Libera las capas temporales de transición vertical entre estanterías."""
+        self._outgoing_covers_layer = None
+        self._outgoing_alpha_mask = None
+        self._outgoing_body_crop = None
+        self._outgoing_body_x = 0
+        self._outgoing_refl_crop = None
+        self._outgoing_refl_mask = None
+        self._outgoing_size = 0
+        self._outgoing_bg = None
+        self._incoming_shelf_cache = None
+
+    def _iter_visible_cover_slots(self, w: int, size: int):
+        """Genera (idx, pos_x, w_img, w_w) de las carátulas visibles en orden de pintado (izq, der, centro)."""
+        n = len(self.games)
+        if n == 0:
+            return
+        p = self.current_pos
+        cx = w // 2
+        center_int = int(round(p))
+        center_spacing = int(size * 0.82)
+        stack_spacing = int(size * 0.22)
+
+        # 1. Pila Izquierda (culling a las 4 más cercanas visibles)
+        start_left = max(0, center_int - 4)
+        for i in range(start_left, center_int):
+            if i >= n:
+                continue
+            d = i - p
+            w_img, w_w = self.get_rendered_cover(self._get_key(self.games[i]), max(-1.0, d))
+            if not w_img:
+                continue
+            if d <= -1.0:
+                pos_x = int(cx - center_spacing + (d + 1.0) * stack_spacing - w_w // 2)
+            else:
+                pos_x = int(cx + d * center_spacing - w_w // 2)
+            if pos_x + w_w < -20 or pos_x > w + 20:
+                continue
+            yield (i, pos_x, w_img, w_w)
+
+        # 2. Pila Derecha (culling a las 4 más cercanas visibles)
+        end_right = min(n - 1, center_int + 4)
+        for i in range(end_right, center_int, -1):
+            if i < 0:
+                continue
+            d = i - p
+            w_img, w_w = self.get_rendered_cover(self._get_key(self.games[i]), min(1.0, d))
+            if not w_img:
+                continue
+            if d >= 1.0:
+                pos_x = int(cx + center_spacing + (d - 1.0) * stack_spacing - w_w // 2)
+            else:
+                pos_x = int(cx + d * center_spacing - w_w // 2)
+            if pos_x + w_w < -20 or pos_x > w + 20:
+                continue
+            yield (i, pos_x, w_img, w_w)
+
+        # 3. Carátula Central
+        if 0 <= center_int < n:
+            d = center_int - p
+            c_img, cw = self.get_rendered_cover(self._get_key(self.games[center_int]), d)
+            if c_img:
+                pos_x = int(cx + d * center_spacing - cw // 2)
+                yield (center_int, pos_x, c_img, cw)
+
+    def _compose_shelf_layer(self, w: int, tot_h: int) -> Image.Image:
+        """Compone las carátulas visibles del carrusel actual en una capa RGBA única."""
+        layer = Image.new("RGBA", (w, tot_h), (0, 0, 0, 0))
+        size = self.base_size
+        for _, pos_x, w_img, _ in self._iter_visible_cover_slots(w, size):
+            layer.paste(w_img, (pos_x, 0), w_img)
+        return layer
+
+    def _extract_shelf_crops(self, layer: Image.Image, w: int, size: int) -> Tuple[Optional[Image.Image], int, Optional[Image.Image], Optional[Image.Image]]:
+        """Separa y recorta al bounding box el cuerpo de carátulas (0..size) y su reflejo inferior."""
+        if not layer or layer.width <= 0 or layer.height <= 0:
+            return None, 0, None, None
+        body_h = min(size, layer.height)
+        body_strip = layer.crop((0, 0, w, body_h))
+        bbox = body_strip.getbbox()
+        if not bbox:
+            return None, 0, None, None
+        bx1, _, bx2, _ = bbox
+        body_crop = body_strip.crop((bx1, 0, bx2, body_h))
+
+        refl_crop = None
+        refl_mask = None
+        if layer.height > body_h and not getattr(self, "is_transparent_mode", False):
+            refl_strip = layer.crop((bx1, body_h, bx2, layer.height))
+            rbbox = refl_strip.getbbox()
+            if rbbox and rbbox[3] > 0:
+                refl_crop = refl_strip.crop((0, 0, bx2 - bx1, rbbox[3]))
+                refl_mask = refl_crop.getchannel("A")
+        return body_crop, bx1, refl_crop, refl_mask
+
     def _capture_outgoing_shelf(self):
-        """Captura las carátulas de la estantería saliente en una capa RGBA para transición fluida."""
+        """Captura las carátulas de la estantería saliente en una capa RGBA para transición 3D fluida."""
         if not self.games:
-            self._outgoing_covers_layer = None
-            self._outgoing_alpha_mask = None
+            self._clear_outgoing_shelf()
             return
 
         w = self.winfo_width()
@@ -241,66 +344,34 @@ class CoverFlowCanvas(tk.Canvas):
 
         size = self.base_size
         tot_h = int(size * 1.6) + 20
-
-        layer = Image.new("RGBA", (w, tot_h), (0, 0, 0, 0))
-
-        cx = w // 2
-        p = self.current_pos
-        n = len(self.games)
-        center_int = int(round(p))
-        center_spacing = int(size * 0.82)
-        stack_spacing = int(size * 0.22)
-
-        # 1. Pila Izquierda
-        start_left = max(0, center_int - 4)
-        for i in range(start_left, center_int):
-            if i >= n:
-                continue
-            d = i - p
-            game = self.games[i]
-            w_img, w_w = self.get_rendered_cover(self._get_key(game), max(-1.0, d))
-            if not w_img:
-                continue
-            if d <= -1.0:
-                pos_x = int(cx - center_spacing + (d + 1.0) * stack_spacing - w_w // 2)
-            else:
-                pos_x = int(cx + d * center_spacing - w_w // 2)
-            if pos_x + w_w < -20 or pos_x > w + 20:
-                continue
-            layer.paste(w_img, (pos_x, 0), w_img)
-
-        # 2. Pila Derecha
-        end_right = min(n - 1, center_int + 4)
-        for i in range(end_right, center_int, -1):
-            if i < 0:
-                continue
-            d = i - p
-            game = self.games[i]
-            w_img, w_w = self.get_rendered_cover(self._get_key(game), min(1.0, d))
-            if not w_img:
-                continue
-            if d >= 1.0:
-                pos_x = int(cx + center_spacing + (d - 1.0) * stack_spacing - w_w // 2)
-            else:
-                pos_x = int(cx + d * center_spacing - w_w // 2)
-            if pos_x + w_w < -20 or pos_x > w + 20:
-                continue
-            layer.paste(w_img, (pos_x, 0), w_img)
-
-        # 3. Carátula Central
-        if 0 <= center_int < n:
-            d = center_int - p
-            game = self.games[center_int]
-            c_img, cw = self.get_rendered_cover(self._get_key(game), d)
-            if c_img:
-                pos_x = int(cx + d * center_spacing - cw // 2)
-                layer.paste(c_img, (pos_x, 0), c_img)
+        layer = self._compose_shelf_layer(w, tot_h)
 
         self._outgoing_covers_layer = layer
         try:
             self._outgoing_alpha_mask = layer.split()[3]
         except Exception:
             self._outgoing_alpha_mask = None
+
+        body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
+        self._outgoing_body_crop = body_crop
+        self._outgoing_body_x = bx1
+        self._outgoing_refl_crop = refl_crop
+        self._outgoing_refl_mask = refl_mask
+        self._outgoing_size = size
+
+        if not getattr(self, "is_transparent_mode", False):
+            try:
+                p = self.current_pos
+                n = len(self.games)
+                center_int = max(0, min(n - 1, int(round(p))))
+                center_game = self.games[center_int]
+                floor_y = self._compute_floor_y(h, size)
+                prev_bg = self.get_background_for_game(center_game, w, h, floor_y) or self.bg_cache
+                self._outgoing_bg = prev_bg.copy() if prev_bg is not None else None
+            except Exception:
+                self._outgoing_bg = None
+        else:
+            self._outgoing_bg = None
 
     def set_games(self, games: List[Dict[str, Any]], target_index: int = 0, transition_direction: int = 0):
         # Si se solicita animación vertical de cambio de estantería y hay juegos previos:
@@ -316,12 +387,12 @@ class CoverFlowCanvas(tk.Canvas):
             self.shelf_transition_dir = transition_direction
             self.shelf_offset_y = float(transition_direction * self.shelf_distance)
             self.is_shelf_animating = True
+            self._incoming_shelf_cache = None
         else:
             self.shelf_offset_y = 0.0
             self.shelf_transition_dir = 0
             self.is_shelf_animating = False
-            self._outgoing_covers_layer = None
-            self._outgoing_alpha_mask = None
+            self._clear_outgoing_shelf()
 
         self.games = games
         self._library_load_id = getattr(self, "_library_load_id", 0) + 1
@@ -851,23 +922,24 @@ class CoverFlowCanvas(tk.Canvas):
         diff_v = 0.0 - getattr(self, "shelf_offset_y", 0.0)
 
         need_anim_h = abs(diff_h) > 0.002
-        need_anim_v = abs(diff_v) > 0.5 and getattr(self, "is_shelf_animating", False)
+        need_anim_v = abs(diff_v) > 1.2 and getattr(self, "is_shelf_animating", False)
 
         if need_anim_h or need_anim_v:
-            # Física adaptativa independiente de FPS: transición sedosa a 60 FPS
-            factor = 1.0 - math.exp(-22.0 * dt)
+            # Física adaptativa independiente de FPS:
+            # horizontal ágil (k=22) para carátulas, vertical pausado y sedoso (k=6.8) para apreciar la rotación 3D
             if need_anim_h:
-                self.current_pos += diff_h * factor
+                factor_h = 1.0 - math.exp(-22.0 * dt)
+                self.current_pos += diff_h * factor_h
             else:
                 self.current_pos = self.target_pos
 
             if need_anim_v:
-                self.shelf_offset_y += diff_v * factor
+                factor_v = 1.0 - math.exp(-6.8 * dt)
+                self.shelf_offset_y += diff_v * factor_v
             else:
                 self.shelf_offset_y = 0.0
                 self.is_shelf_animating = False
-                self._outgoing_covers_layer = None
-                self._outgoing_alpha_mask = None
+                self._clear_outgoing_shelf()
 
             t0 = time.perf_counter()
             self.redraw()
@@ -878,8 +950,7 @@ class CoverFlowCanvas(tk.Canvas):
             self.current_pos = self.target_pos
             self.shelf_offset_y = 0.0
             self.is_shelf_animating = False
-            self._outgoing_covers_layer = None
-            self._outgoing_alpha_mask = None
+            self._clear_outgoing_shelf()
             self.is_animating = False
             self.anim_timer = None
             self._prune_memory_caches(int(round(self.target_pos)))
@@ -895,8 +966,7 @@ class CoverFlowCanvas(tk.Canvas):
         if getattr(self, "is_shelf_animating", False):
             self.shelf_offset_y = 0.0
             self.is_shelf_animating = False
-            self._outgoing_covers_layer = None
-            self._outgoing_alpha_mask = None
+            self._clear_outgoing_shelf()
 
     def _on_mouse_drag(self, event):
         if not self.is_dragging or len(self.games) == 0:
@@ -1112,6 +1182,118 @@ class CoverFlowCanvas(tk.Canvas):
         except Exception:
             pass
 
+    def _compute_floor_y(self, h: int, size: int) -> int:
+        """Calcula la coordenada vertical del suelo de carátulas según modo y escala."""
+        scale = getattr(self, "display_scale", 1.0)
+        has_refl = not getattr(self, "is_transparent_mode", False)
+        if has_refl:
+            refl_h = int(size * 0.38)
+            target_floor = int(round(h * 0.63))
+            min_floor = size + int(round(36 * scale))
+            max_floor = h - refl_h - int(round(96 * scale))
+            return max(min_floor, min(max_floor, target_floor))
+        return (h + size) // 2
+
+    def _draw_outgoing_shelf_3d(self, bg: Image.Image, w: int, floor_y: int, size: int, progress: float):
+        """Dibuja el carrusel saliente rotando en 3D hacia arriba (al bajar) o hacia abajo (al subir)."""
+        if progress <= 0.02 or not getattr(self, "_outgoing_covers_layer", None):
+            return
+        if self._outgoing_covers_layer.width != w:
+            return
+
+        trans_dir = getattr(self, "shelf_transition_dir", 0)
+        body_crop = getattr(self, "_outgoing_body_crop", None)
+        if trans_dir != 0 and body_crop is not None and getattr(self, "_outgoing_size", 0) == size:
+            tilt_out = min(1.0, (1.0 - progress) ** 0.88)
+            tilt_dir_out = -trans_dir
+            alpha_out = max(0.0, min(1.0, progress ** 1.75))
+            center_x_in_crop = (w / 2.0) - self._outgoing_body_x
+
+            warped_out, mask_out, th_out = render_vertical_shelf_tilt(
+                body_crop,
+                tilt=tilt_out,
+                tilt_dir=tilt_dir_out,
+                center_x_in_crop=center_x_in_crop,
+                alpha_scale=alpha_out,
+                transparent_key_safe=getattr(self, "is_transparent_mode", False),
+            )
+
+            travel = (1.0 - progress) * self.shelf_distance * 0.90
+            if tilt_dir_out < 0:
+                y_bot_out = floor_y - int(round(travel))
+                y_draw_out = y_bot_out - th_out
+            else:
+                y_draw_out = (floor_y - size) + int(round(travel))
+                y_bot_out = y_draw_out + th_out
+
+            refl_crop = getattr(self, "_outgoing_refl_crop", None)
+            refl_mask = getattr(self, "_outgoing_refl_mask", None)
+            if refl_crop is not None and refl_mask is not None and tilt_out < 0.34 and not getattr(self, "is_transparent_mode", False):
+                refl_alpha = max(0.0, 1.0 - tilt_out * 3.0) * alpha_out
+                if refl_alpha > 0.02:
+                    bg.paste(refl_crop, (self._outgoing_body_x, y_bot_out), scale_alpha_mask(refl_mask, refl_alpha))
+
+            bg.paste(warped_out, (self._outgoing_body_x, y_draw_out), mask_out)
+            return
+
+        # Fallback si cambió el tamaño de ventana durante la animación
+        out_y = floor_y - size + int(round(self.shelf_offset_y - trans_dir * self.shelf_distance))
+        if progress >= 0.98 or not self._outgoing_alpha_mask:
+            bg.paste(self._outgoing_covers_layer, (0, out_y), self._outgoing_covers_layer)
+        else:
+            try:
+                frame_mask = scale_alpha_mask(self._outgoing_alpha_mask, progress)
+                bg.paste(self._outgoing_covers_layer, (0, out_y), frame_mask)
+            except Exception:
+                bg.paste(self._outgoing_covers_layer, (0, out_y), self._outgoing_covers_layer)
+
+    def _get_incoming_shelf_crops(self, w: int, size: int) -> Tuple[Optional[Image.Image], int, Optional[Image.Image], Optional[Image.Image]]:
+        """Construye y cachea la capa recortada de la estantería entrante durante la transición vertical."""
+        has_refl = not getattr(self, "is_transparent_mode", False)
+        sig = (
+            getattr(self, "_library_load_id", 0),
+            getattr(self, "_cache_generation", 0),
+            round(self.current_pos, 3),
+            w,
+            size,
+            has_refl,
+        )
+        cached = getattr(self, "_incoming_shelf_cache", None)
+        if cached is not None and cached[0] == sig:
+            return cached[1], cached[2], cached[3], cached[4]
+
+        tot_h = int(size * 1.6) + 20
+        layer = self._compose_shelf_layer(w, tot_h)
+        body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
+        self._incoming_shelf_cache = (sig, body_crop, bx1, refl_crop, refl_mask)
+        return body_crop, bx1, refl_crop, refl_mask
+
+    def _blend_transition_bg(self, base_bg: Image.Image, w: int, h: int, progress: float) -> Image.Image:
+        """Mezcla suavemente el fondo/wallpaper saliente con el entrante durante la transición."""
+        prev_bg = getattr(self, "_outgoing_bg", None)
+        if (
+            not getattr(self, "is_transparent_mode", False)
+            and prev_bg is not None
+            and base_bg is not None
+            and prev_bg.size == (w, h)
+            and base_bg.size == (w, h)
+            and progress > 0.008
+        ):
+            blend_t = max(0.0, min(1.0, (1.0 - progress) ** 0.9))
+            return Image.blend(prev_bg, base_bg, blend_t)
+        return base_bg.copy()
+
+    def _present_frame(self, bg: Image.Image, w: int, h: int):
+        """Actualiza el Tkinter Canvas reutilizando el DIB bitmap cuando las dimensiones no cambian."""
+        if self.photo_ref is None or getattr(self, "_photo_w", 0) != w or getattr(self, "_photo_h", 0) != h:
+            self._photo_w = w
+            self._photo_h = h
+            self.photo_ref = ImageTk.PhotoImage(bg)
+            self.delete("all")
+            self.canvas_img_id = self.create_image(0, 0, image=self.photo_ref, anchor="nw")
+        else:
+            self.photo_ref.paste(bg)
+
     def redraw(self, force_w: Optional[int] = None, force_h: Optional[int] = None):
         w = force_w or self.winfo_width()
         h = force_h or self.winfo_height()
@@ -1123,142 +1305,97 @@ class CoverFlowCanvas(tk.Canvas):
         self.last_w = w
         self.last_h = h
 
+        size = self.base_size
+        has_refl = not getattr(self, "is_transparent_mode", False)
+        is_vertical_anim = getattr(self, "is_shelf_animating", False) and getattr(self, "shelf_transition_dir", 0) != 0
+        progress = max(0.0, min(1.0, abs(getattr(self, "shelf_offset_y", 0.0)) / max(1.0, float(getattr(self, "shelf_distance", 300)))))
+        offset_y = int(round(getattr(self, "shelf_offset_y", 0.0)))
+
         n = len(self.games)
         if n == 0:
+            self.hitboxes = []
             bg_col = (0, 0, 1) if getattr(self, "is_transparent_mode", False) else (12, 14, 19)
-            bg = Image.new('RGB', (w, h), bg_col)
+            base_empty = Image.new('RGB', (w, h), bg_col)
+            bg = self._blend_transition_bg(base_empty, w, h, progress) if is_vertical_anim else base_empty
+            floor_y = self._compute_floor_y(h, size)
+            self.floor_y = floor_y
+            if is_vertical_anim:
+                self._draw_outgoing_shelf_3d(bg, w, floor_y, size, progress)
             draw = ImageDraw.Draw(bg)
             filt_lbl = getattr(self, "ui_filter_label", "Todos")
             if filt_lbl and filt_lbl.strip().lower() != "todos":
                 msg = f"No hay juegos en la colección '{filt_lbl}'\nUsa ↑ / ↓ o LB / RB para cambiar de canal o añade juegos con (X)"
             else:
                 msg = "No hay juegos en la biblioteca\nHaz clic en 'Opciones' arriba a la derecha para agregar o escanear juegos"
-            draw.text((w // 2, h // 2), msg, fill=(150, 160, 180), anchor='mm')
+            msg_y = (h // 2) + (int(round(offset_y * 0.35)) if is_vertical_anim else 0)
+            draw.text((w // 2, msg_y), msg, fill=(150, 160, 180), anchor='mm')
             self._draw_overlays(bg, w, h)
-            self._photo_w = w
-            self._photo_h = h
-            self.photo_ref = ImageTk.PhotoImage(bg)
-            self.delete("all")
-            self.canvas_img_id = self.create_image(0, 0, image=self.photo_ref, anchor="nw")
+            self._present_frame(bg, w, h)
             return
 
         if not self.bg_cache or self.bg_cache.size != (w, h):
             self._rebuild_background(w, h)
 
         p = self.current_pos
-        cx = w // 2
-        size = self.base_size
-        scale = getattr(self, "display_scale", 1.0)
-        has_refl = not getattr(self, "is_transparent_mode", False)
-        if has_refl:
-            refl_h = int(size * 0.38)
-            # Centrado vertical estético: colocar el suelo de las carátulas al ~63% de la altura
-            # para que la caja 3D quede perfectamente centrada en la pantalla con su reflejo y no pegada arriba
-            target_floor = int(round(h * 0.63))
-            min_floor = size + int(round(36 * scale))
-            max_floor = h - refl_h - int(round(96 * scale))
-            floor_y = max(min_floor, min(max_floor, target_floor))
-        else:
-            refl_h = 0
-            floor_y = (h + size) // 2
-
-        center_spacing = int(size * 0.82)
-        stack_spacing = int(size * 0.22)
+        floor_y = self._compute_floor_y(h, size)
         self.hitboxes = []
 
         center_int = int(round(p))
         center_game = self.games[max(0, min(n - 1, center_int))] if n > 0 else None
 
-        # Clonar fondo RGB ultra rápido (0.8 ms en 1080p; con wallpaper apaisado en modo Big Picture)
+        # Clonar fondo RGB ultra rápido (0.8 ms en 1080p; con crossfade suave entre estanterías)
         base_bg = self.get_background_for_game(center_game, w, h, floor_y) or self.bg_cache
-        bg = base_bg.copy()
+        bg = self._blend_transition_bg(base_bg, w, h, progress) if is_vertical_anim else base_bg.copy()
         self.floor_y = floor_y
 
-        offset_y = int(round(getattr(self, "shelf_offset_y", 0.0)))
+        # 1. Capa de carátulas de la estantería saliente rotando 3D
+        if is_vertical_anim:
+            self._draw_outgoing_shelf_3d(bg, w, floor_y, size, progress)
 
-        # Capa de carátulas de la estantería saliente durante la transición vertical de carrusel
-        if getattr(self, "is_shelf_animating", False) and getattr(self, "_outgoing_covers_layer", None):
-            if self._outgoing_covers_layer.width == w:
-                out_y = floor_y - size + int(round(self.shelf_offset_y - self.shelf_transition_dir * self.shelf_distance))
-                progress = max(0.0, min(1.0, abs(self.shelf_offset_y) / max(1.0, float(self.shelf_distance))))
-                if progress > 0.02:
-                    if progress >= 0.98 or not self._outgoing_alpha_mask:
-                        bg.paste(self._outgoing_covers_layer, (0, out_y), self._outgoing_covers_layer)
-                    else:
-                        try:
-                            frame_mask = self._outgoing_alpha_mask.point(lambda p: int(p * progress))
-                            bg.paste(self._outgoing_covers_layer, (0, out_y), frame_mask)
-                        except Exception:
-                            bg.paste(self._outgoing_covers_layer, (0, out_y), self._outgoing_covers_layer)
+        # 2. Carrusel actual: en transición vertical rota en 3D hacia su posición; en reposo pinta directo
+        drawn_vertical_3d = False
+        if is_vertical_anim and progress > 0.008:
+            in_body, in_bx1, in_refl, in_refl_mask = self._get_incoming_shelf_crops(w, size)
+            if in_body is not None:
+                tilt_in = progress
+                tilt_dir_in = self.shelf_transition_dir
+                alpha_in = 0.05 + 0.95 * ((1.0 - progress) ** 0.90)
+                center_x_in_crop = (w / 2.0) - in_bx1
 
-        # 1. Pila Izquierda (menores que p, culling a las 4 más cercanas visibles)
-        start_left = max(0, center_int - 4)
-        for i in range(start_left, center_int):
-            if i >= n:
-                continue
-            d = i - p
-            game = self.games[i]
-            w_img, w_w = self.get_rendered_cover(self._get_key(game), max(-1.0, d))
-            if not w_img:
-                continue
+                warped_in, mask_in, th_in = render_vertical_shelf_tilt(
+                    in_body,
+                    tilt=tilt_in,
+                    tilt_dir=tilt_dir_in,
+                    center_x_in_crop=center_x_in_crop,
+                    alpha_scale=alpha_in,
+                    transparent_key_safe=getattr(self, "is_transparent_mode", False),
+                )
 
-            if d <= -1.0:
-                pos_x = int(cx - center_spacing + (d + 1.0) * stack_spacing - w_w // 2)
-            else:
-                pos_x = int(cx + d * center_spacing - w_w // 2)
+                if tilt_dir_in > 0:
+                    y_draw_in = (floor_y - size) + offset_y
+                    y_bot_in = y_draw_in + th_in
+                else:
+                    y_bot_in = floor_y + offset_y
+                    y_draw_in = y_bot_in - th_in
 
-            # Frustum culling: descartar si cae fuera del ancho visible del canvas
-            if pos_x + w_w < -20 or pos_x > w + 20:
-                continue
+                if has_refl and in_refl is not None and in_refl_mask is not None and tilt_in < 0.34:
+                    refl_alpha_in = max(0.0, 1.0 - tilt_in * 3.0) * alpha_in
+                    if refl_alpha_in > 0.02:
+                        bg.paste(in_refl, (in_bx1, y_bot_in), scale_alpha_mask(in_refl_mask, refl_alpha_in))
 
+                bg.paste(warped_in, (in_bx1, y_draw_in), mask_in)
+                for i, pos_x, _, w_w in self._iter_visible_cover_slots(w, size):
+                    self.hitboxes.append((pos_x, y_draw_in, pos_x + w_w, y_draw_in + th_in, i))
+                drawn_vertical_3d = True
+
+        if not drawn_vertical_3d:
             pos_y = floor_y - size + offset_y
-            bg.paste(w_img, (pos_x, pos_y), w_img)
-            self.hitboxes.append((pos_x, pos_y, pos_x + w_w, pos_y + size, i))
-
-        # 2. Pila Derecha (mayores que p, culling a las 4 más cercanas visibles)
-        end_right = min(n - 1, center_int + 4)
-        for i in range(end_right, center_int, -1):
-            if i < 0:
-                continue
-            d = i - p
-            game = self.games[i]
-            w_img, w_w = self.get_rendered_cover(self._get_key(game), min(1.0, d))
-            if not w_img:
-                continue
-
-            if d >= 1.0:
-                pos_x = int(cx + center_spacing + (d - 1.0) * stack_spacing - w_w // 2)
-            else:
-                pos_x = int(cx + d * center_spacing - w_w // 2)
-
-            # Frustum culling
-            if pos_x + w_w < -20 or pos_x > w + 20:
-                continue
-
-            pos_y = floor_y - size + offset_y
-            bg.paste(w_img, (pos_x, pos_y), w_img)
-            self.hitboxes.append((pos_x, pos_y, pos_x + w_w, pos_y + size, i))
-
-        # 3. Carátula Central (más cercana a p, dibujada encima de todo)
-        if 0 <= center_int < n:
-            d = center_int - p
-            game = self.games[center_int]
-            c_img, cw = self.get_rendered_cover(self._get_key(game), d)
-            if c_img:
-                pos_x = int(cx + d * center_spacing - cw // 2)
-                pos_y = floor_y - size + offset_y
-                bg.paste(c_img, (pos_x, pos_y), c_img)
-                self.hitboxes.append((pos_x, pos_y, pos_x + cw, pos_y + size, center_int))
+            for i, pos_x, w_img, w_w in self._iter_visible_cover_slots(w, size):
+                bg.paste(w_img, (pos_x, pos_y), w_img)
+                self.hitboxes.append((pos_x, pos_y, pos_x + w_w, pos_y + size, i))
 
         # 3.5. Superposición de HUD superior e inferior sin barras grises (RGBA transparente)
         self._draw_overlays(bg, w, h)
 
         # 4. Actualización eficiente de Tkinter Canvas (sin recrear DIB bitmaps de GDI)
-        if self.photo_ref is None or getattr(self, "_photo_w", 0) != w or getattr(self, "_photo_h", 0) != h:
-            self._photo_w = w
-            self._photo_h = h
-            self.photo_ref = ImageTk.PhotoImage(bg)
-            self.delete("all")
-            self.canvas_img_id = self.create_image(0, 0, image=self.photo_ref, anchor="nw")
-        else:
-            self.photo_ref.paste(bg)
+        self._present_frame(bg, w, h)

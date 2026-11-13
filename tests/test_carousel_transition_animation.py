@@ -220,6 +220,140 @@ class TestAppShelfNavigationIntegration(unittest.TestCase):
             transition_direction=-1
         )
 
+
+class TestVertical3DRotation(unittest.TestCase):
+    def test_render_vertical_shelf_tilt_flat_passthrough(self):
+        """Con tilt cercano a 0 no debe deformar dimensiones."""
+        from core.coverflow_engine import render_vertical_shelf_tilt
+        body = Image.new("RGBA", (300, 200), (90, 140, 210, 255))
+        warped, mask, th = render_vertical_shelf_tilt(body, tilt=0.0, tilt_dir=-1, center_x_in_crop=150.0)
+        self.assertEqual(th, 200)
+        self.assertEqual(warped.size, (300, 200))
+        self.assertEqual(mask.size, (300, 200))
+
+    def test_render_vertical_shelf_tilt_upward_narrows_top_and_foreshortens(self):
+        """Rotación hacia arriba (tilt_dir=-1) estrecha el borde superior y acorta la altura."""
+        from core.coverflow_engine import render_vertical_shelf_tilt
+        body = Image.new("RGBA", (400, 200), (180, 200, 220, 255))
+        warped, mask, th = render_vertical_shelf_tilt(body, tilt=0.75, tilt_dir=-1, center_x_in_crop=200.0)
+        self.assertLess(th, 200)
+        self.assertGreaterEqual(th, 8)
+        # En la fila superior (y=2), las esquinas extremas deben quedar transparentes (borde estrechado)
+        self.assertEqual(mask.getpixel((4, 2)), 0)
+        self.assertEqual(mask.getpixel((395, 2)), 0)
+        # El centro superior sigue opaco/visible, aunque ligeramente atenuado frente al borde inferior
+        self.assertGreater(mask.getpixel((200, 2)), 0)
+        self.assertGreater(mask.getpixel((200, th - 2)), mask.getpixel((200, 2)))
+        # En la fila inferior (y=th-2), los extremos conservan el ancho completo
+        self.assertGreater(mask.getpixel((10, th - 2)), 0)
+        self.assertGreater(mask.getpixel((389, th - 2)), 0)
+
+    def test_render_vertical_shelf_tilt_downward_narrows_bottom_and_foreshortens(self):
+        """Rotación hacia abajo (tilt_dir=1) estrecha el borde inferior y acorta la altura."""
+        from core.coverflow_engine import render_vertical_shelf_tilt
+        body = Image.new("RGBA", (400, 200), (180, 200, 220, 255))
+        warped, mask, th = render_vertical_shelf_tilt(body, tilt=0.75, tilt_dir=1, center_x_in_crop=200.0)
+        self.assertLess(th, 200)
+        # Fila superior conserva el ancho completo
+        self.assertGreater(mask.getpixel((10, 2)), 0)
+        self.assertGreater(mask.getpixel((389, 2)), 0)
+        # Fila inferior queda estrechada (esquinas transparentes) y atenuada frente a la superior
+        self.assertEqual(mask.getpixel((4, th - 2)), 0)
+        self.assertEqual(mask.getpixel((395, th - 2)), 0)
+        self.assertGreater(mask.getpixel((200, th - 2)), 0)
+        self.assertGreater(mask.getpixel((200, 2)), mask.getpixel((200, th - 2)))
+
+    def test_asymmetric_crop_converges_toward_screen_center(self):
+        """Cuando center_x_in_crop está desplazado (p.ej. primer juego sin pila izq), fuga hacia ese eje."""
+        from core.coverflow_engine import render_vertical_shelf_tilt
+        body = Image.new("RGBA", (400, 200), (180, 200, 220, 255))
+        # Eje visual en x=80 (mucho más contenido a la derecha que a la izquierda)
+        _, mask, th = render_vertical_shelf_tilt(body, tilt=0.8, tilt_dir=-1, center_x_in_crop=80.0)
+        # El borde derecho (320px lejos del eje) se estrecha mucho más que el izquierdo (80px del eje)
+        # Medimos el primer/último píxel visible en la fila superior
+        left_x = next(x for x in range(400) if mask.getpixel((x, 2)) > 0)
+        right_x = next(x for x in range(399, -1, -1) if mask.getpixel((x, 2)) > 0)
+        self.assertGreater(399 - right_x, left_x)
+
+    def test_empty_shelf_transition_renders_outgoing_3d(self):
+        """Al cambiar a una colección vacía (n=0), el carrusel saliente sigue animando en 3D sin fallar."""
+        try:
+            root = tk.Tk()
+            root.withdraw()
+        except Exception:
+            self.skipTest("Tkinter display not available")
+        try:
+            canvas = CoverFlowCanvas(root, width=800, height=600)
+            with patch("ui.coverflow_canvas.resolve_game_cover", return_value=""):
+                canvas.set_games([{"name": "SoloUno", "path": "/a.exe"}], target_index=0, transition_direction=0)
+                canvas.redraw(force_w=800, force_h=600)
+                canvas.set_games([], target_index=0, transition_direction=1)
+                self.assertTrue(canvas.is_shelf_animating)
+                canvas.shelf_offset_y = float(canvas.shelf_distance * 0.5)
+                canvas.redraw(force_w=800, force_h=600)
+                self.assertIsNotNone(canvas.photo_ref)
+            canvas.destroy()
+        finally:
+            root.destroy()
+
+    def test_transparent_mode_vertical_3d_transition(self):
+        """En modo mini transparente no hay errores ni pérdida de canal alfa durante la rotación 3D."""
+        try:
+            root = tk.Tk()
+            root.withdraw()
+        except Exception:
+            self.skipTest("Tkinter display not available")
+        try:
+            canvas = CoverFlowCanvas(root, width=900, height=320)
+            canvas.is_transparent_mode = True
+            with patch("ui.coverflow_canvas.resolve_game_cover", return_value=""):
+                canvas.set_games([{"name": "Alpha", "path": "/a.exe"}], target_index=0, transition_direction=0)
+                canvas.redraw(force_w=900, force_h=320)
+                canvas.set_games([{"name": "Beta", "path": "/b.exe"}], target_index=0, transition_direction=-1)
+                canvas.shelf_offset_y = float(-canvas.shelf_distance * 0.6)
+                canvas.redraw(force_w=900, force_h=320)
+                self.assertIsNotNone(canvas.photo_ref)
+            canvas.destroy()
+        finally:
+            root.destroy()
+
+    def test_vertical_transition_pacing_and_bg_crossfade(self):
+        """La transición vertical es pausada (>85% restante tras 16ms) y mezcla suavemente los fondos."""
+        try:
+            root = tk.Tk()
+            root.withdraw()
+        except Exception:
+            self.skipTest("Tkinter display not available")
+        try:
+            canvas = CoverFlowCanvas(root, width=800, height=600)
+            with patch("ui.coverflow_canvas.resolve_game_cover", return_value=""):
+                canvas.set_games([{"name": "A", "path": "/a.exe"}], target_index=0, transition_direction=0)
+                canvas.redraw(force_w=800, force_h=600)
+                canvas.set_games([{"name": "B", "path": "/b.exe"}], target_index=0, transition_direction=1)
+                if canvas.anim_timer:
+                    canvas.after_cancel(canvas.anim_timer)
+                    canvas.anim_timer = None
+                start_y = canvas.shelf_offset_y
+                canvas._last_anim_time = time.perf_counter() - 0.016
+                canvas._anim_tick()
+                if canvas.anim_timer:
+                    canvas.after_cancel(canvas.anim_timer)
+                    canvas.anim_timer = None
+                # Tras 16ms debe conservar >85% del recorrido para apreciarse con fluidez
+                self.assertGreater(canvas.shelf_offset_y / start_y, 0.85)
+
+                # Verificar mezcla de fondos saliente/entrante
+                canvas._outgoing_bg = Image.new("RGB", (800, 600), (20, 40, 80))
+                new_bg = Image.new("RGB", (800, 600), (120, 40, 40))
+                blended = canvas._blend_transition_bg(new_bg, 800, 600, progress=0.5)
+                px = blended.getpixel((400, 300))
+                self.assertGreater(px[0], 30)
+                self.assertLess(px[0], 110)
+            canvas.destroy()
+        finally:
+            root.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
 
