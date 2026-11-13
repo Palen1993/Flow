@@ -152,7 +152,11 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 
 > Mantén esta sección actualizada en orden cronológico inverso al completar cada tarea.
 
-- **2026-11-12 (`b6d5164` + actual) — Reorganización de pruebas, limpieza de deuda técnica y Walkthrough IA:**
+- **2026-11-13 (`c984c7e`) — Rotación 3D vertical entre estanterías y crossfade de fondo:**
+  - Añadidas [`render_vertical_shelf_tilt()`](core/coverflow_engine.py) y [`scale_alpha_mask()`](core/coverflow_engine.py) en `core/coverflow_engine.py` con perspectiva en eje X convergente al centro visual (`center_x_in_crop`), sombreado de profundidad, LUT en C (`mask.point(lut)`) y protección de color clave transparente.
+  - Refactorizado `ui/coverflow_canvas.py` (`_compose_shelf_layer`, `_extract_shelf_crops`, `_draw_outgoing_shelf_3d`, `_get_incoming_shelf_crops`, `_blend_transition_bg`, `_present_frame`) para rotar en 3D tanto el carrusel saliente como el entrante con física `k=6.8` y crossfade suave entre fondos/wallpapers.
+  - Ampliada la cobertura en `tests/test_carousel_transition_animation.py` (`TestVertical3DRotation`: passthrough plano, tilt arriba/abajo, recorte asimétrico, estantería vacía, modo mini transparente y ritmo de crossfade).
+- **2026-11-12 (`b6d5164` / `a7b2536`) — Reorganización de pruebas, limpieza de deuda técnica y Walkthrough IA:**
   - Se creó `WALKTHROUGH.md` (este documento) y se enlazó en `README.md`.
   - Se migraron las 35 suites vigentes y `mega_audit_test_suite.py` de `scratch/` a `tests/`, añadiendo `tests/run_all_tests.py` (subprocesos aislados) y eliminando 8 scripts obsoletos/locales.
   - Se protegió `ctypes.windll` en `gamepad_manager.force_foreground_window()` para compatibilidad multiplataforma.
