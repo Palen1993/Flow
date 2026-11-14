@@ -132,101 +132,134 @@ def _query_sony_hid_battery(sony_index: int = 0) -> Optional[Dict[str, Any]]:
         setupapi = ctypes.windll.setupapi
         kernel32 = ctypes.windll.kernel32
 
+        try:
+            setupapi.SetupDiGetClassDevsW.argtypes = [ctypes.POINTER(_GUID), wintypes.LPCWSTR, wintypes.HWND, wintypes.DWORD]
+            setupapi.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+            setupapi.SetupDiEnumDeviceInterfaces.argtypes = [
+                ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(_GUID),
+                wintypes.DWORD, ctypes.POINTER(_SP_DEVICE_INTERFACE_DATA)
+            ]
+            setupapi.SetupDiEnumDeviceInterfaces.restype = wintypes.BOOL
+            setupapi.SetupDiGetDeviceInterfaceDetailW.argtypes = [
+                ctypes.c_void_p, ctypes.POINTER(_SP_DEVICE_INTERFACE_DATA),
+                ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p
+            ]
+            setupapi.SetupDiGetDeviceInterfaceDetailW.restype = wintypes.BOOL
+            setupapi.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+            setupapi.SetupDiDestroyDeviceInfoList.restype = wintypes.BOOL
+            kernel32.CreateFileW.argtypes = [
+                wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p
+            ]
+            kernel32.CreateFileW.restype = ctypes.c_void_p
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            hid.HidD_GetAttributes.argtypes = [ctypes.c_void_p, ctypes.POINTER(_HIDD_ATTRIBUTES)]
+            hid.HidD_GetAttributes.restype = wintypes.BOOLEAN
+            hid.HidD_GetInputReport.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wintypes.ULONG]
+            hid.HidD_GetInputReport.restype = wintypes.BOOLEAN
+        except Exception:
+            pass
+
         hid_guid = _GUID()
         hid.HidD_GetHidGuid(ctypes.byref(hid_guid))
 
         h_dev_info = setupapi.SetupDiGetClassDevsW(
             ctypes.byref(hid_guid), None, None, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
         )
-        if h_dev_info == -1 or h_dev_info == 0xFFFFFFFFFFFFFFFF:
+        if not h_dev_info or h_dev_info == -1 or h_dev_info == 0xFFFFFFFFFFFFFFFF or h_dev_info == 0xFFFFFFFF:
             return None
 
-        dev_interface_data = _SP_DEVICE_INTERFACE_DATA()
-        dev_interface_data.cbSize = ctypes.sizeof(_SP_DEVICE_INTERFACE_DATA)
+        try:
+            dev_interface_data = _SP_DEVICE_INTERFACE_DATA()
+            dev_interface_data.cbSize = ctypes.sizeof(_SP_DEVICE_INTERFACE_DATA)
 
-        sony_controllers_seen = []
-        current_index = 0
+            sony_controllers_seen = []
+            current_index = 0
 
-        while setupapi.SetupDiEnumDeviceInterfaces(
-            h_dev_info, None, ctypes.byref(hid_guid), current_index, ctypes.byref(dev_interface_data)
-        ):
-            current_index += 1
-            req_size = wintypes.DWORD()
-            setupapi.SetupDiGetDeviceInterfaceDetailW(
-                h_dev_info, ctypes.byref(dev_interface_data), None, 0, ctypes.byref(req_size), None
-            )
-            if req_size.value == 0:
-                continue
-
-            detail_buf = ctypes.create_string_buffer(req_size.value)
-            cb_size = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 5
-            ctypes.cast(detail_buf, ctypes.POINTER(wintypes.DWORD))[0] = cb_size
-
-            if setupapi.SetupDiGetDeviceInterfaceDetailW(
-                h_dev_info, ctypes.byref(dev_interface_data), detail_buf, req_size.value, None, None
+            while setupapi.SetupDiEnumDeviceInterfaces(
+                h_dev_info, None, ctypes.byref(hid_guid), current_index, ctypes.byref(dev_interface_data)
             ):
-                device_path = ctypes.wstring_at(ctypes.addressof(detail_buf) + 4)
-                path_up = device_path.upper()
-                if "VID_054C" not in path_up and "054C" not in path_up:
-                    continue
-
-                # Abrir sin requerir permisos exclusivos
-                h_file = kernel32.CreateFileW(
-                    device_path, 0, 0x00000001 | 0x00000002, None, 3, 0, None
+                current_index += 1
+                req_size = wintypes.DWORD()
+                setupapi.SetupDiGetDeviceInterfaceDetailW(
+                    h_dev_info, ctypes.byref(dev_interface_data), None, 0, ctypes.byref(req_size), None
                 )
-                if h_file == -1 or h_file == 0xFFFFFFFFFFFFFFFF:
-                    h_file = kernel32.CreateFileW(
-                        device_path, 0x80000000, 0x00000001 | 0x00000002, None, 3, 0, None
-                    )
-                if h_file == -1 or h_file == 0xFFFFFFFFFFFFFFFF:
+                if req_size.value == 0:
                     continue
 
-                try:
-                    attrs = _HIDD_ATTRIBUTES()
-                    attrs.Size = ctypes.sizeof(_HIDD_ATTRIBUTES)
-                    if hid.HidD_GetAttributes(h_file, ctypes.byref(attrs)):
-                        vid = attrs.VendorID
-                        pid = attrs.ProductID
-                        if vid == SONY_VID and pid in SONY_PIDS:
-                            base_id = path_up.split("&COL")[0]
-                            if base_id not in sony_controllers_seen:
-                                sony_controllers_seen.append(base_id)
+                detail_buf = ctypes.create_string_buffer(req_size.value)
+                cb_size = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 5
+                ctypes.cast(detail_buf, ctypes.POINTER(wintypes.DWORD))[0] = cb_size
 
-                            controller_order = len(sony_controllers_seen) - 1
-                            if controller_order == sony_index:
-                                is_ds = (pid in (0x0CE6, 0x0DF2))
-                                res = None
-                                if is_ds:
-                                    buf = ctypes.create_string_buffer(78)
-                                    buf[0] = 0x31
-                                    if hid.HidD_GetInputReport(h_file, buf, 78):
-                                        res = decode_playstation_hid_report(pid, bytes(buf.raw[:78]))
-                                    if not res:
-                                        buf = ctypes.create_string_buffer(64)
-                                        buf[0] = 0x01
-                                        if hid.HidD_GetInputReport(h_file, buf, 64):
-                                            res = decode_playstation_hid_report(pid, bytes(buf.raw[:64]))
-                                else:
-                                    buf = ctypes.create_string_buffer(78)
-                                    buf[0] = 0x11
-                                    if hid.HidD_GetInputReport(h_file, buf, 78):
-                                        res = decode_playstation_hid_report(pid, bytes(buf.raw[:78]))
-                                    if not res:
-                                        buf = ctypes.create_string_buffer(64)
-                                        buf[0] = 0x01
-                                        if hid.HidD_GetInputReport(h_file, buf, 64):
-                                            res = decode_playstation_hid_report(pid, bytes(buf.raw[:64]))
+                if setupapi.SetupDiGetDeviceInterfaceDetailW(
+                    h_dev_info, ctypes.byref(dev_interface_data), detail_buf, req_size.value, None, None
+                ):
+                    device_path = ctypes.wstring_at(ctypes.addressof(detail_buf) + 4)
+                    path_up = device_path.upper()
+                    if "VID_054C" not in path_up and "054C" not in path_up:
+                        continue
 
-                                if res is not None:
-                                    kernel32.CloseHandle(h_file)
-                                    setupapi.SetupDiDestroyDeviceInfoList(h_dev_info)
-                                    return res
-                except Exception:
-                    pass
-                finally:
-                    kernel32.CloseHandle(h_file)
+                    # Abrir sin requerir permisos exclusivos
+                    h_file = kernel32.CreateFileW(
+                        device_path, 0, 0x00000001 | 0x00000002, None, 3, 0, None
+                    )
+                    if not h_file or h_file == -1 or h_file == 0xFFFFFFFFFFFFFFFF or h_file == 0xFFFFFFFF:
+                        h_file = kernel32.CreateFileW(
+                            device_path, 0x80000000, 0x00000001 | 0x00000002, None, 3, 0, None
+                        )
+                    if not h_file or h_file == -1 or h_file == 0xFFFFFFFFFFFFFFFF or h_file == 0xFFFFFFFF:
+                        continue
 
-        setupapi.SetupDiDestroyDeviceInfoList(h_dev_info)
+                    try:
+                        attrs = _HIDD_ATTRIBUTES()
+                        attrs.Size = ctypes.sizeof(_HIDD_ATTRIBUTES)
+                        if hid.HidD_GetAttributes(h_file, ctypes.byref(attrs)):
+                            vid = attrs.VendorID
+                            pid = attrs.ProductID
+                            if vid == SONY_VID and pid in SONY_PIDS:
+                                base_id = path_up.split("&COL")[0]
+                                if base_id not in sony_controllers_seen:
+                                    sony_controllers_seen.append(base_id)
+
+                                controller_order = len(sony_controllers_seen) - 1
+                                if controller_order == sony_index:
+                                    is_ds = (pid in (0x0CE6, 0x0DF2))
+                                    res = None
+                                    if is_ds:
+                                        buf = ctypes.create_string_buffer(78)
+                                        buf[0] = 0x31
+                                        if hid.HidD_GetInputReport(h_file, buf, 78):
+                                            res = decode_playstation_hid_report(pid, bytes(buf.raw[:78]))
+                                        if not res:
+                                            buf = ctypes.create_string_buffer(64)
+                                            buf[0] = 0x01
+                                            if hid.HidD_GetInputReport(h_file, buf, 64):
+                                                raw_64 = bytes(buf.raw[:64])
+                                                # Descartar reporte 0x01 vacío cuando el mando está por Bluetooth sin inicializar 0x31
+                                                if any(raw_64[1:]):
+                                                    res = decode_playstation_hid_report(pid, raw_64)
+                                    else:
+                                        buf = ctypes.create_string_buffer(78)
+                                        buf[0] = 0x11
+                                        if hid.HidD_GetInputReport(h_file, buf, 78):
+                                            res = decode_playstation_hid_report(pid, bytes(buf.raw[:78]))
+                                        if not res:
+                                            buf = ctypes.create_string_buffer(64)
+                                            buf[0] = 0x01
+                                            if hid.HidD_GetInputReport(h_file, buf, 64):
+                                                raw_64 = bytes(buf.raw[:64])
+                                                if any(raw_64[1:]):
+                                                    res = decode_playstation_hid_report(pid, raw_64)
+
+                                    if res is not None:
+                                        return res
+                    except Exception:
+                        pass
+                    finally:
+                        kernel32.CloseHandle(h_file)
+        finally:
+            setupapi.SetupDiDestroyDeviceInfoList(h_dev_info)
     except Exception:
         pass
     return None

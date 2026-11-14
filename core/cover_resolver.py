@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from PIL import Image
 from core.platform_layer import win32gui, win32ui, is_windows
 
-from core.config import COVERS_DIR
+from core.config import COVERS_DIR, sanitize_game_filename
 from core.coverflow_engine import create_procedural_album
 
 def extract_exe_icon(exe_path: str, size: int = 256) -> Optional[Image.Image]:
@@ -130,19 +130,26 @@ def resolve_game_cover(
 ) -> str:
     """Busca o crea una carátula para el juego y guarda su ruta en disco."""
     os.makedirs(COVERS_DIR, exist_ok=True)
-    safe_name = "".join(c for c in game.get("name", "game") if c.isalnum() or c in (' ', '_', '-')).strip()
+    raw_name = game.get("name", "game")
+    safe_name = "".join(c for c in raw_name if c.isalnum() or c in (' ', '_', '-')).strip()
     if not safe_name:
         safe_name = "game"
+    sanitized_name = sanitize_game_filename(raw_name)
     target_cover_path = target_path or os.path.join(COVERS_DIR, f"{safe_name}.png")
+    alt_cover_path = os.path.join(COVERS_DIR, f"{sanitized_name}.png")
     
     # 1. Si el juego ya tiene una carátula válida asignada y no forzamos reescaneo
     if not force_rescan and game.get("cover") and os.path.isfile(game["cover"]):
         return game["cover"]
         
-    # Si target_cover_path ya existe en disco y no forzamos reescaneo
-    if not force_rescan and os.path.isfile(target_cover_path):
-        game["cover"] = target_cover_path
-        return target_cover_path
+    # Si target_cover_path o alt_cover_path ya existe en disco y no forzamos reescaneo
+    if not force_rescan:
+        if os.path.isfile(target_cover_path):
+            game["cover"] = target_cover_path
+            return target_cover_path
+        if target_path is None and os.path.isfile(alt_cover_path):
+            game["cover"] = alt_cover_path
+            return alt_cover_path
         
     path = game.get("path", "")
     if path and os.path.exists(path):

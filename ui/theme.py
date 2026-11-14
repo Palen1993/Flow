@@ -392,6 +392,12 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
                 border_color="#2b3345",
                 border_width=1
             )
+            try:
+                cur_focus = widget.focus_get()
+                if cur_focus is not None and (cur_focus is widget or str(cur_focus).startswith(str(widget))):
+                    widget.winfo_toplevel().focus_set()
+            except Exception:
+                pass
     elif role == "check":
         if is_focused:
             widget.configure(

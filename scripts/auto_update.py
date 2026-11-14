@@ -46,6 +46,7 @@ PERSONAL_FILES = {
     "achievements_config.json",
     "achievements_cache.json",
     "collections_config.json",
+    "emulators_config.json",
     ".portable",
 }
 IGNORED_DIRTY_PREFIXES = (

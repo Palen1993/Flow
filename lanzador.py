@@ -20,15 +20,24 @@ from core.logger import get_logger
 
 logger = get_logger("Main")
 
-# Re-exportaciones para compatibilidad
+# Re-exportaciones para compatibilidad (diálogos cargados bajo demanda vía PEP 562)
 from core.system import get_monitors, is_admin, move_window_to_monitor
 from core.launcher import launch_game_thread
 from ui.coverflow_canvas import CoverFlowCanvas
 from ui.dropdowns import FloatingGlassDropdown, GlassDropdownButton, FloatingGlassMenu
-from ui.dialogs import (
-    AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
-    GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog, KioskDialog
-)
+import ui.dialogs as _ui_dialogs
+
+_LAZY_DIALOG_EXPORTS = {
+    "AddEditGameDialog", "ScanResultsDialog", "SelectGameToEditDialog",
+    "GamepadConfigDialog", "ConfirmExitDialog", "CoverPickerDialog", "KioskDialog"
+}
+
+def __getattr__(name: str):
+    if name in _LAZY_DIALOG_EXPORTS:
+        val = getattr(_ui_dialogs, name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 _GLOBAL_LAUNCHER_MUTEX = None
 

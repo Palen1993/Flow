@@ -387,11 +387,14 @@ def apply_game_performance_profile(game: Dict[str, Any]) -> Optional[str]:
     game_mode = (game.get("performance_mode") or "default").lower().strip()
 
     if game_mode in ("eco", "balanced", "turbo"):
-        _PREVIOUS_SESSION_MODE = get_current_power_mode()
-        if _PREVIOUS_SESSION_MODE != game_mode:
+        if _PREVIOUS_SESSION_MODE is None:
+            _PREVIOUS_SESSION_MODE = get_current_power_mode()
+        if get_current_power_mode() != game_mode:
             logger.info(f"Aplicando perfil por juego '{game_mode}' para '{game.get('name')}' (anterior: '{_PREVIOUS_SESSION_MODE}')")
             set_power_mode(game_mode)
         return _PREVIOUS_SESSION_MODE
+    elif _PREVIOUS_SESSION_MODE is not None:
+        restore_previous_performance_profile()
     return None
 
 

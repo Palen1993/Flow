@@ -697,6 +697,211 @@ class TestPersistentVerticalStack(unittest.TestCase):
             canvas.destroy()
 
 
+class TestVerticalMouseNavigation(unittest.TestCase):
+    """Pruebas de navegación vertical con ratón: arrastre, clic en carruseles vecinos y Shift+Rueda."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.root = tk.Tk()
+            cls.root.withdraw()
+            cls.has_tk = True
+        except Exception:
+            cls.has_tk = False
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "has_tk", False) and cls.root:
+            try:
+                cls.root.destroy()
+            except Exception:
+                pass
+
+    def _make_shelves(self, count=4):
+        return [
+            {
+                "id": f"shelf_{i}",
+                "name": f"Lista {i}",
+                "games": [{"name": f"S{i}G{j}", "path": f"/s{i}/g{j}.exe"} for j in range(5)],
+            }
+            for i in range(count)
+        ]
+
+    def _evt(self, x=450, y=300, delta=0, state=0):
+        ev = MagicMock()
+        ev.x = x
+        ev.y = y
+        ev.delta = delta
+        ev.state = state
+        return ev
+
+    def test_vertical_drag_continuous_crossing_and_swipe_release(self):
+        """Arrastrar verticalmente cruza de estantería en 0.5 y un swipe corto avanza 1 estantería al soltar."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        steps = []
+        canvas = CoverFlowCanvas(self.root, width=900, height=600, on_shelf_step=lambda s: steps.append(s))
+        try:
+            shelves = self._make_shelves(4)
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 220
+
+            def fake_step(s):
+                steps.append(s)
+                new_idx = (canvas._shelf_stack_idx + s) % len(shelves)
+                canvas.set_shelves_context(shelves, new_idx, {})
+                canvas.set_games(shelves[new_idx]["games"], target_index=0, transition_direction=(1 if s > 0 else -1))
+
+            canvas.on_shelf_step = fake_step
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (100, 150, 220, 255))):
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=2, transition_direction=0)
+                for sh in shelves:
+                    canvas._get_bg_shelf_strip(sh, 0, 900, 220, allow_disk=True)
+
+                # 1. Arrastre vertical hacia arriba > 0.5*step_px -> avanza a shelf 2 durante el drag
+                step_px = max(90.0, float(canvas.base_size) * 0.65)
+                canvas._on_mouse_down(self._evt(450, 400))
+                canvas._on_mouse_drag(self._evt(452, 400 - int(step_px * 0.6)))
+                self.assertEqual(canvas._drag_axis, "v")
+                self.assertEqual(steps, [1])
+                self.assertEqual(canvas._shelf_stack_idx, 2)
+                self.assertEqual(canvas.current_pos, 0.0)
+                self.assertFalse(canvas.is_shelf_animating)
+
+                # Al soltar tras haber cruzado ya el punto medio, asienta en la estantería 2 sin saltar
+                canvas._on_mouse_up(self._evt(452, 400 - int(step_px * 0.6)))
+                self.assertEqual(steps, [1])
+                self.assertEqual(canvas._shelf_stack_idx, 2)
+
+                # 2. Swipe corto hacia abajo (~25% de step_px) -> retrocede 1 estantería al soltar
+                canvas._on_mouse_down(self._evt(450, 200))
+                canvas._on_mouse_drag(self._evt(451, 200 + int(step_px * 0.25)))
+                self.assertEqual(steps, [1])  # Aún no cruzó 0.5
+                canvas._on_mouse_up(self._evt(451, 200 + int(step_px * 0.25)))
+                self.assertEqual(steps, [1, -1])
+                self.assertEqual(canvas._shelf_stack_idx, 1)
+
+                # 3. Micro-arrastre vertical (<0.16) -> rebota sin cambiar de estantería
+                canvas._on_mouse_down(self._evt(450, 300))
+                canvas._on_mouse_drag(self._evt(450, 312))
+                canvas._on_mouse_up(self._evt(450, 312))
+                self.assertEqual(steps, [1, -1])
+                self.assertEqual(canvas._shelf_stack_idx, 1)
+        finally:
+            if getattr(canvas, "anim_timer", None):
+                canvas.after_cancel(canvas.anim_timer)
+            canvas.destroy()
+
+    def test_horizontal_drag_preserved_and_empty_shelf_vertical_drag_works(self):
+        """El arrastre lateral sigue moviendo carátulas y una estantería vacía permite arrastrar verticalmente."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        steps = []
+        canvas = CoverFlowCanvas(self.root, width=900, height=600, on_shelf_step=lambda s: steps.append(s))
+        try:
+            shelves = [
+                {"id": "s0", "name": "Vacía", "games": []},
+                {"id": "s1", "name": "Con Juegos", "games": [{"name": f"G{i}", "path": f"/g{i}.exe"} for i in range(5)]},
+            ]
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 220
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (140, 170, 200, 255))):
+                # Arrastre lateral en estantería con juegos
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=2, transition_direction=0)
+                canvas._on_mouse_down(self._evt(450, 300))
+                canvas._on_mouse_drag(self._evt(350, 303))
+                self.assertEqual(canvas._drag_axis, "h")
+                self.assertGreater(canvas.current_pos, 2.0)
+                self.assertEqual(steps, [])
+                canvas._on_mouse_up(self._evt(350, 303))
+
+                # Arrastre vertical en estantería vacía
+                canvas.set_shelves_context(shelves, 0, {})
+                canvas.set_games([], target_index=0, transition_direction=0)
+                canvas._on_mouse_down(self._evt(450, 300))
+                canvas._on_mouse_drag(self._evt(450, 180))
+                self.assertEqual(canvas._drag_axis, "v")
+                canvas._on_mouse_up(self._evt(450, 180))
+                self.assertEqual(steps, [1])
+        finally:
+            if getattr(canvas, "anim_timer", None):
+                canvas.after_cancel(canvas.anim_timer)
+            canvas.destroy()
+
+    def test_click_background_shelf_and_preserve_on_backdrop_cache_hit(self):
+        """Clicar un carrusel visible arriba o abajo cambia verticalmente, incluso tras hit de caché estática."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        steps = []
+        canvas = CoverFlowCanvas(self.root, width=900, height=600, on_shelf_step=lambda s: steps.append(s))
+        try:
+            shelves = self._make_shelves(3)
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 220
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (120, 180, 140, 255))):
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=2, transition_direction=0)
+                for sh in shelves:
+                    canvas._get_bg_shelf_strip(sh, 0, 900, 220, allow_disk=True)
+                canvas.redraw(force_w=900, force_h=600)
+
+                # Hit de caché tras movimiento lateral debe conservar shelf_hitboxes
+                canvas.current_pos = 2.2
+                canvas.redraw(force_w=900, force_h=600)
+                self.assertTrue(len(canvas.shelf_hitboxes) >= 2)
+
+                # Localizar un punto dentro de la estantería superior (rel=-1) fuera de las portadas frontales
+                upper_boxes = [b for b in canvas.shelf_hitboxes if b[4] == -1]
+                self.assertTrue(upper_boxes)
+                ux1, uy1, ux2, uy2, _ = upper_boxes[0]
+                cx = (ux1 + ux2) // 2
+                cy = uy1 + 4
+                self.assertIsNone(canvas._get_index_at(cx, cy))
+                self.assertEqual(canvas._get_shelf_rel_at(cx, cy), -1)
+
+                canvas._on_mouse_down(self._evt(cx, cy))
+                canvas._on_mouse_up(self._evt(cx, cy))
+                self.assertEqual(steps, [-1])
+        finally:
+            if getattr(canvas, "anim_timer", None):
+                canvas.after_cancel(canvas.anim_timer)
+            canvas.destroy()
+
+    def test_shift_mouse_wheel_vertical_and_plain_wheel_horizontal(self):
+        """Rueda normal desplaza lateralmente; Shift+Rueda (o sobre cápsula de filtro) cambia verticalmente."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        steps = []
+        canvas = CoverFlowCanvas(self.root, width=900, height=600, on_shelf_step=lambda s: steps.append(s))
+        try:
+            shelves = self._make_shelves(3)
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 220
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (150, 150, 210, 255))):
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=2, transition_direction=0)
+
+                # Rueda normal: mueve lateralmente
+                canvas._on_mouse_wheel(self._evt(450, 300, delta=-120, state=0))
+                self.assertEqual(int(round(canvas.target_pos)), 3)
+                self.assertEqual(steps, [])
+
+                # Shift+Rueda: mueve verticalmente
+                canvas._on_shift_mouse_wheel(self._evt(450, 300, delta=-120))
+                canvas._on_mouse_wheel(self._evt(450, 300, delta=120, state=0x0001))
+                self.assertEqual(steps, [1, -1])
+        finally:
+            if getattr(canvas, "anim_timer", None):
+                canvas.after_cancel(canvas.anim_timer)
+            canvas.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
 

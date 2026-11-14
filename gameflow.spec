@@ -103,6 +103,10 @@ watcher_hiddenimports = [
     'core.config',
     'core.logger',
     'core.gamepad_hid',
+    'core.platform_layer',
+    'core.active_game_tracker',
+    'core.feedback',
+    'core.audio_service',
     'gamepad_manager',
 ]
 
@@ -119,6 +123,11 @@ sentinel_hiddenimports = [
     'core.logger',
     'core.launcher',
     'core.system',
+    'core.platform_layer',
+    'core.power_service',
+    'core.save_backup_service',
+    'core.cloud_sync_service',
+    'core.stats_service',
     'gamepad_manager',
 ]
 
@@ -236,6 +245,44 @@ exe_sentinel = EXE(
     icon='assets/icon.ico' if os.path.isfile('assets/icon.ico') else None,
 )
 
+# 4. In-Game Overlay (Floating Quick Menu invoked by Guide button during gameplay)
+a_overlay = Analysis(
+    ['overlay.py'],
+    pathex=['.'],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=launcher_hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=['tkinter.test', 'unittest', 'test'],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz_overlay = PYZ(a_overlay.pure, a_overlay.zipped_data, cipher=block_cipher)
+
+exe_overlay = EXE(
+    pyz_overlay,
+    a_overlay.scripts,
+    [],
+    exclude_binaries=True,
+    name='GameFlow Overlay',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon='assets/icon.ico' if os.path.isfile('assets/icon.ico') else None,
+)
+
 coll = COLLECT(
     exe_launcher,
     a_launcher.binaries,
@@ -249,6 +296,10 @@ coll = COLLECT(
     a_sentinel.binaries,
     a_sentinel.zipfiles,
     a_sentinel.datas,
+    exe_overlay,
+    a_overlay.binaries,
+    a_overlay.zipfiles,
+    a_overlay.datas,
     strip=False,
     upx=False,
     upx_exclude=[],

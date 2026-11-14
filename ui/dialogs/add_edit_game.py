@@ -7,6 +7,7 @@ from ui.dialogs.glass_folder_browser import browse_file
 import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageTk
 
+from core.config import sanitize_game_filename
 from core.coverflow_engine import create_procedural_album, create_jewel_case
 from core.cover_resolver import resolve_game_cover
 from ui.dropdowns import GlassDropdownButton
@@ -206,7 +207,8 @@ class AddEditGameDialog(BaseGlassDialog):
                     initial_monitor = opt
                     break
         else:
-            master_games = getattr(self.master, "games", [])
+            lib = getattr(self.master, "library", None)
+            master_games = getattr(lib, "games", None) or getattr(self.master, "games", [])
             if master_games:
                 pref_id = master_games[0].get("monitor", 0)
                 for opt in monitor_options:
@@ -510,15 +512,6 @@ class AddEditGameDialog(BaseGlassDialog):
             self.current_wallpaper_path = new_wp or ""
             self.current_wallpaper_opacity = float(wp_op)
             self.current_wallpaper_blur = float(wp_blur)
-            if self.game_data is not None:
-                if new_wp:
-                    self.game_data["wallpaper"] = new_wp
-                    self.game_data["wallpaper_opacity"] = round(float(wp_op), 2)
-                    self.game_data["wallpaper_blur"] = round(float(wp_blur), 1)
-                else:
-                    self.game_data.pop("wallpaper", None)
-                    self.game_data.pop("wallpaper_opacity", None)
-                    self.game_data.pop("wallpaper_blur", None)
 
         from ui.dialogs.cover_picker_dialog import CoverPickerDialog
         CoverPickerDialog(
@@ -717,7 +710,7 @@ class AddEditGameDialog(BaseGlassDialog):
             self.autodetect_cover()
 
         # 1. Asegurar persistencia de la carátula en la carpeta covers/
-        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+        safe_name = sanitize_game_filename(name)
         if getattr(self, "_temp_preview_cover", None) and self.current_cover_path == self._temp_preview_cover:
             final_cover = os.path.join(COVERS_DIR, f"{safe_name}.png")
             try:

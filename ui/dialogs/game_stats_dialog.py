@@ -750,17 +750,27 @@ class GameStatsDialog(BaseGlassDialog):
     def _save_game_changes(self):
         """Persiste atómicamente los cambios en games.json e informa al lanzador."""
         parent = self.parent
-        if parent and hasattr(parent, "games") and hasattr(parent, "save_games"):
+        saved = False
+        if parent and hasattr(parent, "save_games"):
             try:
                 parent.save_games()
+                saved = True
+            except Exception:
+                pass
+        elif parent and hasattr(parent, "library") and hasattr(parent.library, "save"):
+            try:
+                parent.library.save()
+                saved = True
             except Exception:
                 pass
         elif parent and hasattr(parent, "library_service"):
             try:
                 parent.library_service.save()
+                saved = True
             except Exception:
                 pass
-        else:
+
+        if not saved:
             # Respaldo atómico directo
             try:
                 from core.config import load_games_data
@@ -771,6 +781,8 @@ class GameStatsDialog(BaseGlassDialog):
                     if (target_p and g.get("path") == target_p) or (target_n and g.get("name") == target_n):
                         g["goals"] = self.game.get("goals", [])
                         g["notes"] = self.game.get("notes", "")
+                        if "save_path" in self.game:
+                            g["save_path"] = self.game["save_path"]
                         break
                 save_games_data(all_games, merge_existing_playtime=True)
             except Exception:

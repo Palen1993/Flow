@@ -21,7 +21,7 @@ PLAYER_APP_DIR = os.path.abspath(os.path.join(os.path.dirname(BASE_DEV_DIR), "Ga
 def stop_running_player_processes(target_dir: str) -> int:
     """Detiene de forma segura instancias en ejecución (Launcher, Watcher, Sentinel) dentro de target_dir antes de actualizar."""
     norm_target = os.path.normcase(os.path.abspath(target_dir))
-    target_names = {"gameflow launcher.exe", "gamepad_watcher.exe", "sentinel_process.exe"}
+    target_names = {"gameflow launcher.exe", "gameflow overlay.exe", "gamepad_watcher.exe", "sentinel_process.exe"}
     to_terminate = []
 
     for proc in psutil.process_iter(["pid", "name", "exe"]):
@@ -105,7 +105,7 @@ def sync_to_player(build_first: bool = True):
     # 2. Copiar binarios y dependencias del motor
     print("\n[2/4] Actualizando ejecutables y dependencias del motor...")
     stop_running_player_processes(PLAYER_APP_DIR)
-    for item in ["GameFlow Launcher.exe", "sentinel_process.exe", "gamepad_watcher.exe"]:
+    for item in ["GameFlow Launcher.exe", "GameFlow Overlay.exe", "sentinel_process.exe", "gamepad_watcher.exe"]:
         src = os.path.join(dist_app, item)
         dst = os.path.join(PLAYER_APP_DIR, item)
         if os.path.isfile(src):

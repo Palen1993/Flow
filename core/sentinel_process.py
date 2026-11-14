@@ -41,7 +41,7 @@ def _record_session_playtime(exe_base: str, elapsed_seconds: float, game_path: s
     if elapsed_seconds < 10.0:
         return
     try:
-        ok = record_game_session(game_path or "", elapsed_seconds, exe_base=exe_base)
+        ok = record_game_session(game_path or "", elapsed_seconds, exe_base=exe_base, increment_play_count=False)
         mins = max(1, int(round(elapsed_seconds / 60.0)))
         if ok:
             logger.info(f"Tiempo de juego actualizado para '{game_path or exe_base}': +{mins} min.")
@@ -57,6 +57,7 @@ def main():
     parser.add_argument("--rect", type=str, required=True, help="left,top,right,bottom del monitor objetivo")
     parser.add_argument("--name", type=str, default="Monitor", help="Nombre descriptivo del monitor")
     parser.add_argument("--game-path", type=str, default="", help="Ruta canónica completa al ejecutable del juego")
+    parser.add_argument("--restore-power-mode", type=str, default="", help="Perfil de energía a restaurar al terminar el juego")
     args = parser.parse_args()
 
     try:
@@ -81,107 +82,123 @@ def main():
                 tracked_pids.add(int(p_str))
 
     logger.info(f"=== CENTINELA INDEPENDIENTE INICIADO ===")
-    # Evitar centinelas duplicados para el mismo ejecutable
+    # Evitar centinelas duplicados para el mismo ejecutable (compatible con .py y .exe)
     curr_pid = os.getpid()
     for p in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
             if p.pid != curr_pid:
+                pname = (p.info.get('name') or '').lower()
                 cmd = p.info.get('cmdline') or []
-                if any('sentinel_process.py' in str(c) for c in cmd) and any(exe_base in str(c).lower() for c in cmd):
+                is_sentinel = ('sentinel_process' in pname) or any('sentinel_process' in str(c).lower() for c in cmd)
+                if is_sentinel and exe_base and any(exe_base in str(c).lower() for c in cmd):
                     logger.info(f"Cerrando centinela anterior duplicado (PID {p.pid}) para {exe_base}...")
                     p.kill()
         except Exception:
             pass
 
     start_time = time.time()
+    last_alive_time = start_time
+    ever_seen_alive = False
     last_correction_time = 0
     consecutive_not_found = 0
 
-    while True:
-        try:
-            # 1. Comprobar procesos vivos
-            alive_pids = {p for p in tracked_pids if psutil.pid_exists(p)}
+    try:
+        while True:
+            try:
+                # 1. Comprobar procesos vivos
+                alive_pids = {p for p in tracked_pids if psutil.pid_exists(p)}
 
-            # Si no tenemos PIDs vivos, buscar por nombre de ejecutable
-            if not alive_pids and exe_base:
-                for p in psutil.process_iter(['pid', 'name']):
+                # Si no tenemos PIDs vivos, buscar por nombre de ejecutable
+                if not alive_pids and exe_base:
+                    for p in psutil.process_iter(['pid', 'name']):
+                        try:
+                            p_name = (p.info.get('name') or '').lower()
+                            if p_name == exe_base or ('shipping' in exe_base and 'shipping' in p_name):
+                                alive_pids.add(p.pid)
+                        except Exception:
+                            pass
+
+                if not alive_pids:
+                    consecutive_not_found += 1
+                    # En los primeros 60s (fase de arranque, anti-cheat y launchers intermediarios),
+                    # dar hasta 20 comprobaciones (~10s) de margen antes de considerar el juego muerto.
+                    # Una vez estabilizado el juego, 5 comprobaciones (~7.5s) son suficientes.
+                    max_missing = 20 if (time.time() - start_time < 60.0) else 5
+                    if consecutive_not_found >= max_missing:
+                        logger.info("El proceso del juego ha finalizado. Centinela apagado.")
+                        break
+                else:
+                    consecutive_not_found = 0
+                    ever_seen_alive = True
+                    last_alive_time = time.time()
+
+                # Descubrir y añadir procesos hijos
+                for p in list(alive_pids):
+                    tracked_pids.add(p)
                     try:
-                        p_name = (p.info.get('name') or '').lower()
-                        if p_name == exe_base or ('shipping' in exe_base and 'shipping' in p_name):
-                            alive_pids.add(p.pid)
+                        proc = psutil.Process(p)
+                        for child in proc.children(recursive=True):
+                            tracked_pids.add(child.pid)
+                            alive_pids.add(child.pid)
                     except Exception:
                         pass
 
-            if not alive_pids:
-                consecutive_not_found += 1
-                # En los primeros 60s (fase de arranque, anti-cheat y launchers intermediarios),
-                # dar hasta 20 comprobaciones (~10s) de margen antes de considerar el juego muerto.
-                # Una vez estabilizado el juego, 5 comprobaciones (~7.5s) son suficientes.
-                max_missing = 20 if (time.time() - start_time < 60.0) else 5
-                if consecutive_not_found >= max_missing:
-                    logger.info("El proceso del juego ha finalizado. Centinela apagado.")
-                    break
-            else:
-                consecutive_not_found = 0
+                # 2. Supervisar y corregir ventanas (solo cuando se especificó un monitor concreto)
+                if alive_pids and t_rect != (0, 0, 0, 0):
+                    windows = get_game_windows(list(alive_pids))
+                    if windows:
+                        for w in windows:
+                            if not w.get("is_main_candidate", False) and len(windows) > 1:
+                                continue
 
-            # Descubrir y añadir procesos hijos
-            for p in list(alive_pids):
-                tracked_pids.add(p)
-                try:
-                    proc = psutil.Process(p)
-                    for child in proc.children(recursive=True):
-                        tracked_pids.add(child.pid)
-                        alive_pids.add(child.pid)
-                except Exception:
-                    pass
+                            hwnd = w["hwnd"]
+                            rect = w["rect"]
 
-            # 2. Supervisar y corregir ventanas (solo cuando se especificó un monitor concreto)
-            if alive_pids and t_rect != (0, 0, 0, 0):
-                windows = get_game_windows(list(alive_pids))
-                if windows:
-                    for w in windows:
-                        if not w.get("is_main_candidate", False) and len(windows) > 1:
-                            continue
-
-                        hwnd = w["hwnd"]
-                        rect = w["rect"]
-
-                        # Comprobar si está dentro de los límites del monitor objetivo (tolerancia 25px)
-                        is_inside = (
-                            rect[0] >= t_left - 25 and rect[1] >= t_top - 25 and
-                            rect[2] <= t_right + 25 and rect[3] <= t_bottom + 25
-                        )
-
-                        if not is_inside and (time.time() - last_correction_time > 0.6):
-                            last_correction_time = time.time()
-                            w_title = w.get('title') or w.get('safe_title', 'Juego')
-                            logger.warning(
-                                f"¡Re-anclaje detectado! '{w_title}' (HWND={hwnd}) se desvió a Rect={rect}. "
-                                f"Devolviendo forzosamente a {t_name} {t_rect}..."
+                            # Comprobar si está dentro de los límites del monitor objetivo (tolerancia 25px)
+                            is_inside = (
+                                rect[0] >= t_left - 25 and rect[1] >= t_top - 25 and
+                                rect[2] <= t_right + 25 and rect[3] <= t_bottom + 25
                             )
-                            move_window_to_monitor(hwnd, t_rect, force_borderless=True)
-                            time.sleep(0.15)
-                            try:
-                                check_r = win32gui.GetWindowRect(hwnd)
-                                still_out = not (
-                                    check_r[0] >= t_left - 30 and check_r[1] >= t_top - 30 and
-                                    check_r[2] <= t_right + 30 and check_r[3] <= t_bottom + 30
+
+                            if not is_inside and (time.time() - last_correction_time > 0.6):
+                                last_correction_time = time.time()
+                                w_title = w.get('title') or w.get('safe_title', 'Juego')
+                                logger.warning(
+                                    f"¡Re-anclaje detectado! '{w_title}' (HWND={hwnd}) se desvió a Rect={rect}. "
+                                    f"Devolviendo forzosamente a {t_name} {t_rect}..."
                                 )
-                                if still_out:
-                                    logger.warning("Ventana aún fuera. Disparando bypass DWM por hardware...")
-                                    force_dwm_window_shift_to_monitor(hwnd, t_rect)
-                            except Exception:
-                                pass
+                                move_window_to_monitor(hwnd, t_rect, force_borderless=True)
+                                time.sleep(0.15)
+                                try:
+                                    check_r = win32gui.GetWindowRect(hwnd)
+                                    still_out = not (
+                                        check_r[0] >= t_left - 30 and check_r[1] >= t_top - 30 and
+                                        check_r[2] <= t_right + 30 and check_r[3] <= t_bottom + 30
+                                    )
+                                    if still_out:
+                                        logger.warning("Ventana aún fuera. Disparando bypass DWM por hardware...")
+                                        force_dwm_window_shift_to_monitor(hwnd, t_rect)
+                                except Exception:
+                                    pass
 
-        except Exception as e:
-            logger.error(f"Excepción en ciclo del centinela: {e}")
+            except Exception as e:
+                logger.error(f"Excepción en ciclo del centinela: {e}")
 
-        # Frecuencia adaptativa
-        elapsed = time.time() - start_time
-        sleep_sec = 0.5 if elapsed < 60.0 else 1.5
-        time.sleep(sleep_sec)
+            # Frecuencia adaptativa
+            elapsed = time.time() - start_time
+            sleep_sec = 0.5 if elapsed < 60.0 else 1.5
+            time.sleep(sleep_sec)
+    finally:
+        if getattr(args, "restore_power_mode", ""):
+            try:
+                from core.power_service import set_power_mode
+                set_power_mode(args.restore_power_mode)
+                logger.info(f"Plan de energía restaurado por el centinela a '{args.restore_power_mode}'.")
+            except Exception as e:
+                logger.warning(f"No se pudo restaurar el plan de energía: {e}")
 
-    _record_session_playtime(exe_base, time.time() - start_time, game_path=game_path)
+    if ever_seen_alive:
+        _record_session_playtime(exe_base, max(0.0, last_alive_time - start_time), game_path=game_path)
     logger.info("=== CENTINELA FINALIZADO LIMPIAMENTE ===")
 
 if __name__ == "__main__":

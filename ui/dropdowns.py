@@ -71,19 +71,19 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             
         phys_dw = int(round(dw * ctk_scale))
         phys_dh = int(round(dh * ctk_scale))
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
+        from ui.display_scale import get_monitor_work_area_for_window
+        _, _, (m_left, m_top, m_right, m_bottom) = get_monitor_work_area_for_window(parent)
         
-        # Alinear preferentemente borde derecho del botón con el dropdown si desborda (en píxeles físicos)
+        # Alinear preferentemente borde derecho del botón con el dropdown si desborda (en píxeles físicos del monitor activo)
         x = bx + bw - phys_dw
-        if x < 10:
-            x = max(10, bx)
-        if x + phys_dw > screen_w - 10:
-            x = screen_w - phys_dw - 10
+        if x < m_left + 10:
+            x = max(m_left + 10, bx)
+        if x + phys_dw > m_right - 10:
+            x = max(m_left + 10, m_right - phys_dw - 10)
             
         y = by + bh + 4
-        if y + phys_dh > screen_h - 10:
-            y = max(10, by - phys_dh - 4)
+        if y + phys_dh > m_bottom - 10:
+            y = max(m_top + 10, by - phys_dh - 4)
             
         self.geometry(f"{dw}x{dh}+{x}+{y}")
         
@@ -380,10 +380,9 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         mw = scale_value(355, scale)
         item_h = scale_value(44, scale)
         mh = len(items) * item_h + scale_value(28, scale)
-        try:
-            screen_h = max(480, int(parent.winfo_screenheight()))
-        except Exception:
-            screen_h = 1080
+        from ui.display_scale import get_monitor_work_area_for_window
+        mon_w, mon_h, (m_left, m_top, m_right, m_bottom) = get_monitor_work_area_for_window(parent)
+        screen_h = max(480, int(mon_h))
         max_logical_h = max(280, int((screen_h - 24) / max(0.5, ctk_scale)))
         if mh > max_logical_h and items:
             item_h = max(26, (max_logical_h - scale_value(24, scale)) // len(items))
@@ -399,13 +398,13 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 by = anchor_widget.winfo_rooty()
                 bw = anchor_widget.winfo_width()
                 bh = anchor_widget.winfo_height()
-                x = max(10, bx + bw - phys_mw)
+                x = max(m_left + 10, bx + bw - phys_mw)
                 y = by + bh + int(8 * ctk_scale)
             else:
                 px = parent.winfo_rootx()
                 py = parent.winfo_rooty()
                 pw = parent.winfo_width()
-                x = max(10, px + pw - phys_mw - int(22 * ctk_scale))
+                x = max(m_left + 10, px + pw - phys_mw - int(22 * ctk_scale))
                 y = py + int(56 * ctk_scale)
                 # Si el lienzo CoverFlow tiene un botón "menu" ("⚙ Opciones"), alinear bajo él
                 stage = getattr(parent, "cover_stage", None)
@@ -414,13 +413,15 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                         if hact == "menu":
                             sx = stage.winfo_rootx()
                             sy = stage.winfo_rooty()
-                            x = max(10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
+                            x = max(m_left + 10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
                             y = sy + hy2 + int(8 * ctk_scale)
                             break
-            if y + phys_mh > screen_h - 10:
-                y = max(10, screen_h - 10 - phys_mh)
+            if x + phys_mw > m_right - 10:
+                x = max(m_left + 10, m_right - 10 - phys_mw)
+            if y + phys_mh > m_bottom - 10:
+                y = max(m_top + 10, m_bottom - 10 - phys_mh)
         except Exception:
-            x, y = 100, 60
+            x, y = m_left + 100, m_top + 60
         self.geometry(f"{mw}x{mh}+{x}+{y}")
         
         card = ctk.CTkFrame(

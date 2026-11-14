@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from core.config import load_games_data, save_games_data, get_games_file_mtime
 from core.cover_resolver import resolve_game_cover
@@ -59,7 +59,7 @@ class GameLibraryService:
         """
         self.invalidate_caches()
         loaded = load_games_data()
-        from core.config import COVERS_DIR
+        from core.config import COVERS_DIR, sanitize_game_filename
         for g in loaded:
             if eager_covers:
                 resolve_game_cover(g)
@@ -67,10 +67,14 @@ class GameLibraryService:
                 cov = g.get("cover")
                 if not cov or not os.path.isfile(cov):
                     # Comprobar rápido si la carátula estándar ya existe en covers/ sin escaneo recursivo
-                    safe_name = "".join(c for c in g.get("name", "game") if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
-                    cand = os.path.join(COVERS_DIR, f"{safe_name}.png")
-                    if os.path.isfile(cand):
-                        g["cover"] = cand
+                    raw_nm = g.get("name", "game")
+                    safe_name = "".join(c for c in raw_nm if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+                    sanitized = sanitize_game_filename(raw_nm)
+                    for nm_cand in (safe_name, sanitized):
+                        cand = os.path.join(COVERS_DIR, f"{nm_cand}.png")
+                        if os.path.isfile(cand):
+                            g["cover"] = cand
+                            break
 
         self.games = loaded
         self._file_mtime = get_games_file_mtime()
@@ -103,16 +107,20 @@ class GameLibraryService:
                     return True
                 return False
 
-            from core.config import COVERS_DIR
+            from core.config import COVERS_DIR, sanitize_game_filename
             fresh_by_path: Dict[str, Dict[str, Any]] = {}
             fresh_by_name: Dict[str, Dict[str, Any]] = {}
             for fg in fresh_games:
                 cov = fg.get("cover")
                 if not cov or not os.path.isfile(cov):
-                    safe_name = "".join(c for c in fg.get("name", "game") if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
-                    cand = os.path.join(COVERS_DIR, f"{safe_name}.png")
-                    if os.path.isfile(cand):
-                        fg["cover"] = cand
+                    raw_nm = fg.get("name", "game")
+                    safe_name = "".join(c for c in raw_nm if c.isalnum() or c in (' ', '_', '-')).strip() or "game"
+                    sanitized = sanitize_game_filename(raw_nm)
+                    for nm_cand in (safe_name, sanitized):
+                        cand = os.path.join(COVERS_DIR, f"{nm_cand}.png")
+                        if os.path.isfile(cand):
+                            fg["cover"] = cand
+                            break
                 p = fg.get("path")
                 if p:
                     fresh_by_path[os.path.normcase(os.path.normpath(p))] = fg
@@ -220,6 +228,89 @@ class GameLibraryService:
         self.games.append(new_game)
         self.save()
         return len(self.games) - 1
+
+    def import_games(self, new_games: List[Dict[str, Any]]) -> Tuple[int, int, Optional[Dict[str, Any]]]:
+        """
+        Importa o actualiza un lote de juegos en la colección global (`self.games`)
+        y persiste atómicamente en `games.json`.
+        Devuelve `(added_count, updated_count, first_affected_game)`.
+        """
+        if not new_games:
+            return 0, 0, None
+
+        import time
+        def _import_dedup_key(game_dict: Dict[str, Any]) -> str:
+            p = game_dict.get("path", "")
+            norm_p = os.path.normcase(os.path.abspath(p)) if p else ""
+            rom_p = game_dict.get("rom_path") or ""
+            if rom_p:
+                return f"{norm_p}::rom::{os.path.normcase(os.path.abspath(str(rom_p)))}"
+            l_args = (game_dict.get("launch_args") or "").strip()
+            if l_args and any(ext in l_args.lower() for ext in (".iso", ".rom", ".sfc", ".smc", ".nes", ".gba", ".nds", ".chd", ".cso", ".xci", ".nsp", ".wbfs", ".z64", ".n64", ".bin", ".cue")):
+                return f"{norm_p}::args::{os.path.normcase(l_args)}"
+            return norm_p
+
+        existing_map: Dict[str, int] = {}
+        for idx, g in enumerate(self.games):
+            dk = _import_dedup_key(g)
+            if dk:
+                existing_map[dk] = idx
+
+        added_count = 0
+        updated_count = 0
+        first_game: Optional[Dict[str, Any]] = None
+        today_str = time.strftime("%Y-%m-%d")
+
+        for ng in new_games:
+            if not isinstance(ng, dict):
+                continue
+            cleaned = {k: v for k, v in ng.items() if v is not None and k != "already_added"}
+            raw_path = cleaned.get("path", "")
+            dedup_k = _import_dedup_key(cleaned)
+
+            if dedup_k and dedup_k in existing_map:
+                idx = existing_map[dedup_k]
+                self.games[idx].update(cleaned)
+                if first_game is None:
+                    first_game = self.games[idx]
+                updated_count += 1
+            else:
+                cleaned.setdefault("name", "Juego")
+                cleaned.setdefault("path", raw_path)
+                cleaned.setdefault("monitor", 0)
+                cleaned.setdefault("high_priority", True)
+                cleaned.setdefault("cover", "")
+                cleaned.setdefault("favorite", False)
+                cleaned.setdefault("status", "Por jugar")
+                cleaned.setdefault("genre", "")
+                cleaned.setdefault("platform", "PC")
+                cleaned.setdefault("playtime_minutes", 0)
+                cleaned.setdefault("play_count", 0)
+                cleaned.setdefault("date_added", today_str)
+                cleaned.setdefault("daily_playtime", {})
+                cleaned.setdefault("goals", [])
+                cleaned.setdefault("notes", "")
+
+                if "is_rom" not in cleaned and raw_path:
+                    try:
+                        from core.emulator_service import detect_system_for_file
+                        sys_inf = detect_system_for_file(raw_path)
+                        if sys_inf:
+                            cleaned["is_rom"] = True
+                            cleaned.setdefault("system_id", sys_inf["id"])
+                    except Exception:
+                        pass
+
+                self.games.append(cleaned)
+                if dedup_k:
+                    existing_map[dedup_k] = len(self.games) - 1
+                if first_game is None:
+                    first_game = cleaned
+                added_count += 1
+
+        if added_count > 0 or updated_count > 0:
+            self.save()
+        return added_count, updated_count, first_game
 
     def update_game(
         self,

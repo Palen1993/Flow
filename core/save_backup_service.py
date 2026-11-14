@@ -294,7 +294,8 @@ def create_save_backup(
     game: Dict[str, Any],
     save_path: Optional[str] = None,
     comment: str = "Copia manual",
-    max_backups: int = 10
+    max_backups: int = 10,
+    prune: bool = True
 ) -> Dict[str, Any]:
     """
     Crea un archivo .zip con todos los archivos de guardado y un manifest de metadatos.
@@ -347,7 +348,8 @@ def create_save_backup(
             zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
         # Enforce retention policy
-        _prune_old_backups(b_dir, max_backups)
+        if prune:
+            _prune_old_backups(b_dir, max_backups)
 
         # Actualizar metadatos en el juego
         today_formatted = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -487,26 +489,41 @@ def restore_save_backup(
     if not dest_dir:
         return {"success": False, "error": "No se determinó la carpeta de destino para restaurar."}
 
-    # Copia de seguridad preventiva
+    # Copia de seguridad preventiva (sin podar aún para no borrar zip_path si era la 10ª copia)
     safety_info = None
     if create_safety_backup and os.path.isdir(dest_dir):
         try:
             f_count, _, _ = _get_dir_summary(dest_dir)
             if f_count > 0:
-                safety_res = create_save_backup(game, save_path=dest_dir, comment="Auto-backup preventivo antes de restaurar")
+                safety_res = create_save_backup(
+                    game,
+                    save_path=dest_dir,
+                    comment="Auto-backup preventivo antes de restaurar",
+                    prune=False
+                )
                 if safety_res.get("success"):
                     safety_info = safety_res
         except Exception as se:
             logger.warning(f"Aviso en backup preventivo: {se}")
 
     os.makedirs(dest_dir, exist_ok=True)
+    abs_dest = os.path.normcase(os.path.abspath(dest_dir))
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             for item in zf.infolist():
                 if item.filename == "manifest.json":
                     continue
+                target_item_path = os.path.normcase(os.path.abspath(os.path.join(dest_dir, item.filename)))
+                if os.path.commonpath([abs_dest, target_item_path]) != abs_dest:
+                    raise ValueError(f"Ruta insegura fuera de carpeta de destino en ZIP: {item.filename}")
                 zf.extract(item, dest_dir)
+
+        if safety_info is not None:
+            try:
+                _prune_old_backups(get_game_backup_directory(game), 10)
+            except Exception:
+                pass
 
         logger.info(f"Partida restaurada con éxito para '{game.get('name')}' desde {os.path.basename(zip_path)}")
         return {

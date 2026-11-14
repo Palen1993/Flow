@@ -22,6 +22,7 @@ def main():
         "achievements_config.json",
         "achievements_cache.json",
         "collections_config.json",
+        "emulators_config.json",
         ".portable",
     }
 

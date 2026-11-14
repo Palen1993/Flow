@@ -24,11 +24,12 @@ from ui.controller_hud import (
 
 class CoverFlowCanvas(tk.Canvas):
     """Componente Canvas interactivo para visualización 3D Cover Flow estilo iPod."""
-    def __init__(self, parent, on_selection_changed=None, on_launch_requested=None, on_hud_action=None, **kwargs):
+    def __init__(self, parent, on_selection_changed=None, on_launch_requested=None, on_hud_action=None, on_shelf_step=None, **kwargs):
         super().__init__(parent, highlightthickness=0, bg=COLOR_BG_CANVAS, **kwargs)
         self.on_selection_changed = on_selection_changed
         self.on_launch_requested = on_launch_requested
         self.on_hud_action = on_hud_action
+        self.on_shelf_step = on_shelf_step
         self.controller_family = "xbox"
         self.hud_hitboxes: List[Tuple[int, int, int, int, str]] = []
         
@@ -103,17 +104,28 @@ class CoverFlowCanvas(tk.Canvas):
         self._bg_slot_warp_cache: Dict[Tuple[Any, ...], Tuple[Image.Image, Image.Image, int, int]] = {}
         self._empty_card_cache: Dict[Tuple[str, int, bool], Tuple[Image.Image, int, int]] = {}
         self._static_backdrop_cache: Optional[Tuple[Any, Image.Image]] = None
+        self._cached_shelf_hitboxes: List[Tuple[int, int, int, int, int]] = []
         self._defer_redraw: bool = False
         self._stack_prewarm_gen: int = 0
+        self._outgoing_shelf_id: Optional[str] = None
+        self._outgoing_from_sign: int = 0
+        self._current_games_shelf_id: Optional[str] = None
         
-        # Interacción arrastre (swipe)
+        # Interacción arrastre (swipe horizontal y vertical)
         self.drag_start_x = 0
+        self.drag_start_y = 0
         self.drag_start_pos = 0.0
         self.is_dragging = False
         self.has_dragged = False
+        self._drag_axis: Optional[str] = None
+        self._v_drag_s: float = 0.0
+        self._v_drag_steps_committed: int = 0
+        self._suppress_shelf_anim_start: bool = False
         
         # Zonas de clic para detección
         self.hitboxes: List[Tuple[int, int, int, int, int]] = []  # (x1, y1, x2, y2, index)
+        self.shelf_hitboxes: List[Tuple[int, int, int, int, int]] = []  # (x1, y1, x2, y2, rel)
+        self._empty_card_hitbox: Optional[Tuple[int, int, int, int]] = None
         self.photo_ref = None
         self._photo_w = 0
         self._photo_h = 0
@@ -125,6 +137,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.bind("<Button-3>", self._on_right_mouse_down)
         self.bind("<B3-Motion>", self._on_right_mouse_drag)
+        self.bind("<Shift-MouseWheel>", self._on_shift_mouse_wheel)
         self.bind("<MouseWheel>", self._on_mouse_wheel)
         self.bind("<Double-Button-1>", self._on_double_click)
         self.bind("<Motion>", self._on_mouse_hover)
@@ -263,6 +276,8 @@ class CoverFlowCanvas(tk.Canvas):
         self._outgoing_refl_mask = None
         self._outgoing_size = 0
         self._outgoing_bg = None
+        self._outgoing_shelf_id = None
+        self._outgoing_from_sign = 0
         self._incoming_shelf_cache = None
         self._incoming_shelf_mid_override = None
 
@@ -808,11 +823,21 @@ class CoverFlowCanvas(tk.Canvas):
             crop.paste(w_img, (px - bx1, 0), w_img)
         return crop, bx1
 
+    @staticmethod
+    def _build_mid_strip_override(body_crop: Optional[Image.Image], bx1: int, mid_scale: float = 0.62) -> Optional[Tuple[Image.Image, int, float]]:
+        """Pre-escala una tira de carrusel a resolución intermedia (~62%) para acelerar la transición 3D vertical."""
+        if body_crop is None or body_crop.width < 16 or body_crop.height < 16:
+            return None
+        mw = max(8, int(round(body_crop.width * mid_scale)))
+        mh = max(8, int(round(body_crop.height * mid_scale)))
+        return (body_crop.resize((mw, mh), Image.Resampling.BILINEAR), bx1, mid_scale)
+
     def _capture_outgoing_shelf(self):
         """Captura las carátulas de la estantería saliente en una capa RGBA para transición 3D fluida."""
         if not self.games and not getattr(self, "_has_rendered_shelf_once", False):
             self._clear_outgoing_shelf()
             return
+        self._outgoing_shelf_id = getattr(self, "_current_games_shelf_id", None)
 
         w = self.winfo_width()
         if w < 50:
@@ -833,7 +858,7 @@ class CoverFlowCanvas(tk.Canvas):
             self._outgoing_covers_layer = None
             self._outgoing_alpha_mask = None
             self._outgoing_body_crop = body_crop
-            self._outgoing_body_crop_mid = None
+            self._outgoing_body_crop_mid = self._build_mid_strip_override(body_crop, bx1)
             self._outgoing_body_x = bx1
             self._outgoing_refl_crop = None
             self._outgoing_refl_mask = None
@@ -849,7 +874,7 @@ class CoverFlowCanvas(tk.Canvas):
 
             body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
             self._outgoing_body_crop = body_crop
-            self._outgoing_body_crop_mid = None
+            self._outgoing_body_crop_mid = self._build_mid_strip_override(body_crop, bx1)
             self._outgoing_body_x = bx1
             self._outgoing_refl_crop = refl_crop
             self._outgoing_refl_mask = refl_mask
@@ -874,7 +899,10 @@ class CoverFlowCanvas(tk.Canvas):
 
     def set_games(self, games: List[Dict[str, Any]], target_index: int = 0, transition_direction: int = 0):
         # Si se solicita animación vertical de cambio de estantería y hay juegos previos (o pila 3D activa):
-        if transition_direction != 0 and (self.games or self._is_vertical_stack_active()):
+        is_v_dragging_now = bool(self.is_dragging and getattr(self, "_drag_axis", None) == "v")
+        suppress_anim = is_v_dragging_now or getattr(self, "_suppress_shelf_anim_start", False)
+        norm_dir = 1 if transition_direction > 0 else (-1 if transition_direction < 0 else 0)
+        if norm_dir != 0 and (self.games or self._is_vertical_stack_active()):
             self._capture_outgoing_shelf()
             size = self.base_size
             h = self.winfo_height()
@@ -883,12 +911,17 @@ class CoverFlowCanvas(tk.Canvas):
             if h < 50:
                 h = 720
             self.shelf_distance = int(round(max(size * 1.15, h * 0.35)))
-            self.shelf_transition_dir = transition_direction
-            self._last_shelf_dir = 1 if transition_direction >= 0 else -1
-            self.shelf_offset_y = float(transition_direction * self.shelf_distance)
-            self.is_shelf_animating = True
+            self.shelf_transition_dir = norm_dir
+            self._last_shelf_dir = norm_dir
+            self._outgoing_from_sign = norm_dir
             self._incoming_shelf_cache = None
             self._incoming_shelf_mid_override = None
+            if suppress_anim:
+                self.shelf_offset_y = 0.0
+                self.is_shelf_animating = False
+            else:
+                self.shelf_offset_y = float(norm_dir * self.shelf_distance)
+                self.is_shelf_animating = True
         else:
             self.shelf_offset_y = 0.0
             self.shelf_transition_dir = 0
@@ -897,6 +930,10 @@ class CoverFlowCanvas(tk.Canvas):
 
         self._static_backdrop_cache = None
         self.games = games
+        if self._shelf_stack and 0 <= self._shelf_stack_idx < len(self._shelf_stack):
+            self._current_games_shelf_id = str(self._shelf_stack[self._shelf_stack_idx].get("id", ""))
+        else:
+            self._current_games_shelf_id = None
         self._library_load_id = getattr(self, "_library_load_id", 0) + 1
         current_load_id = self._library_load_id
 
@@ -999,7 +1036,9 @@ class CoverFlowCanvas(tk.Canvas):
                 self.on_selection_changed(target_int)
             finally:
                 self._defer_redraw = False
-        if self.is_shelf_animating:
+        if getattr(self, "_suppress_shelf_anim_start", False):
+            pass
+        elif self.is_shelf_animating:
             self._start_animation()
         else:
             self.redraw()
@@ -1022,22 +1061,26 @@ class CoverFlowCanvas(tk.Canvas):
                     g = self.games[i]
                     key = self._get_key(g)
                     if key not in self.raw_jewels:
-                        self.raw_jewels[key] = self._get_or_create_jewel_case(g)
-                        self._cover_sigs[key] = self._get_cover_sig(g)
+                        j_new = self._get_or_create_jewel_case(g)
+                        sig_new = self._get_cover_sig(g)
+                        with self._cache_lock:
+                            self.raw_jewels[key] = j_new
+                            self._cover_sigs[key] = sig_new
 
                     jewel = self.raw_jewels.get(key)
                     if jewel and key not in self.flat_covers:
                         has_refl = self._use_reflection()
                         flat_cover, sz, tot_h = prepare_flat_cover(jewel, self.base_size, has_reflection=has_refl)
-                        self.flat_covers[key] = (flat_cover, sz, tot_h)
-                        if key not in self.rendered_cache:
-                            w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
-                            w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
-                            self.rendered_cache[key] = {
-                                -1.0: (w_left, w_lw),
-                                0.0: (flat_cover, sz),
-                                1.0: (w_right, w_rw)
-                            }
+                        w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
+                        w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
+                        with self._cache_lock:
+                            self.flat_covers[key] = (flat_cover, sz, tot_h)
+                            if key not in self.rendered_cache:
+                                self.rendered_cache[key] = {
+                                    -1.0: (w_left, w_lw),
+                                    0.0: (flat_cover, sz),
+                                    1.0: (w_right, w_rw)
+                                }
                 if self._library_load_id != current_load_id:
                     return
                 self._prune_memory_caches(target_int)
@@ -1116,28 +1159,34 @@ class CoverFlowCanvas(tk.Canvas):
                     jewel = self.raw_jewels.get(key)
                     if not jewel:
                         jewel = self._get_or_create_jewel_case(g)
-                        self.raw_jewels[key] = jewel
+                        with self._cache_lock:
+                            self.raw_jewels[key] = jewel
                     if not jewel:
                         continue
                     flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                    self.flat_covers[key] = (flat_cover, sz, tot_h)
+                    with self._cache_lock:
+                        self.flat_covers[key] = (flat_cover, sz, tot_h)
                 else:
                     flat_cover, sz, _ = flat_data
-                g_cache = self.rendered_cache.setdefault(key, {})
-                if 0.0 not in g_cache:
-                    g_cache[0.0] = (flat_cover, sz)
+                with self._cache_lock:
+                    g_cache = self.rendered_cache.setdefault(key, {})
+                    if 0.0 not in g_cache:
+                        g_cache[0.0] = (flat_cover, sz)
                 if -1.0 not in g_cache:
                     w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
-                    g_cache[-1.0] = (w_left, w_lw)
+                    with self._cache_lock:
+                        g_cache[-1.0] = (w_left, w_lw)
                 if 1.0 not in g_cache:
                     w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
-                    g_cache[1.0] = (w_right, w_rw)
+                    with self._cache_lock:
+                        g_cache[1.0] = (w_right, w_rw)
                 for af in intermediate_angles:
                     if not self._wait_if_animating(lambda: self._cache_generation == current_gen):
                         return
                     if af not in g_cache:
                         w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, af, has_reflection=has_refl)
-                        g_cache[af] = (w_img, tw)
+                        with self._cache_lock:
+                            g_cache[af] = (w_img, tw)
 
             # En bibliotecas masivas (+500 juegos), precalcular ángulos intermedios únicamente para el búfer cercano (+/- 12)
             buffer_indices = [
@@ -1152,30 +1201,34 @@ class CoverFlowCanvas(tk.Canvas):
                 jewel = self.raw_jewels.get(key)
                 if not jewel:
                     jewel = self._get_or_create_jewel_case(g)
-                    self.raw_jewels[key] = jewel
+                    with self._cache_lock:
+                        self.raw_jewels[key] = jewel
                 if not jewel:
                     continue
                 if key not in self.flat_covers:
                     flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                    self.flat_covers[key] = (flat_cover, sz, tot_h)
+                    with self._cache_lock:
+                        self.flat_covers[key] = (flat_cover, sz, tot_h)
                 else:
                     flat_cover, sz, _ = self.flat_covers[key]
 
                 if key not in self.rendered_cache:
                     w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl)
                     w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl)
-                    self.rendered_cache[key] = {
-                        -1.0: (w_left, w_lw),
-                        0.0: (flat_cover, sz),
-                        1.0: (w_right, w_rw)
-                    }
+                    with self._cache_lock:
+                        self.rendered_cache[key] = {
+                            -1.0: (w_left, w_lw),
+                            0.0: (flat_cover, sz),
+                            1.0: (w_right, w_rw)
+                        }
                 g_cache = self.rendered_cache[key]
                 for af in intermediate_angles:
                     if not self._wait_if_animating(lambda: self._cache_generation == current_gen):
                         return
                     if af not in g_cache:
                         w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, af, has_reflection=has_refl)
-                        g_cache[af] = (w_img, tw)
+                        with self._cache_lock:
+                            g_cache[af] = (w_img, tw)
 
             if self._cache_generation == current_gen:
                 self._prune_memory_caches(center_idx)
@@ -1262,42 +1315,44 @@ class CoverFlowCanvas(tk.Canvas):
         key = max(-1.0, min(1.0, round(af * 8.0) / 8.0))
         with self._cache_lock:
             game_cache = self.rendered_cache.get(game_key)
+            if game_cache is not None:
+                cached = game_cache.get(key)
+                if cached is not None:
+                    return cached
+            flat_data = self.flat_covers.get(game_key)
+            jewel = self.raw_jewels.get(game_key) if not flat_data else None
+
+        if not flat_data:
+            if not jewel:
+                g = next((gm for gm in self.games if self._get_key(gm) == game_key), None)
+                if g:
+                    jewel = self._get_or_create_jewel_case(g)
+                    with self._cache_lock:
+                        self.raw_jewels[game_key] = jewel
+            if not jewel:
+                if not hasattr(self, "_fallback_jewel") or self._fallback_jewel is None:
+                    self._fallback_jewel = create_procedural_album("GameFlow", size=380)
+                jewel = self._fallback_jewel
+
+            has_refl = self._use_reflection()
+            size = self.base_size
+            flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+            with self._cache_lock:
+                self.flat_covers[game_key] = flat_data
+
+        flat_cover, sz, _ = flat_data
+        has_refl = self._use_reflection()
+        w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, key, has_reflection=has_refl)
+        entry = (w_img, tw)
+        with self._cache_lock:
+            game_cache = self.rendered_cache.get(game_key)
             if game_cache is None:
                 if not getattr(self, "is_animating", False) and len(self.rendered_cache) >= 48:
                     self._prune_memory_caches()
                 game_cache = {}
                 self.rendered_cache[game_key] = game_cache
-
-            cached = game_cache.get(key)
-            if cached is not None:
-                return cached
-
-            flat_data = self.flat_covers.get(game_key)
-            if not flat_data:
-                jewel = self.raw_jewels.get(game_key)
-                if not jewel:
-                    g = next((gm for gm in self.games if self._get_key(gm) == game_key), None)
-                    if g:
-                        jewel = self._get_or_create_jewel_case(g)
-                        self.raw_jewels[game_key] = jewel
-                if not jewel:
-                    if not hasattr(self, "_fallback_jewel") or self._fallback_jewel is None:
-                        self._fallback_jewel = create_procedural_album("GameFlow", size=380)
-                    jewel = self._fallback_jewel
-
-                has_refl = self._use_reflection()
-                size = self.base_size
-                flat_data = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                self.flat_covers[game_key] = flat_data
-
-            flat_cover, sz, _ = flat_data
-            has_refl = self._use_reflection()
-            w_img, tw, _ = render_cover_flow_from_flat(flat_cover, sz, key, has_reflection=has_refl)
-            if getattr(self, "is_transparent_mode", False):
-                w_img = prevent_transparency_color_collision(w_img)
-            entry = (w_img, tw)
             game_cache[key] = entry
-            return entry
+        return entry
 
     def _rebuild_background(self, w: int, h: int):
         """Pre-renderiza el escenario estático y foco de luz como RGB ultra optimizado (sin líneas grises)."""
@@ -1593,29 +1648,122 @@ class CoverFlowCanvas(tk.Canvas):
                 self._prewarm_neighbor_shelves_async()
             self.redraw()
 
+    def _trigger_shelf_step(self, step: int):
+        """Solicita cambiar de carrusel verticalmente `step` posiciones (<0 arriba, >0 abajo)."""
+        step = int(step or 0)
+        if step == 0 or not self._is_vertical_stack_active():
+            return
+        if self.on_shelf_step:
+            self.on_shelf_step(step)
+            return
+        if self.on_hud_action:
+            act = "shelf_next" if step > 0 else "shelf_prev"
+            for _ in range(abs(step)):
+                self.on_hud_action(act)
+            return
+        # Fallback autónomo cuando CoverFlowCanvas se utiliza aislado sin App
+        n_shelves = len(self._shelf_stack)
+        old_sh = self._shelf_stack[self._shelf_stack_idx]
+        old_id = old_sh.get("id")
+        if old_id is not None:
+            self._shelf_selected_indices[old_id] = int(round(self.target_pos))
+        new_idx = (self._shelf_stack_idx + step) % n_shelves
+        self._shelf_stack_idx = new_idx
+        new_sh = self._shelf_stack[new_idx]
+        new_id = new_sh.get("id")
+        new_games = new_sh.get("games") or []
+        target_idx = int(self._shelf_selected_indices.get(new_id, 0) or 0)
+        target_idx = max(0, min(len(new_games) - 1, target_idx)) if new_games else 0
+        self.ui_shelf_index = new_idx
+        self.ui_total_shelves = n_shelves
+        self.ui_filter_label = new_sh.get("name", "Todos")
+        self.ui_filter_count = len(new_games)
+        self._static_backdrop_cache = None
+        self.set_games(new_games, target_index=target_idx, transition_direction=(1 if step > 0 else -1))
+
+    def _ensure_shelf_distance(self) -> int:
+        if getattr(self, "shelf_distance", 0) <= 0:
+            size = self.base_size
+            h = self.winfo_height()
+            if h < 50:
+                h = getattr(self, "last_h", 0) or 720
+            self.shelf_distance = int(round(max(size * 1.15, h * 0.35)))
+        return self.shelf_distance
+
     def _on_mouse_down(self, event):
         self.drag_start_x = event.x
+        self.drag_start_y = event.y if isinstance(getattr(event, "y", None), (int, float)) else 0
         self.drag_start_pos = self.current_pos
         self.is_dragging = True
         self.has_dragged = False
+        self._drag_axis = None
+        self._v_drag_s = 0.0
+        self._v_drag_steps_committed = 0
         self._last_drag_int = int(round(self.current_pos))
+        if getattr(self, "anim_timer", None):
+            try:
+                self.after_cancel(self.anim_timer)
+            except Exception:
+                pass
+            self.anim_timer = None
+            self.is_animating = False
         if getattr(self, "is_shelf_animating", False):
             self.shelf_offset_y = 0.0
             self.is_shelf_animating = False
             self._clear_outgoing_shelf()
 
     def _on_mouse_drag(self, event):
-        if not self.is_dragging or len(self.games) == 0:
+        if not self.is_dragging:
             return
-        dx = event.x - self.drag_start_x
+        ev_x = event.x
+        ev_y = event.y if isinstance(getattr(event, "y", None), (int, float)) else self.drag_start_y
+        dx = ev_x - self.drag_start_x
+        dy = ev_y - self.drag_start_y
+
+        if self._drag_axis is None and (abs(dx) > 6 or abs(dy) > 6):
+            self.has_dragged = True
+            if abs(dy) > abs(dx) and self._is_vertical_stack_active():
+                self._drag_axis = "v"
+                self._ensure_shelf_distance()
+            else:
+                self._drag_axis = "h"
+
+        if self._drag_axis == "v":
+            step_px = max(90.0, float(self.base_size) * 0.65)
+            v_delta = -float(dy) / step_px
+            stepped = False
+            guard = 0
+            while v_delta >= 0.5 and guard < 6:
+                self.drag_start_y -= step_px
+                v_delta -= 1.0
+                self._v_drag_s = v_delta
+                self._v_drag_steps_committed += 1
+                self._trigger_shelf_step(1)
+                stepped = True
+                guard += 1
+            while v_delta <= -0.5 and guard < 6:
+                self.drag_start_y += step_px
+                v_delta += 1.0
+                self._v_drag_s = v_delta
+                self._v_drag_steps_committed -= 1
+                self._trigger_shelf_step(-1)
+                stepped = True
+                guard += 1
+            self._v_drag_s = max(-0.95, min(0.95, v_delta))
+            if not stepped:
+                self.redraw()
+            return
+
+        if len(self.games) == 0:
+            return
         if abs(dx) > 6:
             self.has_dragged = True
-            
+
         delta_index = -(dx / max(140.0, self.base_size * 0.75))
         n = len(self.games)
         new_pos = self.drag_start_pos + delta_index
         self.current_pos = max(-0.3, min(n - 0.7, new_pos))
-        
+
         if self.has_dragged:
             cur_int = int(round(max(0, min(n - 1, self.current_pos))))
             if cur_int != getattr(self, "_last_drag_int", -1):
@@ -1625,30 +1773,68 @@ class CoverFlowCanvas(tk.Canvas):
                     feedback_click()
                 except Exception:
                     pass
-                    
+
         self.redraw()
 
     def _on_mouse_up(self, event):
         if not self.is_dragging:
             return
         self.is_dragging = False
+        drag_axis = self._drag_axis
+        v_drag_s = getattr(self, "_v_drag_s", 0.0)
+        committed = getattr(self, "_v_drag_steps_committed", 0)
+        self._drag_axis = None
+        self._v_drag_s = 0.0
+        self._v_drag_steps_committed = 0
+
+        if drag_axis == "v" and self.has_dragged:
+            shelf_dist = self._ensure_shelf_distance()
+            if committed == 0 and abs(v_drag_s) >= 0.16:
+                step = 1 if v_drag_s > 0.0 else -1
+                rem_s = v_drag_s - float(step)
+                self._suppress_shelf_anim_start = True
+                try:
+                    self._trigger_shelf_step(step)
+                finally:
+                    self._suppress_shelf_anim_start = False
+                self.shelf_transition_dir = step
+                self.shelf_offset_y = -rem_s * float(shelf_dist)
+                self.is_shelf_animating = True
+                self._start_animation()
+            elif abs(v_drag_s) > 0.008:
+                self.shelf_transition_dir = -1 if v_drag_s > 0.0 else 1
+                self.shelf_offset_y = -v_drag_s * float(shelf_dist)
+                self.is_shelf_animating = True
+                self._start_animation()
+            else:
+                self.shelf_offset_y = 0.0
+                self.is_shelf_animating = False
+                self.redraw()
+            return
+
         if not self.has_dragged:
             hud_act = self._get_hud_action_at(event.x, event.y)
             if hud_act and self.on_hud_action:
                 self.on_hud_action(hud_act)
                 return
 
-        n = len(self.games)
-        if n == 0:
-            return
-            
-        if self.has_dragged:
-            best_idx = int(round(max(0, min(n - 1, self.current_pos))))
-            self.select_index(best_idx)
-        else:
             clicked_idx = self._get_index_at(event.x, event.y)
             if clicked_idx is not None:
                 self.select_index(clicked_idx)
+                return
+
+            ev_y = event.y if isinstance(getattr(event, "y", None), (int, float)) else 0
+            clicked_rel = self._get_shelf_rel_at(event.x, ev_y)
+            if clicked_rel is not None and clicked_rel != 0:
+                self._trigger_shelf_step(clicked_rel)
+                return
+            return
+
+        n = len(self.games)
+        if n == 0:
+            return
+        best_idx = int(round(max(0, min(n - 1, self.current_pos))))
+        self.select_index(best_idx)
 
     def _on_double_click(self, event):
         if self._get_hud_action_at(event.x, event.y):
@@ -1658,7 +1844,25 @@ class CoverFlowCanvas(tk.Canvas):
             if self.on_launch_requested:
                 self.on_launch_requested()
 
+    def _on_shift_mouse_wheel(self, event):
+        if not self._is_vertical_stack_active():
+            return "break"
+        delta = getattr(event, "delta", 0)
+        if delta > 0:
+            self._trigger_shelf_step(-1)
+        elif delta < 0:
+            self._trigger_shelf_step(1)
+        return "break"
+
     def _on_mouse_wheel(self, event):
+        if (getattr(event, "state", 0) & 0x0001) and self._is_vertical_stack_active():
+            return self._on_shift_mouse_wheel(event)
+        ev_x = getattr(event, "x", None)
+        ev_y = getattr(event, "y", None)
+        if isinstance(ev_x, (int, float)) and isinstance(ev_y, (int, float)):
+            hud_act = self._get_hud_action_at(int(ev_x), int(ev_y))
+            if hud_act in ("filter_menu", "shelf_prev", "shelf_next") and self._is_vertical_stack_active():
+                return self._on_shift_mouse_wheel(event)
         if len(self.games) == 0:
             return
         if event.delta > 0:
@@ -1673,7 +1877,11 @@ class CoverFlowCanvas(tk.Canvas):
             self._launch_hovered = is_launch_hov
             self.redraw()
 
-        if hud_act is not None or self._get_index_at(event.x, event.y) is not None:
+        if (
+            hud_act is not None
+            or self._get_index_at(event.x, event.y) is not None
+            or self._get_shelf_rel_at(event.x, event.y) is not None
+        ):
             self.config(cursor="hand2")
         else:
             self.config(cursor="")
@@ -1688,6 +1896,18 @@ class CoverFlowCanvas(tk.Canvas):
         for (x1, y1, x2, y2, idx) in reversed(self.hitboxes):
             if x1 <= x <= x2 and y1 <= y <= y2:
                 return idx
+        return None
+
+    def _get_shelf_rel_at(self, x: int, y: int) -> Optional[int]:
+        if not self._is_vertical_stack_active():
+            return None
+        if not self.games and getattr(self, "_empty_card_hitbox", None):
+            ex1, ey1, ex2, ey2 = self._empty_card_hitbox
+            if ex1 <= x <= ex2 and ey1 <= y <= ey2:
+                return None
+        for (x1, y1, x2, y2, rel) in reversed(getattr(self, "shelf_hitboxes", [])):
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return rel
         return None
 
     def _draw_overlays(self, bg: Image.Image, w: int, h: int):
@@ -1937,15 +2157,16 @@ class CoverFlowCanvas(tk.Canvas):
             tot_h = int(size * 1.6) + 20
             layer = self._compose_shelf_layer(w, tot_h)
             body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
-        self._incoming_shelf_mid_override = None
+        self._incoming_shelf_mid_override = self._build_mid_strip_override(body_crop, bx1)
         self._incoming_shelf_cache = (sig, body_crop, bx1, refl_crop, refl_mask)
         return body_crop, bx1, refl_crop, refl_mask
 
-    def _blend_transition_bg(self, base_bg: Image.Image, w: int, h: int, progress: float) -> Image.Image:
+    def _blend_transition_bg(self, base_bg: Image.Image, w: int, h: int, progress: float, allow_outgoing: bool = True) -> Image.Image:
         """Mezcla suavemente el fondo/wallpaper saliente con el entrante durante la transición."""
         prev_bg = getattr(self, "_outgoing_bg", None)
         if (
-            not getattr(self, "is_transparent_mode", False)
+            allow_outgoing
+            and not getattr(self, "is_transparent_mode", False)
             and prev_bg is not None
             and base_bg is not None
             and id(base_bg) != getattr(self, "_outgoing_bg_id", 0)
@@ -1959,7 +2180,7 @@ class CoverFlowCanvas(tk.Canvas):
             return Image.blend(prev_bg, base_bg, blend_t)
         return base_bg.copy()
 
-    def _present_frame(self, bg: Image.Image, w: int, h: int):
+    def _present_frame(self, bg: Image.Image, w: int, h: int, dirty_box: Optional[Tuple[int, int, int, int]] = None):
         """Actualiza el Tkinter Canvas reutilizando el DIB bitmap cuando las dimensiones no cambian."""
         if self.photo_ref is None or getattr(self, "_photo_w", 0) != w or getattr(self, "_photo_h", 0) != h:
             self._photo_w = w
@@ -1997,10 +2218,11 @@ class CoverFlowCanvas(tk.Canvas):
         """Pinta en orden de profundidad (-2, +2, -1, +1) todas las estanterías traseras en reposo."""
         n_shelves = len(self._shelf_stack)
         cur_idx = self._shelf_stack_idx
+        boxes: List[Tuple[int, int, int, int, int]] = []
         for rel in sorted(self._get_visible_neighbor_offsets(), key=lambda r: abs(r), reverse=True):
             sh = self._shelf_stack[(cur_idx + rel) % n_shelves]
             t_idx = self._get_shelf_center_idx(sh)
-            self._draw_stack_shelf_slot(
+            slot_box = self._draw_stack_shelf_slot(
                 target,
                 sh,
                 t_idx,
@@ -2012,6 +2234,10 @@ class CoverFlowCanvas(tk.Canvas):
                 is_resting=True,
                 max_s=2.85,
             )
+            if slot_box is not None:
+                bx, by, bw, bh = slot_box
+                boxes.append((bx, by, bx + bw, by + bh, rel))
+        self.shelf_hitboxes = boxes
 
     def _draw_foreground_stack_shelf(self, target: Image.Image, w: int, floor_y: int, size: int):
         """Pinta el carrusel activo en primer plano (s=0) y registra sus zonas de clic."""
@@ -2023,7 +2249,10 @@ class CoverFlowCanvas(tk.Canvas):
         else:
             lbl = getattr(self, "ui_filter_label", "Todos")
             card, _, _ = self._get_empty_shelf_flat_card(lbl, size, has_reflection=False)
-            self._composite_rgba(target, card, (w - card.width) // 2, floor_y - size)
+            cx = (w - card.width) // 2
+            cy = floor_y - size
+            self._composite_rgba(target, card, cx, cy)
+            self._empty_card_hitbox = (cx, cy, cx + card.width, cy + card.height)
 
     def _draw_vertical_stack_frame(
         self,
@@ -2034,6 +2263,7 @@ class CoverFlowCanvas(tk.Canvas):
         size: int,
         is_vertical_anim: bool,
         progress: float,
+        dir_override: int = 0,
     ):
         """
         Renderiza la pila 3D vertical completa en Orden de Pintor (Z-order: fondo -> primer plano):
@@ -2049,8 +2279,11 @@ class CoverFlowCanvas(tk.Canvas):
         is_trans = bool(getattr(self, "is_transparent_mode", False))
 
         if is_vertical_anim and progress > 0.008:
-            trans_dir = getattr(self, "shelf_transition_dir", 0)
-            dir_sign = 1 if trans_dir >= 0 else -1
+            if dir_override != 0:
+                dir_sign = 1 if dir_override > 0 else -1
+            else:
+                trans_dir = getattr(self, "shelf_transition_dir", 0)
+                dir_sign = 1 if trans_dir >= 0 else -1
             if n_shelves == 2:
                 rels = [-dir_sign, 0]
                 max_s = 1.85
@@ -2126,6 +2359,10 @@ class CoverFlowCanvas(tk.Canvas):
                             for i, pos_x, _, w_w in self._iter_visible_cover_slots(w, size):
                                 self.hitboxes.append((pos_x, y_draw_in, pos_x + w_w, y_draw_in + th_in, i))
                 elif rel == -dir_sign:
+                    sh_id = str(sh.get("id", ""))
+                    out_sid = getattr(self, "_outgoing_shelf_id", None)
+                    use_out = out_override if (dir_override == 0 or out_sid is None or sh_id == out_sid) else None
+                    use_out_mid = out_mid_override if use_out is not None else None
                     t_idx = self._get_shelf_center_idx(sh)
                     self._draw_stack_shelf_slot(
                         target,
@@ -2136,8 +2373,8 @@ class CoverFlowCanvas(tk.Canvas):
                         h,
                         floor_y,
                         size,
-                        full_body_override=out_override,
-                        full_body_mid_override=out_mid_override,
+                        full_body_override=use_out,
+                        full_body_mid_override=use_out_mid,
                         is_resting=False,
                         max_s=max_s,
                     )
@@ -2162,14 +2399,31 @@ class CoverFlowCanvas(tk.Canvas):
         if is_trans and bg.mode != "RGBA":
             backdrop_sig = self._build_stack_backdrop_sig("mini", 0, w, h, floor_y, size)
             cached = self._static_backdrop_cache
-            if cached is not None and cached[0] == backdrop_sig and cached[1].size == (w, h):
-                stage = cached[1].copy()
+            if cached is not None and len(cached) == 3 and cached[0] == backdrop_sig and cached[1].size == (w, h):
+                stage_rgba = cached[1]
+                stage_rgb = cached[2]
+                self.shelf_hitboxes = list(getattr(self, "_cached_shelf_hitboxes", []))
             else:
-                stage = Image.new("RGBA", (w, h), (8, 11, 18, 0))
-                self._draw_resting_stack_neighbors(stage, w, h, floor_y, size)
-                self._static_backdrop_cache = (backdrop_sig, stage.copy())
-            self._draw_foreground_stack_shelf(stage, w, floor_y, size)
-            bg.paste(finalize_transparent_key_frame(stage), (0, 0))
+                stage_rgba = Image.new("RGBA", (w, h), (8, 11, 18, 0))
+                self._draw_resting_stack_neighbors(stage_rgba, w, h, floor_y, size)
+                self._cached_shelf_hitboxes = list(self.shelf_hitboxes)
+                stage_rgb = finalize_transparent_key_frame(stage_rgba)
+                self._static_backdrop_cache = (backdrop_sig, stage_rgba, stage_rgb)
+
+            stage_work = stage_rgba.copy()
+            self._draw_foreground_stack_shelf(stage_work, w, floor_y, size)
+            fg_boxes = self.hitboxes or ([self._empty_card_hitbox] if self._empty_card_hitbox else [])
+            if fg_boxes:
+                fx1 = max(0, min(b[0] for b in fg_boxes) - 2)
+                fy1 = max(0, min(b[1] for b in fg_boxes) - 2)
+                fx2 = min(w, max(b[2] for b in fg_boxes) + 2)
+                fy2 = min(h, max(b[3] for b in fg_boxes) + 2)
+                bg.paste(stage_rgb, (0, 0))
+                if fx2 > fx1 and fy2 > fy1:
+                    sub_final = finalize_transparent_key_frame(stage_work.crop((fx1, fy1, fx2, fy2)))
+                    bg.paste(sub_final, (fx1, fy1))
+            else:
+                bg.paste(stage_rgb, (0, 0))
             return
 
         # En reposo Big Picture: pintar fondo estático y luego frente nítido
@@ -2192,9 +2446,23 @@ class CoverFlowCanvas(tk.Canvas):
         has_refl = self._use_reflection()
         is_stack = self._is_vertical_stack_active()
         is_trans = bool(getattr(self, "is_transparent_mode", False))
-        is_vertical_anim = getattr(self, "is_shelf_animating", False) and getattr(self, "shelf_transition_dir", 0) != 0
-        progress = max(0.0, min(1.0, abs(getattr(self, "shelf_offset_y", 0.0)) / max(1.0, float(getattr(self, "shelf_distance", 300)))))
-        offset_y = int(round(getattr(self, "shelf_offset_y", 0.0)))
+        v_drag_s = (
+            getattr(self, "_v_drag_s", 0.0)
+            if (self.is_dragging and getattr(self, "_drag_axis", None) == "v")
+            else 0.0
+        )
+        is_v_dragging = abs(v_drag_s) > 0.008
+        is_vertical_anim = (
+            getattr(self, "is_shelf_animating", False) and getattr(self, "shelf_transition_dir", 0) != 0
+        ) or is_v_dragging
+        if is_v_dragging:
+            progress = min(1.0, abs(v_drag_s))
+            drag_dir_sign = -1 if v_drag_s > 0.0 else 1
+            offset_y = int(round(drag_dir_sign * progress * max(1, getattr(self, "shelf_distance", 300))))
+        else:
+            drag_dir_sign = 0
+            progress = max(0.0, min(1.0, abs(getattr(self, "shelf_offset_y", 0.0)) / max(1.0, float(getattr(self, "shelf_distance", 300)))))
+            offset_y = int(round(getattr(self, "shelf_offset_y", 0.0)))
 
         if not self.bg_cache or self.bg_cache.size != (w, h):
             self._rebuild_background(w, h)
@@ -2202,6 +2470,8 @@ class CoverFlowCanvas(tk.Canvas):
         floor_y = self._compute_floor_y(h, size)
         self.floor_y = floor_y
         self.hitboxes = []
+        self.shelf_hitboxes = []
+        self._empty_card_hitbox = None
 
         n = len(self.games)
         if n > 0:
@@ -2212,24 +2482,37 @@ class CoverFlowCanvas(tk.Canvas):
             base_bg = self.bg_cache
 
         if is_stack:
+            backdrop_sig = None
             if is_trans:
                 bg = base_bg.copy()
-                self._draw_vertical_stack_frame(bg, w, h, floor_y, size, is_vertical_anim, progress)
+                self._draw_vertical_stack_frame(bg, w, h, floor_y, size, is_vertical_anim, progress, dir_override=drag_dir_sign)
+                if not is_vertical_anim:
+                    backdrop_sig = self._build_stack_backdrop_sig("mini", 0, w, h, floor_y, size)
             elif not is_vertical_anim:
                 backdrop_sig = self._build_stack_backdrop_sig("bp", id(base_bg), w, h, floor_y, size)
                 cached = self._static_backdrop_cache
-                if cached is not None and cached[0] == backdrop_sig and cached[1].size == (w, h):
+                if cached is not None and len(cached) == 2 and cached[0] == backdrop_sig and cached[1].size == (w, h):
                     bg = cached[1].copy()
+                    self.shelf_hitboxes = list(getattr(self, "_cached_shelf_hitboxes", []))
                 else:
                     bg = base_bg.copy()
                     self._draw_resting_stack_neighbors(bg, w, h, floor_y, size)
+                    self._cached_shelf_hitboxes = list(self.shelf_hitboxes)
                     self._static_backdrop_cache = (backdrop_sig, bg.copy())
                 self._draw_foreground_stack_shelf(bg, w, floor_y, size)
             else:
-                bg = self._blend_transition_bg(base_bg, w, h, progress)
-                self._draw_vertical_stack_frame(bg, w, h, floor_y, size, is_vertical_anim, progress)
+                allow_out_bg = not (
+                    is_v_dragging
+                    and getattr(self, "_outgoing_from_sign", 0) != 0
+                    and drag_dir_sign != self._outgoing_from_sign
+                )
+                bg = self._blend_transition_bg(base_bg, w, h, progress, allow_outgoing=allow_out_bg)
+                self._draw_vertical_stack_frame(bg, w, h, floor_y, size, is_vertical_anim, progress, dir_override=drag_dir_sign)
             self._draw_overlays(bg, w, h)
-            self._present_frame(bg, w, h)
+            dirty_box = self._compute_And_update_dirty_box(
+                w, h, is_vertical_anim, is_stack, is_trans, id(base_bg), backdrop_sig, extra_h=0
+            )
+            self._present_frame(bg, w, h, dirty_box=dirty_box)
             return
 
         bg = self._blend_transition_bg(base_bg, w, h, progress) if is_vertical_anim else base_bg.copy()
@@ -2275,11 +2558,15 @@ class CoverFlowCanvas(tk.Canvas):
                         self.hitboxes.append((pos_x, y_draw_in, pos_x + w_w, y_draw_in + th_in, i))
                 drawn_vertical_3d = True
 
+        refl_extra = int(size * 0.44) if has_refl else 0
         if not drawn_vertical_3d:
             if n == 0:
                 lbl = getattr(self, "ui_filter_label", "Todos")
                 card, _, _ = self._get_empty_shelf_flat_card(lbl, size, has_reflection=has_refl)
-                bg.paste(card, ((w - card.width) // 2, floor_y - size + offset_y), card)
+                cx = (w - card.width) // 2
+                cy = floor_y - size + offset_y
+                bg.paste(card, (cx, cy), card)
+                self._empty_card_hitbox = (cx, cy, cx + card.width, cy + card.height)
             else:
                 pos_y = floor_y - size + offset_y
                 for i, pos_x, w_img, w_w in self._iter_visible_cover_slots(w, size):
@@ -2290,4 +2577,64 @@ class CoverFlowCanvas(tk.Canvas):
         self._draw_overlays(bg, w, h)
 
         # 4. Actualización eficiente de Tkinter Canvas (sin recrear DIB bitmaps de GDI)
-        self._present_frame(bg, w, h)
+        dirty_box = self._compute_And_update_dirty_box(
+            w, h, is_vertical_anim, is_stack, is_trans, id(base_bg), None, extra_h=refl_extra
+        )
+        self._present_frame(bg, w, h, dirty_box=dirty_box)
+
+    def _compute_And_update_dirty_box(
+        self,
+        w: int,
+        h: int,
+        is_vertical_anim: bool,
+        is_stack: bool,
+        is_trans: bool,
+        base_bg_id: int,
+        backdrop_sig: Any,
+        extra_h: int = 0,
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """Calcula el rectángulo sucio entre frames consecutivos cuando el fondo y el HUD permanecen invariantes."""
+        static_sig = (
+            w,
+            h,
+            is_stack,
+            is_trans,
+            base_bg_id,
+            backdrop_sig,
+            self.ui_title,
+            self.ui_status,
+            self.ui_status_color,
+            getattr(self, "controller_family", "xbox"),
+            getattr(self, "ui_battery_text", ""),
+            getattr(self, "ui_battery_color", None),
+            getattr(self, "ui_filter_label", ""),
+            getattr(self, "ui_filter_count", 0),
+            getattr(self, "ui_shelf_index", 0),
+            getattr(self, "ui_total_shelves", 1),
+            bool(self._launch_hovered),
+            bool(self.ui_launch_disabled),
+        )
+        fg_boxes = self.hitboxes or ([self._empty_card_hitbox] if self._empty_card_hitbox else [])
+        if fg_boxes and not is_vertical_anim:
+            cur_box = (
+                max(0, min(b[0] for b in fg_boxes) - 2),
+                max(0, min(b[1] for b in fg_boxes) - 2),
+                min(w, max(b[2] for b in fg_boxes) + 2),
+                min(h, max(b[3] + extra_h for b in fg_boxes) + 2),
+            )
+        else:
+            cur_box = None
+
+        prev_sig = getattr(self, "_last_static_frame_sig", None)
+        prev_box = getattr(self, "_last_fg_dirty_box", None)
+        self._last_static_frame_sig = static_sig
+        self._last_fg_dirty_box = cur_box
+
+        if is_vertical_anim or cur_box is None or prev_box is None or prev_sig != static_sig:
+            return None
+        return (
+            min(prev_box[0], cur_box[0]),
+            min(prev_box[1], cur_box[1]),
+            max(prev_box[2], cur_box[2]),
+            max(prev_box[3], cur_box[3]),
+        )

@@ -451,6 +451,8 @@ _winmm = getattr(_windll, "winmm", None)
 _user32 = getattr(_windll, "user32", None)
 JOY_RETURNALL = 0x000000FF
 
+_FAMILY_HW_CACHE: Tuple[float, Any, Tuple[Any, ...], Optional[str], Optional[str]] = (0.0, None, (), None, None)
+
 def get_connected_controller_family(cfg: Optional[Dict[str, Any]] = None) -> str:
     """
     Determina en tiempo real la familia del mando conectado ('xbox' o 'playstation').
@@ -460,73 +462,90 @@ def get_connected_controller_family(cfg: Optional[Dict[str, Any]] = None) -> str
     3. Usa la preferencia de configuración como respaldo si no hay mando conectado.
     Si hay un mando PRINCIPAL fijado, la familia se decide únicamente por él (el secundario no cambia los iconos).
     """
+    global _FAMILY_HW_CACHE
     primary = globals().get("_PRIMARY_DEVICE")
     if primary is not None and primary[0] == "winmm":
         return "playstation"
-    primary_is_xinput = primary is not None and primary[0] == "xinput"
-    has_winmm_secondary = any(d[0] == "winmm" for d in globals().get("_CONNECT_ORDER", []))
+    conn_order = tuple(globals().get("_CONNECT_ORDER", []))
+    now_mono = time.monotonic()
+    c_ts, c_prim, c_order, c_last_type, c_hw_fam = _FAMILY_HW_CACHE
+    if (now_mono - c_ts) < 0.5 and c_prim == primary and c_order == conn_order and c_last_type == _LAST_ACTIVE_DEVICE_TYPE:
+        if c_hw_fam is not None:
+            return c_hw_fam
+    else:
+        primary_is_xinput = primary is not None and primary[0] == "xinput"
+        has_winmm_secondary = any(d[0] == "winmm" for d in conn_order)
+        hw_detected: Optional[str] = None
 
-    # 1. Detección directa por hardware HID conectado en tiempo real (RawInput < 0.05 ms)
-    try:
-        n_devs = wintypes.UINT(0)
-        _user32.GetRawInputDeviceList(None, ctypes.byref(n_devs), ctypes.sizeof(RAWINPUTDEVICELIST))
-        if n_devs.value > 0:
-            arr = (RAWINPUTDEVICELIST * n_devs.value)()
-            _user32.GetRawInputDeviceList(arr, ctypes.byref(n_devs), ctypes.sizeof(RAWINPUTDEVICELIST))
-            raw_has_sony = False
-            raw_has_xbox = False
-            for item in arr:
-                if item.dwType == 2:  # RIM_TYPEHID
-                    sz = wintypes.UINT(0)
-                    _user32.GetRawInputDeviceInfoW(item.hDevice, 0x20000007, None, ctypes.byref(sz))
-                    if sz.value > 0:
-                        buf = ctypes.create_unicode_buffer(sz.value)
-                        _user32.GetRawInputDeviceInfoW(item.hDevice, 0x20000007, buf, ctypes.byref(sz))
-                        path_up = buf.value.upper()
-                        if "054C" in path_up:
-                            raw_has_sony = True
-                        elif "045E" in path_up and ("IG_" in path_up or "PID_02" in path_up or "PID_0B" in path_up):
-                            raw_has_xbox = True
-            # Principal XInput: solo es PlayStation si es un DualSense/DualShock envuelto (DS4Windows),
-            # es decir, hay hardware Sony pero no aparece como mando WinMM independiente.
-            if primary_is_xinput:
-                return "playstation" if (raw_has_sony and not has_winmm_secondary) else "xbox"
-            # Si hay un mando físico Sony (054C) conectado, priorizar PlayStation incluso si emula XInput (045E)
-            if raw_has_sony:
-                return "playstation"
-            if raw_has_xbox:
-                return "xbox"
-    except Exception:
-        pass
+        # 1. Detección directa por hardware HID conectado en tiempo real (RawInput < 0.05 ms)
+        try:
+            n_devs = wintypes.UINT(0)
+            _user32.GetRawInputDeviceList(None, ctypes.byref(n_devs), ctypes.sizeof(RAWINPUTDEVICELIST))
+            if n_devs.value > 0:
+                arr = (RAWINPUTDEVICELIST * n_devs.value)()
+                _user32.GetRawInputDeviceList(arr, ctypes.byref(n_devs), ctypes.sizeof(RAWINPUTDEVICELIST))
+                raw_has_sony = False
+                raw_has_xbox = False
+                for item in arr:
+                    if item.dwType == 2:  # RIM_TYPEHID
+                        sz = wintypes.UINT(0)
+                        _user32.GetRawInputDeviceInfoW(item.hDevice, 0x20000007, None, ctypes.byref(sz))
+                        if sz.value > 0:
+                            buf = ctypes.create_unicode_buffer(sz.value)
+                            _user32.GetRawInputDeviceInfoW(item.hDevice, 0x20000007, buf, ctypes.byref(sz))
+                            path_up = buf.value.upper()
+                            if "054C" in path_up:
+                                raw_has_sony = True
+                            elif "045E" in path_up and ("IG_" in path_up or "PID_02" in path_up or "PID_0B" in path_up):
+                                raw_has_xbox = True
+                if primary_is_xinput:
+                    hw_detected = "playstation" if (raw_has_sony and not has_winmm_secondary) else "xbox"
+                elif raw_has_sony:
+                    hw_detected = "playstation"
+                elif raw_has_xbox:
+                    hw_detected = "xbox"
+        except Exception:
+            pass
 
-    if primary_is_xinput:
-        return "xbox"
+        if hw_detected is None and primary_is_xinput:
+            hw_detected = "xbox"
 
-    # 2. Comprobar WinMM joyGetDevCapsW en dispositivos activos
-    try:
-        num_devs = min(8, _winmm.joyGetNumDevs())
-        has_sony = False
-        has_xbox = False
-        for dev_id in range(num_devs):
-            info = JOYINFOEX()
-            info.dwSize = ctypes.sizeof(info)
-            info.dwFlags = JOY_RETURNALL
-            if _winmm.joyGetPosEx(dev_id, ctypes.byref(info)) == 0:
-                caps = JOYCAPSW()
-                if _winmm.joyGetDevCapsW(dev_id, ctypes.byref(caps), ctypes.sizeof(caps)) == 0:
-                    if caps.wMid == 0x054C:
-                        has_sony = True
-                    elif caps.wMid == 0x045E:
-                        has_xbox = True
-        if has_sony:
-            return "playstation"
-        if has_xbox:
-            return "xbox"
-    except Exception:
-        pass
+        # 2. Comprobar WinMM joyGetDevCapsW en dispositivos activos (acotado para evitar bloqueo sin mando)
+        if hw_detected is None:
+            try:
+                num_devs = min(4, _winmm.joyGetNumDevs())
+                has_sony = False
+                has_xbox = False
+                consecutive_empty = 0
+                for dev_id in range(num_devs):
+                    info = JOYINFOEX()
+                    info.dwSize = ctypes.sizeof(info)
+                    info.dwFlags = JOY_RETURNALL
+                    if _winmm.joyGetPosEx(dev_id, ctypes.byref(info)) == 0:
+                        consecutive_empty = 0
+                        caps = JOYCAPSW()
+                        if _winmm.joyGetDevCapsW(dev_id, ctypes.byref(caps), ctypes.sizeof(caps)) == 0:
+                            if caps.wMid == 0x054C:
+                                has_sony = True
+                            elif caps.wMid == 0x045E:
+                                has_xbox = True
+                    else:
+                        consecutive_empty += 1
+                        if consecutive_empty >= 2:
+                            break
+                if has_sony:
+                    hw_detected = "playstation"
+                elif has_xbox:
+                    hw_detected = "xbox"
+            except Exception:
+                pass
 
-    if _LAST_ACTIVE_DEVICE_TYPE == "directinput":
-        return "playstation"
+        if hw_detected is None and _LAST_ACTIVE_DEVICE_TYPE == "directinput":
+            hw_detected = "playstation"
+
+        _FAMILY_HW_CACHE = (now_mono, primary, conn_order, _LAST_ACTIVE_DEVICE_TYPE, hw_detected)
+        if hw_detected is not None:
+            return hw_detected
 
     # 3. Respaldo según perfil seleccionado en configuración
     if cfg is None:
@@ -555,6 +574,7 @@ def get_active_xinput_slot() -> Optional[int]:
 # de conexión pasa a ser el principal.
 PRIMARY_GRACE_S = 1.5
 ENUM_INTERVAL_S = 1.0
+SECONDARY_ENUM_INTERVAL_S = 3.0
 
 # Lista ordenada por orden de conexión de dispositivos: ("xinput", slot) | ("winmm", dev_id)
 _CONNECT_ORDER: List[Tuple[str, int]] = []
@@ -721,7 +741,8 @@ def _enumerate_connected(target_id: str = "any") -> List[Tuple[str, int]]:
                 found.append(("xinput", slot))
     if use_w:
         try:
-            num_devs = min(16, _winmm.joyGetNumDevs())
+            max_w = 4 if (use_x and _PRIMARY_DEVICE is not None) else 8
+            num_devs = min(max_w, _winmm.joyGetNumDevs())
         except Exception:
             num_devs = 0
         has_xinput = any(k == "xinput" for k, _ in found)

@@ -319,7 +319,7 @@ class CollectionsFilterDialog(BaseGlassDialog):
                     border_width=2.0,
                     fg_color=COLOR_GLASS_HOVER
                 )
-                scroll_to_widget(card, self.scroll_frame)
+                scroll_to_widget(self.scroll_frame, card)
             else:
                 card.configure(
                     border_color=COLOR_BORDER_CARD if is_en else COLOR_GLASS_BORDER,
@@ -357,12 +357,23 @@ class CollectionsFilterDialog(BaseGlassDialog):
 
     def _prompt_new_collection(self):
         feedback_click()
-        val = prompt_on_screen_keyboard(self, "Nueva Lista Personalizada", "Ej. Cooperativos")
-        if val and val.strip():
-            new_id = add_custom_collection(val.strip())
-            if new_id:
-                self._load_shelves_data()
-                self._render_shelves_list()
+
+        def _apply_new_name(text: str):
+            if text and isinstance(text, str) and text.strip():
+                new_id = add_custom_collection(text.strip())
+                if new_id and self.winfo_exists():
+                    self._load_shelves_data()
+                    self._render_shelves_list()
+
+        val = prompt_on_screen_keyboard(
+            self,
+            title="Nueva Lista Personalizada",
+            initial_text="",
+            placeholder="Ej. Cooperativos",
+            on_confirm=_apply_new_name
+        )
+        if isinstance(val, str) and val.strip():
+            _apply_new_name(val)
 
     def _save_and_close(self):
         # Asegurarse de que al menos 1 lista permanezca habilitada
@@ -383,16 +394,20 @@ class CollectionsFilterDialog(BaseGlassDialog):
         if n == 0:
             return False
 
-        # Cruceta Arriba
-        if inputs.get("dpad_up", False) and not prev_inputs.get("dpad_up", False):
+        # Cruceta / Stick Arriba
+        up_now = inputs.get("up", False) or inputs.get("dpad_up", False)
+        up_prev = prev_inputs.get("up", False) or prev_inputs.get("dpad_up", False)
+        if up_now and not up_prev:
             if self.selected_row_idx > 0:
                 self.selected_row_idx -= 1
                 self._highlight_selected_row()
                 feedback_click()
             return True
 
-        # Cruceta Abajo
-        if inputs.get("dpad_down", False) and not prev_inputs.get("dpad_down", False):
+        # Cruceta / Stick Abajo
+        down_now = inputs.get("down", False) or inputs.get("dpad_down", False)
+        down_prev = prev_inputs.get("down", False) or prev_inputs.get("dpad_down", False)
+        if down_now and not down_prev:
             if self.selected_row_idx < n - 1:
                 self.selected_row_idx += 1
                 self._highlight_selected_row()

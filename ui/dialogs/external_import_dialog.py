@@ -243,9 +243,33 @@ class ExternalImportDialog(BaseGlassDialog):
         self.bind("<Up>", lambda e: self._step_row(-1))
         self.bind("<Down>", lambda e: self._step_row(1))
         self.bind("<Return>", lambda e: self.import_selected())
-        self.bind("<space>", lambda e: self._toggle_focused_row())
+        self.bind("<space>", self._on_space_key)
+
+    def _on_space_key(self, event=None):
+        focused = self.focus_get()
+        if isinstance(focused, (tk.Entry, ctk.CTkEntry)):
+            return
+        self._toggle_focused_row()
+
+    def destroy(self):
+        self._is_destroyed = True
+        if getattr(self, "_chunk_timer", None) is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+        if getattr(self, "_poll_timer", None) is not None:
+            try:
+                self.after_cancel(self._poll_timer)
+            except Exception:
+                pass
+            self._poll_timer = None
+        super().destroy()
 
     def _poll_action_queue(self):
+        if getattr(self, "_is_destroyed", False):
+            return
         try:
             while not self._action_queue.empty():
                 action, args = self._action_queue.get_nowait()
@@ -263,15 +287,15 @@ class ExternalImportDialog(BaseGlassDialog):
                         self.lbl_summary.configure(text=f"No se encontraron nuevos ejecutables de juegos en '{folder_name}'.")
                 elif action == "finish_import":
                     try:
-                        if self.on_import:
+                        if self.on_import and not getattr(self, "_is_destroyed", False):
                             self.on_import(args)
                     finally:
                         self.close()
         except Exception as e:
             logger.debug(f"Error procesando action_queue: {e}")
 
-        if self.winfo_exists():
-            self.after(50, self._poll_action_queue)
+        if not getattr(self, "_is_destroyed", False) and self.winfo_exists():
+            self._poll_timer = self.after(50, self._poll_action_queue)
 
     def _start_scan_thread(self):
         def _worker():
@@ -500,8 +524,19 @@ class ExternalImportDialog(BaseGlassDialog):
         scroll_to_widget(self.scroll_frame, self._row_frames[self._focused_row_idx])
 
     def _highlight_focused_row(self):
-        for idx, r in enumerate(self._row_frames):
-            apply_gamepad_focus(r, idx == self._focused_row_idx, role="card")
+        rows = self._row_frames
+        if not rows:
+            return
+        prev_idx = getattr(self, "_last_highlighted_idx", -1)
+        if prev_idx != self._focused_row_idx and 0 <= prev_idx < len(rows):
+            old_r = rows[prev_idx]
+            if old_r.winfo_exists():
+                apply_gamepad_focus(old_r, False, role="card")
+        if 0 <= self._focused_row_idx < len(rows):
+            cur_r = rows[self._focused_row_idx]
+            if cur_r.winfo_exists():
+                apply_gamepad_focus(cur_r, True, role="card")
+            self._last_highlighted_idx = self._focused_row_idx
 
     def _toggle_focused_row(self):
         if 0 <= self._focused_row_idx < len(self.items_vars):
@@ -625,6 +660,8 @@ class ExternalImportDialog(BaseGlassDialog):
 
         def _download_artwork_worker():
             for g in selected_games:
+                if getattr(self, "_is_destroyed", False):
+                    return
                 name = g.get("name", "Game")
                 safe_name = sanitize_game_filename(name)
                 # Si es de Steam y tiene URLs oficiales, descargar y guardar en disco

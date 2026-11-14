@@ -62,9 +62,10 @@ def kill_hung_games() -> bool:
         games = load_games_data()
         known_exes = set()
         for g in games:
-            p = g.get("path")
-            if p:
-                known_exes.add(os.path.basename(p).lower())
+            for key in ("path", "emulator_path"):
+                p = g.get(key)
+                if p:
+                    known_exes.add(os.path.basename(p).lower())
         
         killed_any = False
         for proc in psutil.process_iter(['pid', 'name']):

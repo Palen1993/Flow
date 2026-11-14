@@ -106,15 +106,15 @@ class ScanResultsDialog(BaseGlassDialog):
         self.scroll_frame = scroll_frame
         
         self._chunk_timer = None
-        initial_count = min(len(self.candidates), 25)
+        initial_count = min(len(self.candidates), 12)
         for idx in range(initial_count):
             self._create_candidate_row(self.candidates[idx])
 
         if initial_count < len(self.candidates):
             def _stream_batch_rows(start_idx: int):
-                if not self.winfo_exists():
+                if getattr(self, "_is_destroyed", False) or not self.winfo_exists():
                     return
-                end_idx = min(start_idx + 25, len(self.candidates))
+                end_idx = min(start_idx + 20, len(self.candidates))
                 for k in range(start_idx, end_idx):
                     self._create_candidate_row(self.candidates[k])
                 self.update_selected_count()
@@ -246,17 +246,31 @@ class ScanResultsDialog(BaseGlassDialog):
             except Exception:
                 pass
 
+    def destroy(self):
+        self._is_destroyed = True
+        if getattr(self, "_chunk_timer", None) is not None:
+            try:
+                self.after_cancel(self._chunk_timer)
+            except Exception:
+                pass
+            self._chunk_timer = None
+        super().destroy()
+
     def _highlight_row(self, idx: int):
         if not self._row_frames or idx < 0 or idx >= len(self._row_frames):
             return
+        prev_idx = getattr(self, "_last_highlighted_idx", -1)
+        if prev_idx != idx and 0 <= prev_idx < len(self._row_frames):
+            old_rf = self._row_frames[prev_idx]
+            if old_rf.winfo_exists():
+                apply_gamepad_focus(old_rf, False, role="card")
         self._focused_row_idx = idx
-        for i, rf in enumerate(self._row_frames):
-            if rf.winfo_exists():
-                is_sel = (i == idx)
-                apply_gamepad_focus(rf, is_sel, role="card")
-                if is_sel:
-                    edge = "top" if i == 0 else ("bottom" if i == len(self._row_frames) - 1 else None)
-                    scroll_to_widget(self.scroll_frame, rf, force_edge=edge)
+        self._last_highlighted_idx = idx
+        rf = self._row_frames[idx]
+        if rf.winfo_exists():
+            apply_gamepad_focus(rf, True, role="card")
+            edge = "top" if idx == 0 else ("bottom" if idx == len(self._row_frames) - 1 else None)
+            scroll_to_widget(self.scroll_frame, rf, force_edge=edge)
 
     def select_all(self, val: bool):
         for var, _, _ in self.items_vars:
@@ -274,7 +288,8 @@ class ScanResultsDialog(BaseGlassDialog):
     def import_selected(self):
         selected_games = []
         default_mon = 0
-        parent_games = getattr(self.master, "games", [])
+        lib = getattr(self.master, "library", None)
+        parent_games = getattr(lib, "games", None) or getattr(self.master, "games", [])
         if parent_games:
             default_mon = parent_games[0].get("monitor", 0)
 

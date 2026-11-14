@@ -560,7 +560,7 @@ class AchievementsDialog(BaseGlassDialog):
                     border_width=2.0,
                     fg_color=COLOR_GLASS_HOVER
                 )
-                scroll_to_widget(card, self.scroll_container)
+                scroll_to_widget(self.scroll_container, card)
             else:
                 card.configure(
                     border_color=COLOR_STATUS_SUCCESS if is_unlocked else COLOR_GLASS_BORDER,
@@ -583,14 +583,52 @@ class AchievementsDialog(BaseGlassDialog):
 
     def _open_link_dialog(self):
         feedback_click()
+        def _on_linked_cb():
+            if self.on_game_updated:
+                self.on_game_updated(self.game)
+            self._load_data(force_refresh=True)
+
         LinkGameIdDialog(
             self,
             game=self.game,
-            on_linked=lambda: self._load_data(force_refresh=True)
+            on_linked=_on_linked_cb
         )
 
+    @staticmethod
+    def _extract_gamepad_action(action_or_inputs: Any, prev_inputs: Optional[Dict[str, bool]] = None) -> Optional[str]:
+        if isinstance(action_or_inputs, str):
+            return action_or_inputs
+        if not isinstance(action_or_inputs, dict):
+            return None
+        prev = prev_inputs or {}
+        mapping = [
+            ("up", "up"),
+            ("dpad_up", "up"),
+            ("down", "down"),
+            ("dpad_down", "down"),
+            ("left", "left"),
+            ("dpad_left", "left"),
+            ("right", "right"),
+            ("dpad_right", "right"),
+            ("lb", "lb"),
+            ("rb", "rb"),
+            ("a", "a_button"),
+            ("b", "b_button"),
+            ("x", "x_button"),
+            ("y", "y_button"),
+            ("start", "start"),
+            ("back", "back"),
+        ]
+        for key, act in mapping:
+            if action_or_inputs.get(key, False) and not prev.get(key, False):
+                return act
+        return None
+
     # ---------------- Soporte para Mando de Consola ----------------
-    def handle_gamepad_input(self, action: str) -> bool:
+    def handle_gamepad_input(self, action_or_inputs: Any, prev_inputs: Optional[Dict[str, bool]] = None) -> bool:
+        action = self._extract_gamepad_action(action_or_inputs, prev_inputs)
+        if not action:
+            return False
         if action in ("up", "dpad_up"):
             if self._item_frames and self.selected_item_idx > 0:
                 self.selected_item_idx -= 1
@@ -821,10 +859,27 @@ class AchievementsSettingsDialog(BaseGlassDialog):
             show_warning("Steam", "No se encontró ninguna sesión reciente de Steam en este equipo.", parent=self)
 
     def _prompt_keyboard(self):
-        val = prompt_on_screen_keyboard(self, "Entrada de Texto", self.ent_steamkey.get())
-        if val is not None:
-            self.ent_steamkey.delete(0, "end")
-            self.ent_steamkey.insert(0, val)
+        target_entry = self.ent_steamid
+        focused = self.focus_get()
+        for ent in (self.ent_steamid, self.ent_steamkey, self.ent_ra_user, self.ent_ra_key):
+            try:
+                if focused is ent or (focused is not None and str(focused).startswith(str(ent))):
+                    target_entry = ent
+                    break
+            except Exception:
+                pass
+
+        def _on_osk_done(val: str):
+            if val is not None and self.winfo_exists():
+                target_entry.delete(0, "end")
+                target_entry.insert(0, val)
+
+        prompt_on_screen_keyboard(
+            self,
+            title="Entrada de Texto",
+            initial_text=target_entry.get(),
+            on_confirm=_on_osk_done
+        )
 
     def _save(self):
         self.config["steam_id64"] = self.ent_steamid.get().strip()
@@ -839,7 +894,10 @@ class AchievementsSettingsDialog(BaseGlassDialog):
             self.on_saved()
         self.close()
 
-    def handle_gamepad_input(self, action: str) -> bool:
+    def handle_gamepad_input(self, action_or_inputs: Any, prev_inputs: Optional[Dict[str, bool]] = None) -> bool:
+        action = AchievementsDialog._extract_gamepad_action(action_or_inputs, prev_inputs)
+        if not action:
+            return False
         if action in ("a_button", "select"):
             self._save()
             return True
@@ -960,8 +1018,14 @@ class LinkGameIdDialog(BaseGlassDialog):
 
         set_game_retroachievements_id(self.game, ra_val)
 
-        from core.config import save_games_data
-        save_games_data()
+        try:
+            app_root = self.winfo_toplevel()
+            if app_root and hasattr(app_root, "save_games"):
+                app_root.save_games()
+            elif hasattr(self.master, "on_game_updated") and callable(self.master.on_game_updated):
+                self.master.on_game_updated(self.game)
+        except Exception:
+            pass
 
         feedback_click()
         trigger_haptic()
@@ -969,7 +1033,10 @@ class LinkGameIdDialog(BaseGlassDialog):
             self.on_linked()
         self.close()
 
-    def handle_gamepad_input(self, action: str) -> bool:
+    def handle_gamepad_input(self, action_or_inputs: Any, prev_inputs: Optional[Dict[str, bool]] = None) -> bool:
+        action = AchievementsDialog._extract_gamepad_action(action_or_inputs, prev_inputs)
+        if not action:
+            return False
         if action in ("a_button", "select"):
             self._save()
             return True

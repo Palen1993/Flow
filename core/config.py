@@ -347,7 +347,7 @@ def save_json_atomic(filepath: str, data: Any, indent: int = 2) -> bool:
                 pass
         return False
 
-def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base: str = "") -> bool:
+def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base: str = "", increment_play_count: bool = True) -> bool:
     """
     Registra atómicamente el tiempo de juego transcurrido, fecha de última sesión,
     conteo de partidas e historial diario en games.json, y dispara el auto-backup de partidas.
@@ -373,9 +373,10 @@ def record_game_session(game_path_or_exe: str, elapsed_seconds: float, exe_base:
             prev_mins = int(game_obj.get("playtime_minutes", 0) or 0)
             game_obj["playtime_minutes"] = prev_mins + added_mins
             game_obj["last_played"] = today_str
-            # Incrementar contador de partidas
+            # Incrementar contador de partidas (solo si no se incrementó ya al lanzar)
             prev_count = int(game_obj.get("play_count", 0) or 0)
-            game_obj["play_count"] = prev_count + 1
+            if increment_play_count or prev_count <= 0:
+                game_obj["play_count"] = prev_count + 1
             # Acumular minutos en el día actual
             daily = game_obj.setdefault("daily_playtime", {})
             if not isinstance(daily, dict):

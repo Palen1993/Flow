@@ -354,6 +354,7 @@ def scan_emulator_roms(
                     rom_games.append({
                         "name": game_name,
                         "path": emulator_exe,
+                        "rom_path": full_rom_path,
                         "launch_args": launch_args,
                         "cover": cover_path,
                         "monitor": 0,

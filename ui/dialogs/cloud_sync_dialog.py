@@ -66,7 +66,9 @@ class CloudSyncDialog(BaseGlassDialog):
             height=640,
             corner_radius=22
         )
-        self.games = games or getattr(parent, "games", []) or []
+        lib = getattr(parent, "library", None) if parent else None
+        lib_games = getattr(lib, "games", None) if lib else None
+        self.games = games or lib_games or getattr(parent, "games", []) or []
         self.on_sync_completed = on_sync_completed
 
         self.config = load_cloud_config()

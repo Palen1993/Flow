@@ -510,6 +510,7 @@ def render_big_picture_top_hud(
     for (bx1, by1, bx2, by2, act) in strip_boxes:
         boxes.append((x_cursor + bx1, by1, x_cursor + bx2, by2, act))
 
+    combined = prevent_transparency_color_collision(combined)
     res = (combined, boxes)
     if len(_BP_TOP_HUD_CACHE) > 24:
         _BP_TOP_HUD_CACHE.clear()
@@ -580,7 +581,9 @@ def render_launch_button_pill(
     draw.text((txt_x, cy - 1), txt, font=font_btn, fill=txt_col, anchor="lm")
     _draw_button_glyph(draw, "a", family_norm, txt_x + tw + gap + icon_r, cy, icon_r)
 
-    downscaled = canvas.resize((width, height), Image.Resampling.LANCZOS)
+    downscaled = prevent_transparency_color_collision(canvas.resize((width, height), Image.Resampling.LANCZOS))
+    if len(_LAUNCH_PILL_CACHE) > 24:
+        _LAUNCH_PILL_CACHE.clear()
     _LAUNCH_PILL_CACHE[key] = downscaled
     return downscaled
 

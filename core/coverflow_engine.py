@@ -210,9 +210,9 @@ def create_jewel_case(
 
 def prepare_flat_cover(base_album: Image.Image, size: int, has_reflection: bool = True) -> Tuple[Image.Image, int, int]:
     """Genera la carátula plana (con reflejo inferior opcional) lista para proyecciones."""
-    scaled = prevent_transparency_color_collision(base_album.resize((size, size), Image.Resampling.LANCZOS))
+    scaled = base_album.resize((size, size), Image.Resampling.LANCZOS)
     if not has_reflection:
-        return scaled, size, size
+        return prevent_transparency_color_collision(scaled), size, size
 
     refl_h = int(size * 0.44)
     refl = scaled.transpose(Image.Transpose.FLIP_TOP_BOTTOM).resize((size, refl_h), Image.Resampling.BILINEAR)
@@ -222,7 +222,7 @@ def prepare_flat_cover(base_album: Image.Image, size: int, has_reflection: bool 
         for y in range(refl_h)
     ])
     mask_1px = Image.frombytes('L', (1, refl_h), mask_bytes)
-    refl_mask = mask_1px.resize((size, refl_h), Image.Resampling.BILINEAR)
+    refl_mask = mask_1px.resize((size, refl_h), Image.Resampling.NEAREST)
     refl.putalpha(refl_mask)
     
     tot_h = size + refl_h

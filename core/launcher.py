@@ -330,6 +330,13 @@ def spawn_detached_sentinel(pids: list, exe_base: str, target_monitor_rect: tupl
         if game_path:
             cmd.extend(["--game-path", game_path])
 
+        try:
+            import core.power_service as _ps
+            if getattr(_ps, "_PREVIOUS_SESSION_MODE", None):
+                cmd.extend(["--restore-power-mode", str(_ps._PREVIOUS_SESSION_MODE)])
+        except Exception:
+            pass
+
         DETACHED_PROCESS = 0x00000008
         CREATE_NEW_PROCESS_GROUP = 0x00000200
         flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
@@ -372,6 +379,8 @@ def launch_game_thread(game_path: str, target_monitor_index: int, high_priority:
             if not os.path.isfile(actual_exe) and actual_exe != game_path:
                 logger.warning(f"El emulador '{actual_exe}' no existe en disco. Usando archivo directo.")
                 actual_exe = game_path
+            if actual_exe == game_path and not game_path.lower().endswith((".exe", ".bat", ".cmd", ".lnk")):
+                raise RuntimeError(f"No hay un emulador configurado o válido para ejecutar la ROM:\n{os.path.basename(game_path)}")
 
         monitors = get_monitors()
         target_monitor = None

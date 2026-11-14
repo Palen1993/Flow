@@ -61,6 +61,11 @@ def get_game_thumbnail_ctk(game: Dict[str, Any], size: int = 48) -> ctk.CTkImage
         thumb_img = ctk.CTkImage(light_image=proc, dark_image=proc, size=(size, size))
 
     if current_tk is not None:
+        if len(_GLOBAL_THUMB_CACHE) >= 250:
+            try:
+                _GLOBAL_THUMB_CACHE.pop(next(iter(_GLOBAL_THUMB_CACHE)))
+            except Exception:
+                _GLOBAL_THUMB_CACHE.clear()
         _GLOBAL_THUMB_CACHE[cache_key] = thumb_img
     return thumb_img
 
@@ -68,8 +73,9 @@ def invalidate_thumb_cache(cover_path: Optional[str] = None):
     """Invalida la caché de miniaturas de carátula y estuches 3D en disco cuando se cambia el arte de un juego."""
     if cover_path:
         invalidate_jewel_case_cache(cover_path)
+        norm_target = os.path.normcase(cover_path)
         for k in list(_GLOBAL_THUMB_CACHE.keys()):
-            if cover_path in k:
+            if cover_path in k or norm_target in os.path.normcase(k):
                 _GLOBAL_THUMB_CACHE.pop(k, None)
     else:
         _GLOBAL_THUMB_CACHE.clear()
@@ -77,7 +83,7 @@ def invalidate_thumb_cache(cover_path: Optional[str] = None):
 
 class SelectGameToEditDialog(BaseGlassDialog):
     """Panel de gestión rápida, filtrado y edición masiva / individual de juegos altamente optimizado para bibliotecas masivas (100+ juegos)."""
-    CHUNK_SIZE = 20
+    CHUNK_SIZE = 12
 
     def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0, on_library_changed=None):
         super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=26)
@@ -160,6 +166,10 @@ class SelectGameToEditDialog(BaseGlassDialog):
         try:
             if hasattr(self.master, "save_games"):
                 self.master.save_games()
+            if hasattr(self.master, "update_ui_details") and getattr(self.master, "games", None):
+                sel = getattr(self.master, "selected_index", 0)
+                if 0 <= sel < len(self.master.games):
+                    self.master.update_ui_details(sel)
         except Exception as e:
             print(f"Error guardando cambios globales: {e}")
 
@@ -390,6 +400,8 @@ class SelectGameToEditDialog(BaseGlassDialog):
     def _notify_stage_sync(self):
         if callable(getattr(self, "on_library_changed", None)):
             self.on_library_changed(self.games)
+        elif hasattr(self.master, "refresh_shelves"):
+            self.master.refresh_shelves(keep_selection=True)
         elif hasattr(self.master, "cover_stage") and self.master.cover_stage:
             self.master.cover_stage.set_games(self.games, target_index=getattr(self.master, "selected_index", 0))
 
@@ -441,8 +453,9 @@ class SelectGameToEditDialog(BaseGlassDialog):
             )
             lbl_empty.pack(pady=40)
         else:
-            # 1. Renderizado síncrono del bloque inicial visible (20 tarjetas, apertura inmediata <400ms)
-            initial_count = min(len(matches), self.CHUNK_SIZE)
+            # 1. Renderizado síncrono del bloque inicial visible (cubre también la selección inicial)
+            needed = max(self.CHUNK_SIZE, self._selected_row_idx + 1)
+            initial_count = min(len(matches), needed)
             for i in range(initial_count):
                 orig_idx, game = matches[i]
                 self._create_game_card(orig_idx, game)
@@ -717,7 +730,10 @@ class SelectGameToEditDialog(BaseGlassDialog):
         try:
             if not self.winfo_exists():
                 return
-            current_games = getattr(self.master, "games", [])
+            lib = getattr(self.master, "library", None)
+            current_games = getattr(lib, "games", None)
+            if current_games is None:
+                current_games = getattr(self.master, "games", [])
             if not current_games:
                 self.destroy()
                 return

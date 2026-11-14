@@ -178,12 +178,17 @@ class App(ctk.CTk):
             if lg is game:
                 return idx
         gp = game.get("path")
+        norm_gp = os.path.normcase(os.path.abspath(gp)) if gp else ""
+        if gp:
+            for idx, lg in enumerate(self.library.games):
+                lp = lg.get("path")
+                if lp == gp or (lp and os.path.normcase(os.path.abspath(lp)) == norm_gp):
+                    return idx
         gn = (game.get("name") or "").strip().lower()
-        for idx, lg in enumerate(self.library.games):
-            if gp and lg.get("path") == gp:
-                return idx
-            if gn and (lg.get("name") or "").strip().lower() == gn:
-                return idx
+        if gn:
+            for idx, lg in enumerate(self.library.games):
+                if (lg.get("name") or "").strip().lower() == gn:
+                    return idx
         return 0
 
     def refresh_shelves(self, keep_selection: bool = True, transition_direction: int = 0):
@@ -202,6 +207,13 @@ class App(ctk.CTk):
                 "count": len(all_sorted),
                 "games": all_sorted
             }]
+
+        prev_filter_id = getattr(self, "current_filter_id", None)
+        if prev_filter_id:
+            for s_idx, sh in enumerate(self.active_shelves):
+                if sh.get("id") == prev_filter_id:
+                    self.current_shelf_idx = s_idx
+                    break
 
         if self.current_shelf_idx >= len(self.active_shelves):
             self.current_shelf_idx = 0
@@ -296,9 +308,11 @@ class App(ctk.CTk):
             if shelf["id"] == filter_id:
                 direction = 1 if idx > old_idx else (-1 if idx < old_idx else 0)
                 self.current_shelf_idx = idx
+                self.current_filter_id = filter_id
                 self.refresh_shelves(keep_selection=keep_selection, transition_direction=direction)
                 return
         # Si no está en las estanterías activas, recargar estanterías
+        self.current_filter_id = filter_id
         self.refresh_shelves(keep_selection=keep_selection)
 
     def open_collections_dialog(self):
@@ -437,7 +451,7 @@ class App(ctk.CTk):
 
         self._cloud_sync_dialog = CloudSyncDialog(
             parent=self,
-            games=self.games,
+            games=self.library.games,
             on_sync_completed=_on_sync_done
         )
 
@@ -609,7 +623,8 @@ class App(ctk.CTk):
             self,
             on_selection_changed=self.on_cover_selected,
             on_launch_requested=self.launch_current_game,
-            on_hud_action=self._on_canvas_hud_action
+            on_hud_action=self._on_canvas_hud_action,
+            on_shelf_step=self.cycle_shelf
         )
         self.cover_stage.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
 
@@ -808,15 +823,17 @@ class App(ctk.CTk):
             return
 
         game = self.games[self.selected_index]
-        try:
-            from core.stats_service import increment_game_play_count
-            from core.config import increment_game_launch_count_atomic
-            from core.power_service import apply_game_performance_profile
-            increment_game_play_count(game)
-            increment_game_launch_count_atomic(game.get("path") or game.get("name", ""))
-            apply_game_performance_profile(game)
-        except Exception:
-            pass
+        game_path = game.get("path", "")
+        if game_path and os.path.exists(game_path):
+            try:
+                from core.stats_service import increment_game_play_count
+                from core.config import increment_game_launch_count_atomic
+                from core.power_service import apply_game_performance_profile
+                increment_game_play_count(game)
+                increment_game_launch_count_atomic(game_path or game.get("name", ""))
+                apply_game_performance_profile(game)
+            except Exception:
+                pass
 
         self.btn_launch.configure(state="disabled")
         self.set_status(f"Iniciando {game['name']}...")
@@ -854,11 +871,16 @@ class App(ctk.CTk):
                     self.set_status(payload)
                 elif action == "launch_success":
                     if payload:
-                        self.after(1200, self.close_application)
+                        self.after(1200, lambda: self.close_application(from_game_launch=True))
                     elif hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
                         self.btn_launch.configure(state="normal")
                 elif action == "launch_error":
                     err_msg, close_on_launch = payload
+                    try:
+                        from core.power_service import restore_previous_performance_profile
+                        restore_previous_performance_profile()
+                    except Exception:
+                        pass
                     if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
                         self.btn_launch.configure(state="normal")
                     if close_on_launch:
@@ -876,6 +898,11 @@ class App(ctk.CTk):
             self.after(50, self._poll_action_queue)
 
     def _handle_launch_error(self, err_msg: str):
+        try:
+            from core.power_service import restore_previous_performance_profile
+            restore_previous_performance_profile()
+        except Exception:
+            pass
         self.execution_service.reset()
         if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
             self.btn_launch.configure(state="normal")
@@ -1155,7 +1182,7 @@ class App(ctk.CTk):
             except Exception:
                 pass
             return
-        self._external_import_dialog = ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.games)
+        self._external_import_dialog = ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.library.games)
 
     def scan_folder_for_games(self):
         folder = browse_folder(parent=self, title="Seleccionar Carpeta de Juegos")
@@ -1167,7 +1194,7 @@ class App(ctk.CTk):
 
         existing_paths = {
             os.path.normcase(os.path.abspath(g["path"]))
-            for g in self.games if g.get("path")
+            for g in self.library.games if g.get("path")
         }
 
         scan_q = queue.Queue()
@@ -1207,33 +1234,44 @@ class App(ctk.CTk):
         self.after(50, _poll_scan)
         threading.Thread(target=_scan_worker, daemon=True).start()
 
+    def _focus_game_in_shelves(self, target_game: Optional[Dict[str, Any]]) -> None:
+        """Asegura que el juego dado sea visible y quede seleccionado en el carrusel activo."""
+        if not target_game:
+            return
+        t_path = target_game.get("path")
+        t_name = (target_game.get("name") or "").strip().lower()
+
+        def _find_in(games_list: List[Dict[str, Any]]) -> Optional[int]:
+            for idx, g in enumerate(games_list):
+                if (t_path and g.get("path") == t_path) or (t_name and (g.get("name") or "").strip().lower() == t_name):
+                    return idx
+            return None
+
+        found_idx = _find_in(self.games)
+        if found_idx is None and getattr(self, "active_shelves", None):
+            for s_idx, shelf in enumerate(self.active_shelves):
+                if shelf.get("id") == "all":
+                    self.current_shelf_idx = s_idx
+                    self.current_filter_id = "all"
+                    self.refresh_shelves(keep_selection=False)
+                    found_idx = _find_in(self.games)
+                    break
+
+        if found_idx is not None:
+            self.selected_index = found_idx
+            if getattr(self, "current_filter_id", None):
+                self._shelf_selected_indices[self.current_filter_id] = found_idx
+            if hasattr(self, "cover_stage") and self.cover_stage:
+                self.cover_stage.set_games(self.games, target_index=found_idx)
+            self.update_ui_details(found_idx)
+
     def on_games_imported(self, new_games: List[Dict[str, Any]]):
         if not new_games:
             return
-        initial_count = len(self.games)
-        existing_map = {
-            os.path.normcase(os.path.abspath(g["path"])): idx
-            for idx, g in enumerate(self.games) if g.get("path")
-        }
-        added_count = 0
-        updated_count = 0
-        for ng in new_games:
-            norm_p = os.path.normcase(os.path.abspath(ng.get("path", ""))) if ng.get("path") else ""
-            if norm_p and norm_p in existing_map:
-                idx = existing_map[norm_p]
-                self.games[idx].update({k: v for k, v in ng.items() if v is not None and k != "already_added"})
-                updated_count += 1
-            else:
-                self.games.append(ng)
-                if norm_p:
-                    existing_map[norm_p] = len(self.games) - 1
-                added_count += 1
-
-        self.save_games()
+        added_count, updated_count, first_game = self.library.import_games(new_games)
         invalidate_thumb_cache()
-        target_idx = initial_count if initial_count < len(self.games) else 0
-        self.cover_stage.set_games(self.games, target_index=target_idx)
-        self.update_ui_details(target_idx)
+        self.refresh_shelves(keep_selection=False)
+        self._focus_game_in_shelves(first_game)
         msg_parts = []
         if added_count > 0:
             msg_parts.append(f"{added_count} juego(s) añadido(s)")
@@ -1306,7 +1344,7 @@ class App(ctk.CTk):
             except Exception:
                 pass
             return
-        if not self.games:
+        if not self.library.games:
             show_info(
                 "SteamGridDB",
                 "No hay juegos en la biblioteca para actualizar.\nUsa 'Importar Juegos...' primero.",
@@ -1317,13 +1355,12 @@ class App(ctk.CTk):
         def _on_batch_complete():
             invalidate_thumb_cache()
             self.save_games()
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
-            self.update_ui_details(self.selected_index)
-            self.set_status(f"Arte actualizado con éxito desde SteamGridDB ({len(self.games)} juegos).")
+            self.refresh_shelves(keep_selection=True)
+            self.set_status(f"Arte actualizado con éxito desde SteamGridDB ({len(self.library.games)} juegos).")
 
         self._batch_sgdb_dialog = BatchSteamGridDBDialog(
             self,
-            self.games,
+            self.library.games,
             on_complete_callback=_on_batch_complete
         )
 
@@ -1398,7 +1435,7 @@ class App(ctk.CTk):
         if not self.library.games:
             show_info(
                 "Editar Juego",
-                "No hay juegos registrados en la biblioteca.\nUsa '＋ Agregar Juego' o '📁 Escanear Carpeta' para añadir juegos primero.",
+                "No hay juegos registrados en la biblioteca.\nUsa '🚀 Importar Juegos...' en el menú ⚙ para añadir o escanear juegos primero.",
                 parent=self
             )
             return
@@ -1466,6 +1503,8 @@ class App(ctk.CTk):
         )
         invalidate_thumb_cache()
         self.refresh_shelves(keep_selection=False)
+        added_game = self.library.games[new_index] if 0 <= new_index < len(self.library.games) else None
+        self._focus_game_in_shelves(added_game)
         self.set_status(f"Juego '{name}' añadido con éxito.")
 
     def on_specific_game_edited(
@@ -1523,12 +1562,13 @@ class App(ctk.CTk):
         self.exit_dialog = ConfirmExitDialog(self, on_confirm=self.close_application)
         bring_to_front_absolute(self.exit_dialog)
 
-    def close_application(self):
-        try:
-            from core.power_service import restore_previous_performance_profile
-            restore_previous_performance_profile()
-        except Exception:
-            pass
+    def close_application(self, from_game_launch: bool = False):
+        if not from_game_launch:
+            try:
+                from core.power_service import restore_previous_performance_profile
+                restore_previous_performance_profile()
+            except Exception:
+                pass
         try:
             ensure_watcher_running()
         except Exception:

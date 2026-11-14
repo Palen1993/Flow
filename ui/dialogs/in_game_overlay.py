@@ -61,15 +61,20 @@ class InGameOverlayDialog(BaseGlassDialog):
         self._prev_gamepad_state = {}
         self._last_gamepad_action_time = 0.0
         self._is_active = True
+        self._clock_job = None
+        self._battery_job = None
+        self._gamepad_job = None
+        self._cached_device_badge: Optional[str] = None
 
         self.create_widgets()
         self._bind_events()
         self._highlight_selected_action()
 
-        # Iniciar bucles periódicos de reloj, batería y mando
+        # Iniciar bucles periódicos de reloj, batería y mando (solo si el padre no tiene ya gamepad_service activo)
         self._update_clock()
         self._update_battery()
-        self._poll_gamepad_loop()
+        if not (parent is not None and hasattr(parent, "gamepad_service")):
+            self._poll_gamepad_loop()
 
     _center_window = BaseGlassDialog.center_window
 
@@ -431,7 +436,7 @@ class InGameOverlayDialog(BaseGlassDialog):
         dia_nom = dias[now.weekday()]
         mes_nom = meses[now.month - 1]
         self.lbl_clock_date.configure(text=f"{dia_nom}, {now.day} de {mes_nom}.")
-        self.after(1000, self._update_clock)
+        self._clock_job = self.after(1000, self._update_clock)
 
     def _update_battery(self):
         if not self._is_active or not self.winfo_exists():
@@ -444,7 +449,9 @@ class InGameOverlayDialog(BaseGlassDialog):
             if sys_bat.get("has_battery"):
                 pct = sys_bat.get("percent", 100)
                 icon = "⚡" if sys_bat.get("charging") else sys_bat.get("icon", "🔋")
-                dev_badge = get_device_model_info().get("badge", "Consola")
+                if not getattr(self, "_cached_device_badge", None):
+                    self._cached_device_badge = get_device_model_info().get("badge", "Consola")
+                dev_badge = self._cached_device_badge
                 txt = f"{icon} {pct}%"
                 if bat.get("connected"):
                     sub = f"{dev_badge} • Mando {bat.get('percent', 100)}%"
@@ -467,7 +474,7 @@ class InGameOverlayDialog(BaseGlassDialog):
             self.lbl_bat_name.configure(text=sub)
         except Exception:
             pass
-        self.after(2000, self._update_battery)
+        self._battery_job = self.after(2000, self._update_battery)
 
     def set_overlay_power_mode(self, mode: str):
         """Cambia el perfil de energía del sistema desde el overlay en caliente."""
@@ -550,10 +557,10 @@ class InGameOverlayDialog(BaseGlassDialog):
     def _highlight_selected_action(self):
         for i, btn in enumerate(self._action_buttons):
             if i == self._selected_action_idx:
-                apply_gamepad_focus(btn, is_focused=True, default_border=COLOR_BORDER_CARD)
+                apply_gamepad_focus(btn, is_focused=True, role="secondary")
                 btn.configure(border_color=COLOR_CYAN_ACCENT, border_width=2)
             else:
-                apply_gamepad_focus(btn, is_focused=False, default_border=COLOR_BORDER_CARD)
+                apply_gamepad_focus(btn, is_focused=False, role="secondary")
                 btn.configure(border_color=COLOR_BORDER_CARD, border_width=1.5)
 
     def _activate_selected_action(self):
@@ -629,39 +636,61 @@ class InGameOverlayDialog(BaseGlassDialog):
             self.handle_gamepad_input(inputs, prev)
 
         self._prev_gamepad_state = inputs
-        self.after(16, self._poll_gamepad_loop)
+        self._gamepad_job = self.after(16, self._poll_gamepad_loop)
 
-    def handle_gamepad_input(self, inputs: Dict[str, Any], prev: Optional[Dict[str, Any]] = None) -> None:
+    def on_cancel(self):
+        self.resume_game()
+
+    def destroy(self):
+        self._is_active = False
+        for job_attr in ("_clock_job", "_battery_job", "_gamepad_job"):
+            job_id = getattr(self, job_attr, None)
+            if job_id is not None:
+                try:
+                    self.after_cancel(job_id)
+                except Exception:
+                    pass
+                setattr(self, job_attr, None)
+        super().destroy()
+
+    def handle_gamepad_input(self, inputs: Dict[str, Any], prev: Optional[Dict[str, Any]] = None) -> bool:
         """Procesa una pulsación de mando de forma determinista (usado por el bucle y tests)."""
         prev = prev or {}
 
         # Botón B o Guía: Reanudar partida y cerrar overlay
         if (inputs.get("b", False) and not prev.get("b", False)) or (inputs.get("guide", False) and not prev.get("guide", False)):
             self.resume_game()
-            return
+            return True
 
         # Botón X: Ciclar perfil de rendimiento en caliente (Eco -> Equilibrado -> Turbo)
         if inputs.get("x", False) and not prev.get("x", False):
             self.cycle_overlay_power_mode()
-            return
+            return True
 
         # Botón Y: Alternar silencio
         if inputs.get("y", False) and not prev.get("y", False):
             self.toggle_volume_mute()
-            return
+            return True
 
         # Cruceta Arriba / Abajo: Navegación de opciones
         if inputs.get("up", False) and not prev.get("up", False):
             self._navigate_actions(-1)
+            return True
         elif inputs.get("down", False) and not prev.get("down", False):
             self._navigate_actions(1)
+            return True
 
         # Cruceta Izquierda / Derecha o LB / RB: Control de volumen
         if (inputs.get("left", False) and not prev.get("left", False)) or (inputs.get("lb", False) and not prev.get("lb", False)):
             self.volume_down()
+            return True
         elif (inputs.get("right", False) and not prev.get("right", False)) or (inputs.get("rb", False) and not prev.get("rb", False)):
             self.volume_up()
+            return True
 
         # Botón A: Activar opción seleccionada
         if inputs.get("a", False) and not prev.get("a", False):
             self._activate_selected_action()
+            return True
+
+        return False

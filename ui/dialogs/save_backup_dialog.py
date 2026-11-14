@@ -41,7 +41,7 @@ from ui.theme import (
     COLOR_STATUS_SUCCESS, COLOR_STATUS_DANGER,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MUTED,
     COLOR_TEXT_MUTED_LIGHT, COLOR_TEXT_DIM,
-    font_button, font_body, font_title
+    font_button, font_body, font_title, scroll_to_widget
 )
 
 
@@ -412,6 +412,8 @@ class SaveBackupDialog(BaseGlassDialog):
         for i, c in enumerate(self._backup_cards):
             if i == self.selected_backup_idx:
                 c.configure(border_color=COLOR_CYAN_ACCENT, border_width=1.5)
+                if hasattr(self, "scroll_frame"):
+                    scroll_to_widget(self.scroll_frame, c)
             else:
                 c.configure(border_color=COLOR_BORDER_CARD, border_width=1)
 
@@ -515,10 +517,18 @@ class SaveBackupDialog(BaseGlassDialog):
         if folder and os.path.isdir(folder):
             self.current_save_path = folder
             self.game["save_path"] = folder
-            parent = self.parent
-            if parent and hasattr(parent, "save_games"):
+            saved_ok = False
+            for candidate in (self.parent, getattr(self.parent, "parent", None), self.winfo_toplevel()):
+                if candidate and hasattr(candidate, "save_games"):
+                    try:
+                        candidate.save_games()
+                        saved_ok = True
+                        break
+                    except Exception:
+                        pass
+            if not saved_ok and self.parent and hasattr(self.parent, "_save_game_changes"):
                 try:
-                    parent.save_games()
+                    self.parent._save_game_changes()
                 except Exception:
                     pass
             if self.on_game_updated:
@@ -543,7 +553,18 @@ class SaveBackupDialog(BaseGlassDialog):
     def _open_cloud_sync(self):
         feedback_click()
         from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
-        all_games = getattr(self.parent, "games", [self.game]) if self.parent else [self.game]
+        all_games = None
+        for candidate in (self.parent, getattr(self.parent, "parent", None), self.winfo_toplevel()):
+            if candidate is None:
+                continue
+            lib = getattr(candidate, "library", None)
+            if lib is not None and getattr(lib, "games", None):
+                all_games = lib.games
+                break
+            if getattr(candidate, "games", None):
+                all_games = candidate.games
+        if not all_games:
+            all_games = [self.game]
         CloudSyncDialog(parent=self, games=all_games, on_sync_completed=self._refresh_backups)
 
     # =========================================================================

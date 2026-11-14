@@ -229,5 +229,96 @@ class TestMultiShelfNavigationAppIntegration(unittest.TestCase):
         self.assertEqual(app_mock._shelf_selected_indices["shelf_1"], 2)
 
 
+class TestImportGamesPersistence(unittest.TestCase):
+    """Pruebas de regresión para garantizar que Importar Juegos persiste en library.games y games.json."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.games_file = os.path.join(self.tmp_dir, "games.json")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def test_library_import_games_persists_across_reload_and_deduplicates(self):
+        from unittest.mock import patch
+        import core.config as cfg_mod
+        from core.library_service import GameLibraryService
+
+        with patch.object(cfg_mod, "CONFIG_FILE", self.games_file):
+            lib = GameLibraryService()
+            lib.games = [{"name": "Existing Game", "path": r"C:\Games\existing.exe", "favorite": True}]
+            lib.save()
+
+            added, updated, first = lib.import_games([
+                {"name": "Imported Hero", "path": r"C:\Games\imported.exe", "platform": "Steam", "already_added": False},
+                {"name": "Existing Game Renamed", "path": r"C:\Games\existing.exe", "already_added": True},
+            ])
+            self.assertEqual(added, 1)
+            self.assertEqual(updated, 1)
+            self.assertIsNotNone(first)
+            self.assertEqual(len(lib.games), 2)
+            self.assertNotIn("already_added", lib.games[1])
+
+            # Simular cierre y reapertura de la aplicación cargando desde disco
+            reloaded = GameLibraryService()
+            reloaded.load()
+            names = [g["name"] for g in reloaded.games]
+            self.assertIn("Imported Hero", names)
+            self.assertIn("Existing Game Renamed", names)
+            self.assertEqual(len(reloaded.games), 2)
+
+    def test_app_on_games_imported_syncs_library_and_switches_from_filtered_shelf(self):
+        from unittest.mock import patch
+        import core.config as cfg_mod
+        from core.library_service import GameLibraryService
+        from app import App
+
+        with patch.object(cfg_mod, "CONFIG_FILE", self.games_file):
+            lib = GameLibraryService()
+            lib.games = [{"name": "Fav Game", "path": r"C:\Games\fav.exe", "favorite": True}]
+            lib.save()
+
+            app_mock = MagicMock()
+            app_mock.library = lib
+            app_mock.current_shelf_idx = 0
+            app_mock._shelf_selected_indices = {}
+            app_mock.selected_index = 0
+            app_mock.cover_stage = MagicMock()
+            app_mock.refresh_shelves = App.refresh_shelves.__get__(app_mock, App)
+            app_mock._focus_game_in_shelves = App._focus_game_in_shelves.__get__(app_mock, App)
+            app_mock.on_games_imported = App.on_games_imported.__get__(app_mock, App)
+
+            # Simular usuario situado en una estantería distinta de 'all' (copia filtrada, no library.games)
+            app_mock.games = [lib.games[0]]
+            self.assertIsNot(app_mock.games, app_mock.library.games)
+
+            with patch("core.collections_service.get_active_shelves") as mock_shelves:
+                def build_shelves(all_games):
+                    favs = [g for g in all_games if g.get("favorite")]
+                    return [
+                        {"id": "favorites", "name": "Favoritos", "icon": "★", "enabled": True, "count": len(favs), "games": favs},
+                        {"id": "all", "name": "Todos los Juegos", "icon": "🎮", "enabled": True, "count": len(all_games), "games": list(all_games)},
+                    ]
+                mock_shelves.side_effect = build_shelves
+
+                app_mock.on_games_imported([
+                    {"name": "New Imported Game", "path": r"C:\Games\new_imp.exe", "platform": "Steam"}
+                ])
+
+            # 1. Debe estar en library.games (lo que lee Administrar Todos los Juegos)
+            self.assertEqual(len(app_mock.library.games), 2)
+            self.assertEqual(app_mock.library.games[1]["name"], "New Imported Game")
+
+            # 2. Debe haber persistido en games.json al disco
+            reloaded = GameLibraryService()
+            reloaded.load()
+            self.assertEqual(len(reloaded.games), 2)
+            self.assertEqual(reloaded.games[1]["name"], "New Imported Game")
+
+            # 3. Como no era favorito, debe cambiar al carrusel 'all' y seleccionarlo
+            self.assertEqual(app_mock.current_filter_id, "all")
+            self.assertEqual(app_mock.games[app_mock.selected_index]["name"], "New Imported Game")
+
+
 if __name__ == "__main__":
     unittest.main()

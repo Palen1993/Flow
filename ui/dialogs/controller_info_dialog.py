@@ -158,6 +158,8 @@ class ControllerInfoDialog(BaseGlassDialog):
 
     # ------------------------------------------------------------------
     def _refresh_info(self):
+        if not self.winfo_exists():
+            return
         try:
             import gamepad_manager as gm
             pads = gm.get_all_gamepads_info()
@@ -178,6 +180,18 @@ class ControllerInfoDialog(BaseGlassDialog):
             self._refresh_job = None
 
     # ------------------------------------------------------------------
+    def on_cancel(self):
+        self.close()
+
+    def destroy(self):
+        if getattr(self, "_refresh_job", None):
+            try:
+                self.after_cancel(self._refresh_job)
+            except Exception:
+                pass
+            self._refresh_job = None
+        super().destroy()
+
     def close(self):
         if self._refresh_job:
             try:
