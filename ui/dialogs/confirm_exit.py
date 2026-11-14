@@ -17,7 +17,7 @@ class ConfirmExitDialog(BaseGlassDialog):
         self.kiosk_active = is_kiosk_shell_active()
         dialog_w = 490 if self.kiosk_active else 420
         dialog_h = 240 if self.kiosk_active else 220
-        super().__init__(parent, title="¿Cerrar Lanzador?", width=dialog_w, height=dialog_h, corner_radius=22)
+        super().__init__(parent, title="¿Cerrar Lanzador?", width=dialog_w, height=dialog_h, corner_radius=16)
         self.on_confirm = on_confirm
         self.family = getattr(parent, "_current_controller_family", "xbox")
         self._focused_btn = 2 if self.kiosk_active else 1
@@ -30,20 +30,27 @@ class ConfirmExitDialog(BaseGlassDialog):
         sc = getattr(self, "scale_factor", 1.0)
         self.card = ctk.CTkFrame(
             self, width=self.dialog_width - int(24 * sc), height=self.dialog_height - int(24 * sc), corner_radius=self.corner_radius,
-            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1
         )
         self.card.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.lbl_alert_icon = ctk.CTkLabel(
+            self.card, text="⚠",
+            font=font_button(26),
+            text_color=COLOR_TEXT_WHITE
+        )
+        self.lbl_alert_icon.place(relx=0.5, rely=0.22, anchor="center")
         
-        title_text = "Modo Kiosco Activo: ¿Deseas salir?" if self.kiosk_active else "¿Cerrar el lanzador?"
+        title_text = "Modo Kiosco Activo: ¿Deseas salir?" if self.kiosk_active else "¿Deseas cerrar el lanzador?"
         self.lbl_title = ctk.CTkLabel(
             self.card, text=title_text,
-            font=font_button(16),
-            text_color=COLOR_TEXT_MAIN
+            font=font_button(15),
+            text_color=COLOR_TEXT_WHITE
         )
-        self.lbl_title.place(relx=0.5, rely=0.30 if self.kiosk_active else 0.34, anchor="center")
+        self.lbl_title.place(relx=0.5, rely=0.44, anchor="center")
         
         btn_frame = ctk.CTkFrame(self.card, fg_color="transparent")
-        btn_frame.place(relx=0.5, rely=0.68, anchor="center")
+        btn_frame.place(relx=0.5, rely=0.73, anchor="center")
 
         btn_w = int(120 * sc) if self.kiosk_active else int(138 * sc)
         btn_h = int(38 * sc)

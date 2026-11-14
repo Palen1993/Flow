@@ -11,53 +11,53 @@ import customtkinter as ctk
 COLOR_TRANS_KEY = "#000001"
 
 # -------------------------------------------------------------
-# Paleta de Fondos iOS Liquid Glass (Carbón mate y vidrio ahumado)
+# Paleta de Fondos Apple Glassmorphism Oscuro (rgba(20, 20, 30, 0.65) -> grafito translúcido)
 # -------------------------------------------------------------
-COLOR_BG_DARK = "#0f1218"           # Fondo principal profundo y sedoso
-COLOR_BG_CANVAS = "#0f1218"         # Fondo continuo del canvas Cover Flow
-COLOR_BG_CARD = "#141722"           # Tarjeta de vidrio ahumado principal / diálogos
-COLOR_BG_CARD_SECONDARY = "#181d28" # Superficie interna secundaria (cabeceras/listas)
-COLOR_BG_CARD_TERTIARY = "#1d2331"  # Superficie interna elevada
-COLOR_BG_DROPDOWN = "#131620"       # Fondo de menús flotantes estilo isla
-COLOR_BG_PILL = "#1a1f2b"           # Cápsula de control redondeada
-COLOR_BG_INPUT = "#181d28"          # Fondo de campos de entrada y cajas de texto
-COLOR_BG_INPUT_ACTIVE = "#242c3d"   # Fondo de campo con foco o cursor activo
-COLOR_BG_ITEM_HOVER = "#242a3a"     # Fondo de elemento resaltado o hover
+COLOR_BG_DARK = "#12121a"           # Fondo principal profundo estilo Apple Dark Glass
+COLOR_BG_CANVAS = "#12121a"         # Fondo continuo del canvas Cover Flow
+COLOR_BG_CARD = "#161620"           # Panel / modal de vidrio oscuro semitransparente
+COLOR_BG_CARD_SECONDARY = "#1c1c28" # Superficie interna secundaria (cabeceras/listas)
+COLOR_BG_CARD_TERTIARY = "#232332"  # Superficie interna elevada
+COLOR_BG_DROPDOWN = "#181822"       # Fondo de menús desplegables y contextuales
+COLOR_BG_PILL = "#1e1e2a"           # Cápsula de control redondeada (píldora)
+COLOR_BG_INPUT = "#1a1a26"          # Fondo de campos de entrada y cajas de texto
+COLOR_BG_INPUT_ACTIVE = "#262636"   # Fondo de campo con foco o cursor activo
+COLOR_BG_ITEM_HOVER = "#343444"     # Estado hover/activo translúcido aclarado en desplegables
 
 # -------------------------------------------------------------
-# Bordes y Biseles Especulares (Liquid Glass Highlights)
+# Bordes Sutiles 1px (rgba(255, 255, 255, 0.10 - 0.18)) y Biseles Especulares
 # -------------------------------------------------------------
-COLOR_GLASS_BORDER = "#2b3345"       # Borde sutil translúcido
-COLOR_GLASS_BORDER_LIGHT = "#3d4860" # Bisel superior iluminado
-COLOR_GLASS_FILL = "#171b26"         # Relleno de vidrio translúcido
-COLOR_GLASS_HOVER = "#242a3a"        # Hover luminoso suave sobre vidrio
-COLOR_BORDER_DEFAULT = "#222836"
-COLOR_BORDER_CARD = "#2a3142"
-COLOR_BORDER_INPUT = "#2b3345"
-COLOR_BORDER_INPUT_FOCUS = "#38bdf8"
-COLOR_BORDER_FOCUS = "#343f55"       # Borde de botón/elemento con foco de mando
+COLOR_GLASS_BORDER = "#363646"       # Borde muy sutil de 1px con baja opacidad
+COLOR_GLASS_BORDER_LIGHT = "#5e5e74" # Borde especular aclarado en estado hover/activo
+COLOR_GLASS_FILL = "#1a1a26"         # Relleno de vidrio translúcido
+COLOR_GLASS_HOVER = "#2c2c3c"        # Hover luminoso suave sobre vidrio
+COLOR_BORDER_DEFAULT = "#2c2c3a"
+COLOR_BORDER_CARD = "#343444"
+COLOR_BORDER_INPUT = "#363646"
+COLOR_BORDER_INPUT_FOCUS = "#0a84ff"
+COLOR_BORDER_FOCUS = "#6e6e84"       # Borde de botón/elemento con foco
 
 # -------------------------------------------------------------
-# Acentos Vibrantes iOS (Iconic Pills)
+# Acentos Vibrantes Apple (Iconic Pills)
 # -------------------------------------------------------------
-# Azul iOS Eléctrico (Pill Button "▶ Play", "Continue", "Allow")
+# Azul Eléctrico Vibrante (Botón Principal "▶ INICIAR JUEGO", "Aceptar")
 COLOR_IOS_BLUE = "#007aff"
-COLOR_IOS_BLUE_HOVER = "#0062cc"
-COLOR_IOS_BLUE_BORDER = "#3894ff"
+COLOR_IOS_BLUE_HOVER = "#2997ff"     # Azul eléctrico aclarado/iluminado en hover
+COLOR_IOS_BLUE_BORDER = "#4da3ff"
 COLOR_IOS_BLUE_GLOW = "#60a5fa"
 
-# Rojo Carmesí iOS (Pill Button "Delete", Cancelar, Batería Baja)
+# Rojo Carmesí iOS (Acción destructiva, Cancelar crítico, Batería Baja)
 COLOR_IOS_RED = "#ff2d55"
-COLOR_IOS_RED_HOVER = "#e02245"
+COLOR_IOS_RED_HOVER = "#ff476b"
 COLOR_IOS_RED_BORDER = "#ff6384"
 
-# Verde Interruptor iOS (Toggle / Online / Verified / Batería Llena)
+# Verde Interruptor Apple (Toggle activo / Botón A / Batería Llena)
 COLOR_IOS_GREEN = "#34c759"
-COLOR_IOS_GREEN_HOVER = "#2db14f"
+COLOR_IOS_GREEN_HOVER = "#30d158"
 
 # Ámbar / Naranja iOS (Avisos, Batería Media)
 COLOR_IOS_ORANGE = "#ff9500"
-COLOR_IOS_ORANGE_HOVER = "#e08500"
+COLOR_IOS_ORANGE_HOVER = "#ffa929"
 
 # Cian & Resplandor Suave
 COLOR_CYAN_ACCENT = "#38bdf8"
@@ -75,31 +75,31 @@ COLOR_STATUS_DANGER_HOVER = COLOR_IOS_RED_HOVER
 COLOR_STATUS_DANGER_BORDER = COLOR_IOS_RED_BORDER
 
 # -------------------------------------------------------------
-# Botones Primarios, Secundarios y de Peligro
+# Botones Principales, Secundarios y de Peligro (Forma de Píldora)
 # -------------------------------------------------------------
 COLOR_BTN_PRIMARY_BG = COLOR_IOS_BLUE
 COLOR_BTN_PRIMARY_HOVER = COLOR_IOS_BLUE_HOVER
 COLOR_BTN_PRIMARY_BORDER = COLOR_IOS_BLUE_BORDER
 
 COLOR_BTN_SECONDARY_BG = "#1c212d"
-COLOR_BTN_SECONDARY_HOVER = "#283040"
-COLOR_BTN_SECONDARY_BORDER = "#333c50"
+COLOR_BTN_SECONDARY_HOVER = "#32394a"  # Aclara ligeramente el fondo translúcido en hover
+COLOR_BTN_SECONDARY_BORDER = "#3d4456" # Borde sutil de 1px con baja opacidad
 
 COLOR_BTN_DANGER_BG = COLOR_IOS_RED
 COLOR_BTN_DANGER_HOVER = COLOR_IOS_RED_HOVER
 COLOR_BTN_DANGER_BORDER = COLOR_IOS_RED_BORDER
 
 # -------------------------------------------------------------
-# Tipografía y Textos iOS
+# Tipografía de Alto Contraste (Blanco Puro y Gris Claro Muting)
 # -------------------------------------------------------------
-COLOR_TEXT_WHITE = "#ffffff"        # Blanco puro
-COLOR_TEXT_MAIN = "#f8fafc"         # Texto principal 95% blanco
-COLOR_TEXT_BRIGHT = "#f1f5f9"       # Texto destacado
-COLOR_TEXT_LIGHT = "#e2e8f0"        # Texto secundario claro
-COLOR_TEXT_MUTED_LIGHT = "#cbd5e1"  # Texto secundario medio
-COLOR_TEXT_MUTED = "#94a3b8"        # Texto atenuado/descripciones
-COLOR_TEXT_DIM = "#64748b"          # Texto terciario/apagado
-COLOR_TEXT_EXTRA_DIM = "#475569"    # Placeholder o deshabilitado
+COLOR_TEXT_WHITE = "#ffffff"        # Blanco puro para textos principales y botones
+COLOR_TEXT_MAIN = "#ffffff"         # Blanco puro de alto contraste para títulos y etiquetas
+COLOR_TEXT_BRIGHT = "#f4f4f8"       # Texto destacado
+COLOR_TEXT_LIGHT = "#e4e4ee"        # Texto secundario claro
+COLOR_TEXT_MUTED_LIGHT = "#c8c8d6"  # Gris claro para descripciones y textos secundarios (muting)
+COLOR_TEXT_MUTED = "#9e9eb0"        # Texto atenuado secundario
+COLOR_TEXT_DIM = "#6e6e82"          # Texto terciario/apagado
+COLOR_TEXT_EXTRA_DIM = "#4c4c5e"    # Placeholder o deshabilitado
 COLOR_TEXT_CYAN = "#38bdf8"
 COLOR_TEXT_BLUE = "#007aff"
 COLOR_TEXT_GREEN = "#34c759"
@@ -361,26 +361,26 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
     elif role == "dropdown":
         if is_focused:
             widget.configure(
-                fg_color="#0369a1",
-                hover_color="#0284c7",
-                border_color="#00e5ff",
-                border_width=3,
+                fg_color="#32394a",
+                hover_color="#3d465a",
+                border_color="#ffffff",
+                border_width=2,
                 text_color="#ffffff"
             )
         else:
             widget.configure(
-                fg_color="#132338",
-                hover_color="#1a3556",
-                border_color="#2b4c7e",
+                fg_color=COLOR_BG_PILL,
+                hover_color=COLOR_GLASS_HOVER,
+                border_color=COLOR_GLASS_BORDER,
                 border_width=1,
-                text_color="#cbd5e1"
+                text_color=COLOR_TEXT_WHITE
             )
     elif role == "entry":
         if is_focused:
             widget.configure(
-                fg_color="#17253b",
-                border_color="#00e5ff",
-                border_width=3
+                fg_color=COLOR_BG_INPUT_ACTIVE,
+                border_color="#ffffff",
+                border_width=2
             )
             try:
                 widget.focus_set()
@@ -388,8 +388,8 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
                 pass
         else:
             widget.configure(
-                fg_color=COLOR_BG_DARK,
-                border_color="#2b3345",
+                fg_color=COLOR_BG_INPUT,
+                border_color=COLOR_GLASS_BORDER,
                 border_width=1
             )
             try:
@@ -401,36 +401,38 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
     elif role == "check":
         if is_focused:
             widget.configure(
-                text_color="#00e5ff",
+                text_color=COLOR_TEXT_WHITE,
                 border_color="#ffffff"
             )
         else:
             widget.configure(
                 text_color=COLOR_TEXT_MAIN,
-                border_color="#3a455c"
+                border_color=COLOR_GLASS_BORDER_LIGHT
             )
     elif role == "switch":
         if is_focused:
             widget.configure(
-                text_color="#00e5ff",
+                text_color=COLOR_TEXT_WHITE,
+                progress_color=COLOR_IOS_GREEN,
                 button_color="#ffffff"
             )
         else:
             widget.configure(
                 text_color=COLOR_TEXT_MAIN,
-                button_color="#cbd5e1"
+                progress_color=COLOR_IOS_GREEN,
+                button_color="#e4e4ee"
             )
     elif role == "card":
         if is_focused:
             widget.configure(
-                fg_color="#1e3a5f",
-                border_color="#00e5ff",
-                border_width=3
+                fg_color="#2c2c3c",
+                border_color="#ffffff",
+                border_width=2
             )
         else:
             widget.configure(
                 fg_color=COLOR_BG_CARD_SECONDARY,
-                border_color=COLOR_BORDER_CARD,
+                border_color=COLOR_GLASS_BORDER,
                 border_width=1
             )
 

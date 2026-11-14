@@ -4,10 +4,10 @@ import tkinter as tk
 import customtkinter as ctk
 
 from ui.theme import (
-    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_DROPDOWN, COLOR_BG_ITEM_HOVER,
-    COLOR_GLASS_BORDER,
+    COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_DROPDOWN, COLOR_BG_PILL, COLOR_BG_ITEM_HOVER,
+    COLOR_GLASS_BORDER, COLOR_GLASS_BORDER_LIGHT, COLOR_GLASS_HOVER,
     COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
-    COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MAIN,
+    COLOR_TEXT_WHITE, COLOR_TEXT_BRIGHT, COLOR_TEXT_MAIN, COLOR_TEXT_MUTED_LIGHT,
     font_button, font_body, scroll_to_widget, apply_rounded_window_region, hide_from_taskbar, bring_to_front_absolute
 )
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
@@ -90,9 +90,9 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_DROPDOWN,
-            border_color=COLOR_CYAN_ACCENT,
-            border_width=1.8,
-            corner_radius=14
+            border_color=COLOR_GLASS_BORDER_LIGHT,
+            border_width=1,
+            corner_radius=16
         )
         card.pack(fill="both", expand=True, padx=4, pady=4)
         
@@ -102,7 +102,7 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             self._scroll_container = container
         else:
             container = ctk.CTkFrame(card, fg_color="transparent")
-            container.pack(fill="both", expand=True, padx=4, pady=4)
+            container.pack(fill="both", expand=True, padx=6, pady=6)
             self._scroll_container = None
 
         self.item_buttons: List[ctk.CTkButton] = []
@@ -114,8 +114,8 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
 
         for i, val in enumerate(values):
             if i > 0 and not use_scroll:
-                sep = ctk.CTkFrame(container, height=1, fg_color="#182c47")
-                sep.pack(fill="x", padx=6, pady=1)
+                sep = ctk.CTkFrame(container, height=1, fg_color="#262634")
+                sep.pack(fill="x", padx=8, pady=1)
                 
             is_active = (val == current_value)
             prefix = "✓  " if is_active else "     "
@@ -126,16 +126,16 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                 "text": f"{prefix}{icon}{val}",
                 "anchor": "w",
                 "height": btn_h,
-                "corner_radius": btn_rad,
-                "fg_color": "#102b4c" if is_active else "transparent",
-                "hover_color": "#1a3d66",
-                "border_width": 1.2 if is_active else 0,
-                "text_color": "#38bdf8" if is_active else "#f0f9ff",
+                "corner_radius": max(10, btn_rad),
+                "fg_color": "#262634" if is_active else "transparent",
+                "hover_color": COLOR_BG_ITEM_HOVER,
+                "border_width": 1 if is_active else 0,
+                "text_color": COLOR_TEXT_WHITE if is_active else COLOR_TEXT_MUTED_LIGHT,
                 "font": font_body(max(10, int(12 * scale)), weight="bold" if is_active else "normal"),
                 "command": lambda v=val: self._select_val(v)
             }
             if is_active:
-                btn_kwargs["border_color"] = COLOR_CYAN_BORDER
+                btn_kwargs["border_color"] = COLOR_GLASS_BORDER_LIGHT
                 
             btn = ctk.CTkButton(**btn_kwargs)
             btn.pack(fill="x", padx=2, pady=1)
@@ -163,9 +163,9 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             is_sel = (i == self.selected_index)
             if is_sel:
                 btn.configure(
-                    fg_color="#0284c7",
-                    border_color="#ffffff",
-                    border_width=2,
+                    fg_color=COLOR_BG_ITEM_HOVER,
+                    border_color=COLOR_GLASS_BORDER_LIGHT,
+                    border_width=1,
                     text_color=COLOR_TEXT_WHITE
                 )
                 if auto_scroll and self._scroll_container:
@@ -174,9 +174,10 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             else:
                 is_cur = (i < len(self.values) and self.values[i] == self.current_value)
                 btn.configure(
-                    fg_color="#102b4c" if is_cur else "transparent",
+                    fg_color="#262634" if is_cur else "transparent",
+                    border_color=COLOR_GLASS_BORDER_LIGHT if is_cur else COLOR_GLASS_BORDER,
                     border_width=1 if is_cur else 0,
-                    text_color="#38bdf8" if is_cur else "#f0f9ff"
+                    text_color=COLOR_TEXT_WHITE if is_cur else COLOR_TEXT_MUTED_LIGHT
                 )
 
     def select_prev(self):
@@ -280,12 +281,12 @@ class GlassDropdownButton(ctk.CTkButton):
         
         default_opts = {
             "height": height,
-            "corner_radius": 14,
-            "fg_color": "#132338",
-            "hover_color": "#1a3556",
-            "border_color": COLOR_CYAN_BORDER,
-            "border_width": 1.4,
-            "text_color": "#f0f9ff",
+            "corner_radius": max(16, height // 2),
+            "fg_color": COLOR_BG_PILL,
+            "hover_color": COLOR_GLASS_HOVER,
+            "border_color": COLOR_GLASS_BORDER,
+            "border_width": 1,
+            "text_color": COLOR_TEXT_WHITE,
             "font": btn_font
         }
         default_opts.update(kwargs)
@@ -426,10 +427,10 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         
         card = ctk.CTkFrame(
             self,
-            fg_color=COLOR_BG_CARD,
-            border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=20
+            fg_color=COLOR_BG_DROPDOWN,
+            border_color=COLOR_GLASS_BORDER_LIGHT,
+            border_width=1,
+            corner_radius=16
         )
         card.pack(fill="both", expand=True, padx=4, pady=4)
         
@@ -443,7 +444,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 
         for i, (icon, label, action) in enumerate(items):
             if i > 0:
-                sep = ctk.CTkFrame(content, height=1, fg_color="#1e2434")
+                sep = ctk.CTkFrame(content, height=1, fg_color="#262634")
                 sep.pack(fill="x", padx=10, pady=2)
 
             # Eliminar selector de variación U+FE0F que en Tcl/Tk introduce un hueco ancho extra tras el icono
@@ -457,7 +458,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 corner_radius=btn_rad,
                 fg_color="transparent",
                 hover_color=COLOR_BG_ITEM_HOVER,
-                text_color=COLOR_TEXT_BRIGHT,
+                text_color=COLOR_TEXT_WHITE,
                 font=btn_font,
                 command=lambda a=action: on_item(a)
             )
@@ -484,16 +485,16 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         for idx, btn in enumerate(self.item_buttons):
             if idx == self.selected_index:
                 btn.configure(
-                    fg_color="#0284c7",
-                    border_color="#ffffff",
-                    border_width=2,
+                    fg_color=COLOR_BG_ITEM_HOVER,
+                    border_color=COLOR_GLASS_BORDER_LIGHT,
+                    border_width=1,
                     text_color=COLOR_TEXT_WHITE
                 )
             else:
                 btn.configure(
                     fg_color="transparent",
                     border_width=0,
-                    text_color=COLOR_TEXT_BRIGHT
+                    text_color=COLOR_TEXT_MUTED_LIGHT
                 )
 
     def _on_hover(self, idx: int):

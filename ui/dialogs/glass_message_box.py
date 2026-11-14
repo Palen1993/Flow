@@ -47,7 +47,7 @@ class GlassMessageBox(BaseGlassDialog):
             h = min(420, 240 + (msg_len // 45) * 22)
             w = 480
 
-        super().__init__(parent, title=title, width=w, height=h, corner_radius=22)
+        super().__init__(parent, title=title, width=w, height=h, corner_radius=16)
 
         # Foco inicial de botones
         # En confirmaciones destructivas el foco empieza en Cancelar (0) por seguridad; en las demás en Confirmar (1)
@@ -62,12 +62,12 @@ class GlassMessageBox(BaseGlassDialog):
         pad = max(6, int(12 * self.scale_factor))
         self.card = ctk.CTkFrame(
             self, corner_radius=self.corner_radius,
-            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1
         )
         self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)
 
-        # Encabezado con icono temático
+        # Encabezado con icono temático y botón circular sutil de cierre '✕'
         header_frame = ctk.CTkFrame(self.card, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=(16, 6))
 
@@ -85,9 +85,25 @@ class GlassMessageBox(BaseGlassDialog):
         self.lbl_icon.pack(side="left", padx=(0, 10))
 
         self.lbl_title = ctk.CTkLabel(
-            header_frame, text=title, font=("Segoe UI Semibold", 16), text_color=COLOR_TEXT_MAIN
+            header_frame, text=title, font=("Segoe UI Semibold", 16), text_color=COLOR_TEXT_WHITE
         )
         self.lbl_title.pack(side="left")
+
+        self.btn_close_x = ctk.CTkButton(
+            header_frame,
+            text="✕",
+            width=26,
+            height=26,
+            corner_radius=13,
+            fg_color="#242432",
+            hover_color="#38384c",
+            border_color=COLOR_GLASS_BORDER,
+            border_width=1,
+            text_color=COLOR_TEXT_MUTED_LIGHT,
+            font=font_button(11),
+            command=self._on_cancel
+        )
+        self.btn_close_x.pack(side="right")
 
         # Cuerpo del mensaje
         msg_frame = ctk.CTkFrame(self.card, fg_color="transparent")

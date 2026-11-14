@@ -23,7 +23,7 @@ from ui.theme import (
 class GamepadConfigDialog(BaseGlassDialog):
     """Diálogo modal para emparejamiento, calibración y automatización del mando."""
     def __init__(self, parent, on_save_callback=None):
-        super().__init__(parent, title="🎮 Configurar Mando", width=650, height=600, corner_radius=26)
+        super().__init__(parent, title="🎮 Configurar Mando", width=650, height=600, corner_radius=16)
         self.on_save_callback = on_save_callback
         self.cfg = load_gamepad_config()
         self.paired_devices = get_paired_gamepads()
@@ -69,8 +69,8 @@ class GamepadConfigDialog(BaseGlassDialog):
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         self.main_card.grid_columnconfigure(0, weight=1)
@@ -87,7 +87,7 @@ class GamepadConfigDialog(BaseGlassDialog):
         lbl_title = ctk.CTkLabel(
             top_row, text="🎮  Configurar Mando",
             font=font_button(18), 
-            text_color=COLOR_TEXT_MAIN
+            text_color=COLOR_TEXT_WHITE
         )
         lbl_title.pack(side="left")
         
@@ -97,7 +97,7 @@ class GamepadConfigDialog(BaseGlassDialog):
         
         lbl_sub = ctk.CTkLabel(
             header_frame, text="Sincroniza tu mando para que cuando se encienda se lance la app y puedas controlarla desde el sofá:",
-            font=font_body(12), text_color=COLOR_TEXT_DIM, anchor="w"
+            font=font_body(12), text_color=COLOR_TEXT_MUTED_LIGHT, anchor="w"
         )
         lbl_sub.pack(fill="x", padx=4, pady=(0, 6))
         
@@ -273,7 +273,7 @@ class GamepadConfigDialog(BaseGlassDialog):
         ctk.CTkLabel(
             card_guide, text="Guía de Controles en el Lanzador:",
             font=font_button(13),
-            text_color="#93c5fd"
+            text_color=COLOR_TEXT_WHITE
         ).pack(anchor="w", padx=16, pady=(10, 4))
         
         guide_text = (
@@ -290,7 +290,7 @@ class GamepadConfigDialog(BaseGlassDialog):
         ctk.CTkLabel(
             card_guide, text=guide_text,
             font=font_body(11),
-            text_color="#64748b", justify="left", anchor="w"
+            text_color=COLOR_TEXT_MUTED_LIGHT, justify="left", anchor="w"
         ).pack(fill="x", padx=16, pady=(0, 10))
 
         # 3. Pie de página (Píldoras iOS)

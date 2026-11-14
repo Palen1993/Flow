@@ -22,10 +22,10 @@ from core.collections_service import (
 from core.feedback import feedback_click, trigger_haptic
 from ui.controller_hud import get_button_icon_ctk
 from ui.theme import (
-    COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
-    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
+    COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK, COLOR_BG_ITEM_HOVER,
+    COLOR_GLASS_BORDER, COLOR_GLASS_BORDER_LIGHT, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
     COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
-    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
+    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER, COLOR_IOS_GREEN,
     COLOR_BTN_SECONDARY_BG, COLOR_BTN_SECONDARY_HOVER, COLOR_BTN_SECONDARY_BORDER,
     COLOR_BTN_DANGER_BG, COLOR_BTN_DANGER_HOVER, COLOR_BTN_DANGER_BORDER,
     COLOR_STATUS_SUCCESS, COLOR_STATUS_DANGER,
@@ -48,7 +48,7 @@ class CollectionsFilterDialog(BaseGlassDialog):
         current_shelf_id: str = "all",
         on_shelves_updated: Optional[Callable[[], None]] = None
     ):
-        super().__init__(parent, title="🏷 Organizador de Listas y Carruseles", width=800, height=600, corner_radius=22)
+        super().__init__(parent, title="🏷 Organizador de Listas y Carruseles", width=800, height=600, corner_radius=16)
         self.all_games = all_games
         self.current_shelf_id = current_shelf_id
         self.on_shelves_updated = on_shelves_updated
@@ -99,8 +99,8 @@ class CollectionsFilterDialog(BaseGlassDialog):
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -112,22 +112,23 @@ class CollectionsFilterDialog(BaseGlassDialog):
             header_bar,
             text="🏷  Organizador de Listas y Carruseles (Estanterías)",
             font=font_title(16),
-            text_color=COLOR_TEXT_MAIN
+            text_color=COLOR_TEXT_WHITE
         )
         lbl_title.pack(side="left")
 
-        # Botón cerrar
+        # Botón cerrar (forma de píldora)
         btn_close = ctk.CTkButton(
             header_bar,
             text="✕  Guardar y Salir (B)",
-            width=135,
+            width=140,
             height=30,
             font=font_button(11),
             fg_color=COLOR_BTN_SECONDARY_BG,
             hover_color=COLOR_BTN_SECONDARY_HOVER,
             border_color=COLOR_BTN_SECONDARY_BORDER,
             border_width=1,
-            corner_radius=10,
+            corner_radius=15,
+            text_color=COLOR_TEXT_WHITE,
             command=self._save_and_close
         )
         btn_close.pack(side="right")
@@ -138,7 +139,7 @@ class CollectionsFilterDialog(BaseGlassDialog):
             self.main_card,
             text=sub_text,
             font=font_body(11),
-            text_color=COLOR_CYAN_ACCENT
+            text_color=COLOR_TEXT_MUTED_LIGHT
         )
         lbl_sub.pack(anchor="w", padx=20, pady=(0, 6))
 
@@ -164,10 +165,11 @@ class CollectionsFilterDialog(BaseGlassDialog):
             footer_bar,
             text="＋ Nueva Lista Personalizada (X)",
             height=34,
-            corner_radius=12,
+            corner_radius=17,
             font=font_button(12),
             fg_color=COLOR_IOS_BLUE,
             hover_color=COLOR_IOS_BLUE_HOVER,
+            text_color=COLOR_TEXT_WHITE,
             command=self._prompt_new_collection
         )
         btn_new_custom.pack(side="left")
@@ -315,9 +317,9 @@ class CollectionsFilterDialog(BaseGlassDialog):
             is_en = self.shelves_data[idx].get("enabled", False)
             if is_sel:
                 card.configure(
-                    border_color=COLOR_CYAN_ACCENT,
-                    border_width=2.0,
-                    fg_color=COLOR_GLASS_HOVER
+                    border_color=COLOR_GLASS_BORDER_LIGHT,
+                    border_width=1.5,
+                    fg_color=COLOR_BG_ITEM_HOVER
                 )
                 scroll_to_widget(self.scroll_frame, card)
             else:

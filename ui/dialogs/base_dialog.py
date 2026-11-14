@@ -41,7 +41,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
         title: str = "Diálogo",
         width: int = 480,
         height: int = 320,
-        corner_radius: int = 22,
+        corner_radius: int = 16,
         is_topmost: bool = True,
         auto_grab: bool = True
     ):
@@ -53,7 +53,7 @@ class BaseGlassDialog(ctk.CTkToplevel):
         final_w, final_h, scale = calculate_dialog_bounds(width, height, window=parent or self)
         self.dialog_width = final_w
         self.dialog_height = final_h
-        self.corner_radius = max(14, int(round(corner_radius * scale)))
+        self.corner_radius = max(12, int(round(corner_radius * scale)))
         self.scale_factor = scale
         
         # Establecer escala activa para que las fuentes y controles del diálogo se creen proporcionales

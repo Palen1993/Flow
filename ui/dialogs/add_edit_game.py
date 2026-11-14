@@ -82,13 +82,13 @@ class AddEditGameDialog(BaseGlassDialog):
                 pass
 
     def create_widgets(self):
-        # Tarjeta principal iOS Liquid Glass con curvatura y bisel sutil
+        # Tarjeta principal Apple Glassmorphism con borde sutil 1px y radio 16px
         self.main_card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         
@@ -101,9 +101,25 @@ class AddEditGameDialog(BaseGlassDialog):
             header_bar,
             text=title_text,
             font=font_button(17),
-            text_color=COLOR_TEXT_MAIN
+            text_color=COLOR_TEXT_WHITE
         )
         lbl_title.pack(side="left")
+
+        btn_close_top = ctk.CTkButton(
+            header_bar,
+            text="✕",
+            width=28,
+            height=28,
+            corner_radius=14,
+            fg_color="#242432",
+            hover_color="#38384c",
+            border_color=COLOR_GLASS_BORDER,
+            border_width=1,
+            text_color=COLOR_TEXT_MUTED_LIGHT,
+            font=font_button(11),
+            command=self.destroy
+        )
+        btn_close_top.pack(side="right")
         
         for w in (header_bar, lbl_title, self.main_card):
             w.bind("<ButtonPress-1>", self._start_drag)

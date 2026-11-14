@@ -300,13 +300,13 @@ def render_controller_hud_strip(
     canvas = Image.new("RGBA", (w2, h2), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 
-    # Cápsula única Liquid Glass continua
+    # Cápsula única Apple Dark Glass continua (borde sutil 1px)
     draw.rounded_rectangle(
         [2, 2, w2 - 3, h2 - 3],
         radius=(h2 // 2) - 2,
-        fill=(20, 23, 34, 255),
-        outline=(43, 51, 69, 255),
-        width=3
+        fill=(22, 22, 32, 225),
+        outline=(88, 88, 108, 225),
+        width=2
     )
 
     cy = h2 // 2
@@ -317,7 +317,7 @@ def render_controller_hud_strip(
         seg_start = cur_x - (outer_pad if idx == 0 else item_gap)
         _draw_button_glyph(draw, btn_k, family_norm, cur_x + icon_r, cy, icon_r)
         tx = cur_x + (icon_r * 2) + icon_txt_gap
-        draw.text((tx, cy - 1), txt, font=font_label, fill=(248, 250, 252, 255), anchor="lm")
+        draw.text((tx, cy - 1), txt, font=font_label, fill=(255, 255, 255, 255), anchor="lm")
         cur_x += seg_w
         seg_end = cur_x + (outer_pad if idx == len(specs) - 1 else item_gap)
 
@@ -325,7 +325,7 @@ def render_controller_hud_strip(
 
         if idx < len(specs) - 1:
             div_x = cur_x + item_gap
-            draw.line([(div_x, int(h2 * 0.24)), (div_x, int(h2 * 0.76))], fill=(48, 58, 80, 255), width=2)
+            draw.line([(div_x, int(h2 * 0.24)), (div_x, int(h2 * 0.76))], fill=(72, 72, 92, 210), width=2)
             cur_x += item_gap * 2
 
     target_w = max(40, w2 // scale)
@@ -455,14 +455,14 @@ def render_big_picture_top_hud(
     mdraw.rounded_rectangle(
         [2, 2, menu_w2 - 3, h2 - 3],
         radius=(h2 // 2) - 2,
-        fill=(20, 23, 34, 240),
-        outline=(43, 51, 69, 255),
-        width=3
+        fill=(22, 22, 32, 225),
+        outline=(88, 88, 108, 225),
+        width=2
     )
     gx = pad_x + gear_r
-    _draw_gear_icon(mdraw, gx, cy, gear_r, fg_col=(248, 250, 252, 255), bg_col=(20, 23, 34, 240))
+    _draw_gear_icon(mdraw, gx, cy, gear_r, fg_col=(255, 255, 255, 255), bg_col=(22, 22, 32, 225))
     tx = gx + gear_r + gap_inner
-    mdraw.text((tx, cy - 1), opt_txt, font=font_lbl, fill=(248, 250, 252, 255), anchor="lm")
+    mdraw.text((tx, cy - 1), opt_txt, font=font_lbl, fill=(255, 255, 255, 255), anchor="lm")
     bx = tx + opt_tw + gap_inner + icon_r
     _draw_button_glyph(mdraw, "x", family_norm, bx, cy, icon_r)
     menu_down = menu_img.resize((menu_w2 // scale, height), Image.Resampling.LANCZOS)
@@ -479,9 +479,9 @@ def render_big_picture_top_hud(
     bdraw.rounded_rectangle(
         [2, 2, bat_w2 - 3, h2 - 3],
         radius=(h2 // 2) - 2,
-        fill=(20, 23, 34, 240),
-        outline=(43, 51, 69, 255),
-        width=3
+        fill=(22, 22, 32, 225),
+        outline=(88, 88, 108, 225),
+        width=2
     )
     bat_rgba = (*battery_col, 255)
     _draw_battery_icon(bdraw, pad_x + bat_icon_w // 2, cy, h2, bat_rgba, pct_val=pct_num)
@@ -541,16 +541,21 @@ def render_launch_button_pill(
     draw = ImageDraw.Draw(canvas)
 
     if disabled:
-        fill_col = (30, 38, 54, 210)
-        border_col = (55, 65, 85, 220)
-        txt_col = (148, 163, 184, 230)
+        fill_col = (28, 30, 42, 210)
+        border_col = (68, 70, 86, 200)
+        border_w = 2
+        txt_col = (158, 158, 176, 230)
     elif hovered:
-        fill_col = (0, 98, 204, 255)
-        border_col = (96, 165, 250, 255)
+        # Estado Hover: azul eléctrico aclarado con halo luminoso suave
+        fill_col = (41, 151, 255, 255)
+        border_col = (145, 205, 255, 235)
+        border_w = 2
         txt_col = (255, 255, 255, 255)
     else:
+        # Estado Normal: azul eléctrico vibrante sin borde duro, texto blanco puro
         fill_col = (0, 122, 255, 255)
-        border_col = (56, 148, 255, 255)
+        border_col = None
+        border_w = 0
         txt_col = (255, 255, 255, 255)
 
     draw.rounded_rectangle(
@@ -558,7 +563,7 @@ def render_launch_button_pill(
         radius=(h2 // 2) - 2,
         fill=fill_col,
         outline=border_col,
-        width=3
+        width=border_w
     )
 
     font_btn = _load_font(int(h2 * 0.29), bold=True)
@@ -651,29 +656,29 @@ def render_filter_capsule(
     canvas = Image.new("RGBA", (tot_w2, h2), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 
-    # Cápsula de cristal (sólida en modo transparente para evitar halos con ColorKey)
-    fill_alpha = 255 if t_safe else 240
+    # Cápsula de cristal estilo Apple Glassmorphism (borde sutil 1px, sólida en modo transparente para evitar halos con ColorKey)
+    fill_alpha = 255 if t_safe else 225
     draw.rounded_rectangle(
         [2, 2, tot_w2 - 3, h2 - 3],
         radius=(h2 // 2) - 2,
-        fill=(20, 23, 34, fill_alpha),
-        outline=(43, 51, 69, 255),
-        width=3
+        fill=(22, 22, 32, fill_alpha),
+        outline=(88, 88, 108, 235),
+        width=2
     )
 
     if has_multi:
         # 1. Flecha arriba ▲
         arr1_x = pad_x + (arr_w // 2)
-        draw.text((arr1_x, cy - 1), "▲", font=font_arr, fill=(56, 189, 248, 255), anchor="mm")
+        draw.text((arr1_x, cy - 1), "▲", font=font_arr, fill=(210, 210, 226, 255), anchor="mm")
 
-        # 2. Texto central
+        # 2. Texto central (blanco puro de alto contraste)
         tx = pad_x + arr_w + gap + (tw // 2)
-        txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl.upper() else (248, 250, 252, 255)
+        txt_col = (255, 255, 255, 255)
         draw.text((tx, cy - 1), disp_text, font=font_lbl, fill=txt_col, anchor="mm")
 
         # 3. Flecha abajo ▼
         arr2_x = tx + (tw // 2) + gap + (arr_w // 2)
-        draw.text((arr2_x, cy - 1), "▼", font=font_arr, fill=(56, 189, 248, 255), anchor="mm")
+        draw.text((arr2_x, cy - 1), "▼", font=font_arr, fill=(210, 210, 226, 255), anchor="mm")
 
         downscaled = canvas.resize((tot_w2 // scale, height), Image.Resampling.LANCZOS)
         w_final = tot_w2 // scale
@@ -687,7 +692,7 @@ def render_filter_capsule(
         ]
     else:
         tx = pad_x + (tw // 2)
-        txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl.upper() else (248, 250, 252, 255)
+        txt_col = (255, 255, 255, 255)
         draw.text((tx, cy - 1), disp_text, font=font_lbl, fill=txt_col, anchor="mm")
 
         downscaled = canvas.resize((tot_w2 // scale, height), Image.Resampling.LANCZOS)
