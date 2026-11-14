@@ -55,6 +55,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.ui_filter_label = "Todos"
         self.ui_filter_count = 0
         self._launch_hovered = False
+        self._hovered_hud_action: Optional[str] = None
         self._bottom_overlay_cache: Dict[Tuple[Any, ...], Image.Image] = {}
         self.display_scale = 1.0
         self._current_font_scale = 1.0
@@ -141,6 +142,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.bind("<MouseWheel>", self._on_mouse_wheel)
         self.bind("<Double-Button-1>", self._on_double_click)
         self.bind("<Motion>", self._on_mouse_hover)
+        self.bind("<Leave>", self._on_mouse_leave)
 
     def destroy(self):
         self._stack_prewarm_gen = getattr(self, "_stack_prewarm_gen", 0) + 1
@@ -1870,10 +1872,21 @@ class CoverFlowCanvas(tk.Canvas):
         elif event.delta < 0:
             self.next_cover()
 
+    def _on_mouse_leave(self, event=None):
+        changed = (getattr(self, "_hovered_hud_action", None) is not None) or getattr(self, "_launch_hovered", False)
+        self._hovered_hud_action = None
+        self._launch_hovered = False
+        self.config(cursor="")
+        if changed:
+            self.redraw()
+
     def _on_mouse_hover(self, event):
         hud_act = self._get_hud_action_at(event.x, event.y)
+        prev_hud = getattr(self, "_hovered_hud_action", None)
         is_launch_hov = (hud_act == "launch")
-        if is_launch_hov != getattr(self, "_launch_hovered", False):
+        prev_launch = getattr(self, "_launch_hovered", False)
+        if hud_act != prev_hud or is_launch_hov != prev_launch:
+            self._hovered_hud_action = hud_act
             self._launch_hovered = is_launch_hov
             self.redraw()
 
@@ -1910,6 +1923,42 @@ class CoverFlowCanvas(tk.Canvas):
                 return rel
         return None
 
+    def _paste_hud_with_backdrop_blur(
+        self,
+        bg: Image.Image,
+        hud_img: Image.Image,
+        x: int,
+        y: int,
+        blur_radius: int = 12
+    ):
+        """Compone una píldora HUD translúcida difuminando en tiempo real el fondo detrás de ella."""
+        try:
+            w, h = bg.size
+            hw, hh = hud_img.size
+            rx0 = max(0, x)
+            ry0 = max(0, y)
+            rx1 = min(w, x + hw)
+            ry1 = min(h, y + hh)
+            if rx1 <= rx0 or ry1 <= ry0:
+                return
+
+            pad = blur_radius * 2
+            sx0 = max(0, rx0 - pad)
+            sy0 = max(0, ry0 - pad)
+            sx1 = min(w, rx1 + pad)
+            sy1 = min(h, ry1 + pad)
+
+            blurred_region = bg.crop((sx0, sy0, sx1, sy1)).filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            blurred_crop = blurred_region.crop((rx0 - sx0, ry0 - sy0, rx1 - sx0, ry1 - sy0))
+            hc = hud_img.crop((rx0 - x, ry0 - y, rx1 - x, ry1 - y))
+            alpha_ch = hc.split()[3]
+            glass_mask = alpha_ch.point(lambda a: 255 if a >= 110 else (int((a - 65) * 5.6) if a > 65 else 0))
+
+            bg.paste(blurred_crop, (rx0, ry0), glass_mask)
+            bg.paste(hc, (rx0, ry0), hc)
+        except Exception:
+            bg.paste(hud_img, (x, y), hud_img)
+
     def _draw_overlays(self, bg: Image.Image, w: int, h: int):
         """
         Superpone con transparencia RGBA real:
@@ -1921,6 +1970,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.hud_hitboxes = []
         fam = getattr(self, "controller_family", "xbox")
         scale = getattr(self, "display_scale", 1.0)
+        hov_act = getattr(self, "_hovered_hud_action", None)
 
         if getattr(self, "is_transparent_mode", False):
             # En modo mini transparente: ocultar todo el HUD de Big Picture, pero mostrar la píldora del filtro/carrusel activo
@@ -1949,7 +1999,7 @@ class CoverFlowCanvas(tk.Canvas):
                 pass
             return
 
-        # 0. Modo Big Picture: Píldora de Colección y Filtro arriba a la izquierda [ (LB/L1) ‹ FAVORITOS (4) › (RB/R1) ]
+        # 0. Modo Big Picture: Píldora de Colección y Filtro arriba a la izquierda [ ▲ ▼ FAVORITOS (4) ⌄ ▼ ]
         try:
             filt_lbl = getattr(self, "ui_filter_label", "Todos")
             filt_cnt = getattr(self, "ui_filter_count", len(self.games))
@@ -1962,11 +2012,12 @@ class CoverFlowCanvas(tk.Canvas):
                 family=fam,
                 height=top_h,
                 shelf_index=s_idx,
-                total_shelves=s_tot
+                total_shelves=s_tot,
+                hovered_action=hov_act
             )
             filt_x = int(18 * scale)
             filt_y = int(14 * scale)
-            bg.paste(filt_img, (filt_x, filt_y), filt_img)
+            self._paste_hud_with_backdrop_blur(bg, filt_img, filt_x, filt_y, blur_radius=12)
             for (bx1, by1, bx2, by2, act) in filt_boxes:
                 self.hud_hitboxes.append((filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2, act))
         except Exception:
@@ -1979,11 +2030,12 @@ class CoverFlowCanvas(tk.Canvas):
                 family=fam,
                 battery_txt=getattr(self, "ui_battery_text", "🎮 Mando"),
                 battery_col=getattr(self, "ui_battery_color", (100, 116, 139)),
-                height=top_h
+                height=top_h,
+                hovered_action=hov_act
             )
             hud_x = max(10, w - top_img.width - int(18 * scale))
             hud_y = int(14 * scale)
-            bg.paste(top_img, (hud_x, hud_y), top_img)
+            self._paste_hud_with_backdrop_blur(bg, top_img, hud_x, hud_y, blur_radius=12)
             for (bx1, by1, bx2, by2, act) in top_boxes:
                 self.hud_hitboxes.append((hud_x + bx1, hud_y + by1, hud_x + bx2, hud_y + by2, act))
         except Exception:
@@ -2612,6 +2664,7 @@ class CoverFlowCanvas(tk.Canvas):
             getattr(self, "ui_shelf_index", 0),
             getattr(self, "ui_total_shelves", 1),
             bool(self._launch_hovered),
+            getattr(self, "_hovered_hud_action", None),
             bool(self.ui_launch_disabled),
         )
         fg_boxes = self.hitboxes or ([self._empty_card_hitbox] if self._empty_card_hitbox else [])

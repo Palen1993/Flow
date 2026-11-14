@@ -90,7 +90,7 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
         card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_DROPDOWN,
-            border_color=COLOR_GLASS_BORDER_LIGHT,
+            border_color="#5a5a70",
             border_width=1,
             corner_radius=16
         )
@@ -114,7 +114,7 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
 
         for i, val in enumerate(values):
             if i > 0 and not use_scroll:
-                sep = ctk.CTkFrame(container, height=1, fg_color="#262634")
+                sep = ctk.CTkFrame(container, height=1, fg_color="#2a2a38")
                 sep.pack(fill="x", padx=8, pady=1)
                 
             is_active = (val == current_value)
@@ -127,15 +127,15 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                 "anchor": "w",
                 "height": btn_h,
                 "corner_radius": max(10, btn_rad),
-                "fg_color": "#262634" if is_active else "transparent",
-                "hover_color": COLOR_BG_ITEM_HOVER,
+                "fg_color": "#2b2b3a" if is_active else "transparent",
+                "hover_color": "#3c3c50",
                 "border_width": 1 if is_active else 0,
                 "text_color": COLOR_TEXT_WHITE if is_active else COLOR_TEXT_MUTED_LIGHT,
                 "font": font_body(max(10, int(12 * scale)), weight="bold" if is_active else "normal"),
                 "command": lambda v=val: self._select_val(v)
             }
             if is_active:
-                btn_kwargs["border_color"] = COLOR_GLASS_BORDER_LIGHT
+                btn_kwargs["border_color"] = "#7e7e96"
                 
             btn = ctk.CTkButton(**btn_kwargs)
             btn.pack(fill="x", padx=2, pady=1)
@@ -163,8 +163,8 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             is_sel = (i == self.selected_index)
             if is_sel:
                 btn.configure(
-                    fg_color=COLOR_BG_ITEM_HOVER,
-                    border_color=COLOR_GLASS_BORDER_LIGHT,
+                    fg_color="#3c3c50",
+                    border_color="#7e7e96",
                     border_width=1,
                     text_color=COLOR_TEXT_WHITE
                 )
@@ -174,8 +174,8 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
             else:
                 is_cur = (i < len(self.values) and self.values[i] == self.current_value)
                 btn.configure(
-                    fg_color="#262634" if is_cur else "transparent",
-                    border_color=COLOR_GLASS_BORDER_LIGHT if is_cur else COLOR_GLASS_BORDER,
+                    fg_color="#2b2b3a" if is_cur else "transparent",
+                    border_color="#7e7e96" if is_cur else COLOR_GLASS_BORDER,
                     border_width=1 if is_cur else 0,
                     text_color=COLOR_TEXT_WHITE if is_cur else COLOR_TEXT_MUTED_LIGHT
                 )
@@ -355,13 +355,14 @@ class FloatingGlassMenu(ctk.CTkToplevel):
     def _windows_set_titlebar_icon(self):
         pass
 
-    def __init__(self, parent, anchor_widget, items):
+    def __init__(self, parent, anchor_widget, items, anchor_hud_action: str = "menu"):
         super().__init__(parent)
         self.title("GameFlow Menu")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.transient(parent)
         self.items = items
+        self.anchor_hud_action = anchor_hud_action
         self.item_buttons = []
         self.selected_index = 0
         
@@ -405,18 +406,34 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 px = parent.winfo_rootx()
                 py = parent.winfo_rooty()
                 pw = parent.winfo_width()
-                x = max(m_left + 10, px + pw - phys_mw - int(22 * ctk_scale))
+                target_action = self.anchor_hud_action or "menu"
+                if target_action == "filter_menu":
+                    x = max(m_left + 10, px + int(18 * ctk_scale))
+                else:
+                    x = max(m_left + 10, px + pw - phys_mw - int(22 * ctk_scale))
                 y = py + int(56 * ctk_scale)
-                # Si el lienzo CoverFlow tiene un botón "menu" ("⚙ Opciones"), alinear bajo él
+                # Alinear bajo la píldora HUD correspondiente ("filter_menu" o "menu")
                 stage = getattr(parent, "cover_stage", None)
                 if stage is not None and getattr(stage, "hud_hitboxes", None):
-                    for (hx1, hy1, hx2, hy2, hact) in stage.hud_hitboxes:
-                        if hact == "menu":
-                            sx = stage.winfo_rootx()
-                            sy = stage.winfo_rooty()
-                            x = max(m_left + 10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
-                            y = sy + hy2 + int(8 * ctk_scale)
-                            break
+                    sx = stage.winfo_rootx()
+                    sy = stage.winfo_rooty()
+                    if target_action == "filter_menu":
+                        left_x = None
+                        bot_y = None
+                        for (hx1, hy1, hx2, hy2, hact) in stage.hud_hitboxes:
+                            if hact in ("shelf_prev", "filter_menu"):
+                                cand_x = sx + hx1
+                                left_x = cand_x if left_x is None else min(left_x, cand_x)
+                                bot_y = sy + hy2 if bot_y is None else max(bot_y, sy + hy2)
+                        if left_x is not None and bot_y is not None:
+                            x = max(m_left + 10, min(px + pw - phys_mw - int(18 * ctk_scale), left_x))
+                            y = bot_y + int(8 * ctk_scale)
+                    else:
+                        for (hx1, hy1, hx2, hy2, hact) in stage.hud_hitboxes:
+                            if hact == target_action:
+                                x = max(m_left + 10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
+                                y = sy + hy2 + int(8 * ctk_scale)
+                                break
             if x + phys_mw > m_right - 10:
                 x = max(m_left + 10, m_right - 10 - phys_mw)
             if y + phys_mh > m_bottom - 10:
@@ -428,7 +445,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_DROPDOWN,
-            border_color=COLOR_GLASS_BORDER_LIGHT,
+            border_color="#5a5a70",
             border_width=1,
             corner_radius=16
         )
@@ -444,7 +461,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 
         for i, (icon, label, action) in enumerate(items):
             if i > 0:
-                sep = ctk.CTkFrame(content, height=1, fg_color="#262634")
+                sep = ctk.CTkFrame(content, height=1, fg_color="#2a2a38")
                 sep.pack(fill="x", padx=10, pady=2)
 
             # Eliminar selector de variación U+FE0F que en Tcl/Tk introduce un hueco ancho extra tras el icono
@@ -457,7 +474,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 height=btn_h,
                 corner_radius=btn_rad,
                 fg_color="transparent",
-                hover_color=COLOR_BG_ITEM_HOVER,
+                hover_color="#3c3c50",
                 text_color=COLOR_TEXT_WHITE,
                 font=btn_font,
                 command=lambda a=action: on_item(a)
@@ -485,8 +502,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         for idx, btn in enumerate(self.item_buttons):
             if idx == self.selected_index:
                 btn.configure(
-                    fg_color=COLOR_BG_ITEM_HOVER,
-                    border_color=COLOR_GLASS_BORDER_LIGHT,
+                    fg_color="#3c3c50",
+                    border_color="#7e7e96",
                     border_width=1,
                     text_color=COLOR_TEXT_WHITE
                 )
@@ -547,6 +564,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
             pass
         if hasattr(self.master, "glass_menu") and self.master.glass_menu == self:
             self.master.glass_menu = None
+            if hasattr(self.master, "_last_menu_kind"):
+                self.master._last_menu_kind = ""
         super().destroy()
 
     def handle_gamepad_input(self, inputs: dict, prev_inputs: dict) -> bool:

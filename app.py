@@ -727,7 +727,7 @@ class App(ctk.CTk):
         elif action in ("filter_next", "shelf_next"):
             self.cycle_shelf(1)
         elif action == "filter_menu":
-            self.open_collections_dialog()
+            self.open_filter_dropdown_menu()
         elif action == "start":
             self.toggle_size_mode()
         elif action == "select":
@@ -1281,6 +1281,7 @@ class App(ctk.CTk):
 
     def close_active_menu(self):
         """Cierra y destruye inmediatamente el menú contextual flotante si está abierto."""
+        self._last_menu_kind = ""
         if hasattr(self, "glass_menu") and self.glass_menu:
             try:
                 if self.glass_menu.winfo_exists():
@@ -1295,8 +1296,10 @@ class App(ctk.CTk):
             return
 
         if hasattr(self, "glass_menu") and self.glass_menu:
+            was_options = (getattr(self, "_last_menu_kind", "options") == "options")
             self.close_active_menu()
-            return
+            if was_options:
+                return
 
         cur_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
         cur_name = (cur_game.get("name") or "").strip() if cur_game else ""
@@ -1323,6 +1326,36 @@ class App(ctk.CTk):
             ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog),
         ]
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
+        self._last_menu_kind = "options"
+
+    def open_filter_dropdown_menu(self):
+        """Abre el desplegable rápido de filtros y estanterías debajo de la píldora activa."""
+        if getattr(self, "is_mini_mode", False):
+            return
+
+        if hasattr(self, "glass_menu") and self.glass_menu:
+            was_filter = (getattr(self, "_last_menu_kind", "") == "filter")
+            self.close_active_menu()
+            if was_filter:
+                return
+
+        shelves = getattr(self, "active_shelves", None) or []
+        cur_idx = getattr(self, "current_shelf_idx", 0)
+        items = []
+        for idx, shelf in enumerate(shelves):
+            is_cur = (idx == cur_idx)
+            icon = "✓" if is_cur else "•"
+            cnt = len(shelf.get("games", []))
+            name = shelf.get("name", "Estantería")
+            sid = shelf.get("id", "all")
+            items.append((icon, f"{name} ({cnt})", lambda s=sid: self.apply_filter(s)))
+        items.append(("🏷", "Organizar estanterías y filtros...", self.open_collections_dialog))
+
+        self.glass_menu = FloatingGlassMenu(self, None, items, anchor_hud_action="filter_menu")
+        self._last_menu_kind = "filter"
+        if items and hasattr(self.glass_menu, "_update_highlight"):
+            self.glass_menu.selected_index = min(max(0, cur_idx), len(items) - 1)
+            self.glass_menu._update_highlight()
 
     def open_kiosk_dialog(self):
         self.close_active_menu()

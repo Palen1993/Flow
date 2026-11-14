@@ -83,6 +83,10 @@ class BaseGlassDialog(ctk.CTkToplevel):
                 self.transient(parent)
             except Exception:
                 pass
+        try:
+            self.attributes("-alpha", 0.96)
+        except Exception:
+            pass
         hide_from_taskbar(self)
         bring_to_front_absolute(self)
                 
