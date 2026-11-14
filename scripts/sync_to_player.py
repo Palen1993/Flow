@@ -189,4 +189,5 @@ def sync_to_player(build_first: bool = True):
 
 if __name__ == "__main__":
     build_flag = "--no-build" not in sys.argv
-    sync_to_player(build_first=build_flag)
+    ok = sync_to_player(build_first=build_flag)
+    sys.exit(0 if ok else 1)

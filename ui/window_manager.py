@@ -104,6 +104,9 @@ class WindowStateService:
 
         self.app.minsize(400, 200)
 
+        is_stack = bool(cover_stage and hasattr(cover_stage, "_is_vertical_stack_active") and cover_stage._is_vertical_stack_active())
+        win_h_pct = 0.56 if is_stack else 0.48
+
         # Centrar ventana flotante en el monitor actual compensando el ScalingTracker de CustomTkinter
         from ui.display_scale import get_ctk_window_scaling
         ctk_scale = get_ctk_window_scaling(self.app)
@@ -117,14 +120,14 @@ class WindowStateService:
             screen_w = rc[2] - rc[0]
             screen_h = rc[3] - rc[1]
             phys_win_w = max(720, min(int(screen_w * 0.84), screen_w - 40))
-            phys_win_h = max(320, min(int(screen_h * 0.48), screen_h - 60))
+            phys_win_h = max(360 if is_stack else 320, min(int(screen_h * win_h_pct), screen_h - 60))
             x = rc[0] + max(0, (screen_w - phys_win_w) // 2)
             y = rc[1] + max(0, (screen_h - phys_win_h) // 2)
         except Exception:
             screen_w = self.app.winfo_screenwidth()
             screen_h = self.app.winfo_screenheight()
             phys_win_w = max(720, min(int(screen_w * 0.84), screen_w - 40))
-            phys_win_h = max(320, min(int(screen_h * 0.48), screen_h - 60))
+            phys_win_h = max(360 if is_stack else 320, min(int(screen_h * win_h_pct), screen_h - 60))
             x = max(0, (screen_w - phys_win_w) // 2)
             y = max(0, (screen_h - phys_win_h) // 2)
 
@@ -141,9 +144,18 @@ class WindowStateService:
                 cover_stage.configure(width=win_w, height=win_h)
             except Exception:
                 pass
-            cover_stage.base_size = max(180, min(int(win_h * 0.72), int(win_w * 0.42)))
+            h_ratio = 0.54 if is_stack else 0.72
+            w_ratio = 0.38 if is_stack else 0.42
+            min_sz = 160 if is_stack else 180
+            cover_stage.base_size = max(min_sz, min(int(win_h * h_ratio), int(win_w * w_ratio)))
+            if hasattr(cover_stage, "_shelf_strip_cache"):
+                cover_stage._shelf_strip_cache.clear()
+            if hasattr(cover_stage, "_bg_slot_warp_cache"):
+                cover_stage._bg_slot_warp_cache.clear()
             cover_stage._rebuild_background(win_w, win_h)
             cover_stage._rebuild_rendered_cache()
+            if is_stack and hasattr(cover_stage, "_prewarm_neighbor_shelves_async"):
+                cover_stage._prewarm_neighbor_shelves_async()
             cover_stage.redraw(force_w=win_w, force_h=win_h)
 
         try:
@@ -152,7 +164,14 @@ class WindowStateService:
             self.app.focus_force()
             force_foreground_window(self.app.winfo_id(), keep_topmost=True)
             if cover_stage:
-                self.app.after(30, cover_stage.redraw)
+                self.app.after(
+                    30,
+                    lambda mw=win_w, mh=win_h: (
+                        cover_stage.redraw()
+                        if abs(cover_stage.winfo_height() - mh) <= 20
+                        else cover_stage.redraw(force_w=mw, force_h=mh)
+                    ),
+                )
         except Exception:
             pass
 
@@ -239,7 +258,14 @@ class WindowStateService:
             self.app.focus_force()
             force_foreground_window(self.app.winfo_id(), keep_topmost=False)
             if cover_stage:
-                self.app.after(30, cover_stage.redraw)
+                self.app.after(
+                    30,
+                    lambda fw=cw, fh=ch: (
+                        cover_stage.redraw()
+                        if cover_stage.winfo_height() >= int(fh * 0.85)
+                        else cover_stage.redraw(force_w=fw, force_h=fh)
+                    ),
+                )
         except Exception:
             pass
 

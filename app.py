@@ -271,10 +271,16 @@ class App(ctk.CTk):
                 self.current_shelf_idx,
                 self._shelf_selected_indices,
             )
+            self.cover_stage._defer_redraw = True
+            try:
+                self.update_ui_details(self.selected_index)
+                self.set_status(f"Fila {self.current_shelf_idx + 1}/{len(self.active_shelves)}: {new_shelf.get('icon', '')} {new_shelf['name']} ({len(self.games)} juegos)")
+            finally:
+                self.cover_stage._defer_redraw = False
             self.cover_stage.set_games(self.games, target_index=self.selected_index, transition_direction=direction)
-
-        self.update_ui_details(self.selected_index)
-        self.set_status(f"Fila {self.current_shelf_idx + 1}/{len(self.active_shelves)}: {new_shelf.get('icon', '')} {new_shelf['name']} ({len(self.games)} juegos)")
+        else:
+            self.update_ui_details(self.selected_index)
+            self.set_status(f"Fila {self.current_shelf_idx + 1}/{len(self.active_shelves)}: {new_shelf.get('icon', '')} {new_shelf['name']} ({len(self.games)} juegos)")
 
     def cycle_filter(self, direction: int):
         """Alias para cambiar de estantería verticalmente con LB/RB o atajos de hombros."""
@@ -766,7 +772,8 @@ class App(ctk.CTk):
                 self.cover_stage.ui_status = "Añade o escanea tu carpeta de juegos desde el menú ⚙"
                 self.cover_stage.ui_status_color = (100, 116, 139)
                 self.cover_stage.ui_launch_disabled = True
-                self.cover_stage.redraw()
+                if not getattr(self.cover_stage, "_defer_redraw", False):
+                    self.cover_stage.redraw()
             return
 
         game = self.games[index]
@@ -782,7 +789,8 @@ class App(ctk.CTk):
                 self.cover_stage.ui_status = sub_str
                 self.cover_stage.ui_status_color = (203, 213, 225)
             self.cover_stage.ui_launch_disabled = False
-            self.cover_stage.redraw()
+            if not getattr(self.cover_stage, "_defer_redraw", False):
+                self.cover_stage.redraw()
 
     # -------------------------------------------------------------
     # Orquestación de Ejecución (Delegación a GameExecutionService)
@@ -885,7 +893,8 @@ class App(ctk.CTk):
                 if hasattr(self, "cover_stage") and self.cover_stage:
                     self.cover_stage.ui_status = msg
                     self.cover_stage.ui_status_color = (56, 189, 248)
-                    self.cover_stage.redraw()
+                    if not getattr(self.cover_stage, "_defer_redraw", False):
+                        self.cover_stage.redraw()
 
                 def _restore_subtitle():
                     self._status_reset_job = None

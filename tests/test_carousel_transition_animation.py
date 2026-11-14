@@ -524,6 +524,178 @@ class TestPersistentVerticalStack(unittest.TestCase):
             finally:
                 canvas.destroy()
 
+    def test_vertical_stack_active_in_mini_transparent_mode(self):
+        """La pila 3D vertical persistente también se activa y centra en Modo Mini transparente."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        from core.coverflow_engine import prevent_transparency_color_collision
+        canvas = CoverFlowCanvas(self.root, width=1000, height=440)
+        try:
+            canvas.is_transparent_mode = True
+            canvas.last_w = 1000
+            canvas.last_h = 440
+            canvas.base_size = int(440 * 0.54)
+            shelves = self._make_shelves(3)
+            colors = [(220, 70, 70), (70, 210, 90), (80, 140, 240)]
+
+            def fake_jewel(g):
+                s_idx = int(g["name"].split("G")[0][1:])
+                return prevent_transparency_color_collision(
+                    Image.new("RGBA", (240, 240), (*colors[s_idx % 3], 255))
+                )
+
+            with patch.object(canvas, "_get_or_create_jewel_case", side_effect=fake_jewel):
+                canvas.set_shelves_context(shelves, 1, {f"shelf_{i}": 2 for i in range(3)})
+                self.assertTrue(canvas._is_vertical_stack_active())
+                self.assertFalse(canvas._use_reflection())
+                canvas.set_games(shelves[1]["games"], target_index=2, transition_direction=0)
+                for rel in (-1, 1):
+                    canvas._get_bg_shelf_strip(shelves[1 + rel], 2, 1000, canvas.base_size, allow_disk=True)
+
+            floor_y = canvas._compute_floor_y(440, canvas.base_size)
+            self.assertEqual(floor_y, (440 + canvas.base_size) // 2)
+            bg = Image.new("RGB", (1000, 440), (0, 0, 1))
+            canvas._draw_vertical_stack_frame(bg, 1000, 440, floor_y, canvas.base_size, False, 0.0)
+            top_fg = floor_y - canvas.base_size
+            # Arriba (-1), centro (0) y abajo (+1) deben pintar sobre el fondo transparente
+            self.assertNotEqual(bg.getpixel((500, max(5, top_fg - 25))), (0, 0, 1))
+            self.assertNotEqual(bg.getpixel((500, top_fg + canvas.base_size // 2)), (0, 0, 1))
+            self.assertNotEqual(bg.getpixel((500, min(435, floor_y + 25))), (0, 0, 1))
+            # Esquina exterior permanece exactamente con el color clave #000001
+            self.assertEqual(bg.getpixel((10, 10)), (0, 0, 1))
+        finally:
+            canvas.destroy()
+
+    def test_empty_shelf_renders_card_in_foreground_and_background(self):
+        """Una estantería sin juegos genera su carátula placeholder tanto al frente como en segundo plano."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        from core.coverflow_engine import create_empty_shelf_card
+        card = create_empty_shelf_card("Recientes", size=220)
+        self.assertEqual(card.size, (220, 220))
+        self.assertIsNotNone(card.getbbox())
+
+        canvas = CoverFlowCanvas(self.root, width=900, height=600)
+        try:
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 250
+            shelves = [
+                {"id": "all", "name": "Todos", "games": [{"name": "Uno", "path": "/uno.exe"}]},
+                {"id": "recent", "name": "Recientes", "games": []},
+                {"id": "fav", "name": "Favoritos", "games": [{"name": "Dos", "path": "/dos.exe"}]},
+            ]
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (240, 240), (180, 90, 60, 255))):
+                canvas.set_shelves_context(shelves, 0, {})
+                canvas.set_games(shelves[0]["games"], target_index=0, transition_direction=0)
+                # Vecino vacío debe generar tira en memoria sin tocar disco
+                strip = canvas._get_bg_shelf_strip(shelves[1], 0, 900, 250, allow_disk=False)
+                self.assertIsNotNone(strip)
+
+                # Al cambiar al carrusel vacío se pinta su tarjeta placeholder centrada sin error
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.ui_filter_label = "Recientes"
+                canvas.set_games([], target_index=0, transition_direction=1)
+                self.assertTrue(canvas.is_shelf_animating)
+                canvas.shelf_offset_y = float(canvas.shelf_distance * 0.45)
+                canvas.redraw(force_w=900, force_h=600)
+                canvas.is_shelf_animating = False
+                canvas.shelf_offset_y = 0.0
+                floor_y = canvas._compute_floor_y(600, 250)
+                bg = Image.new("RGB", (900, 600), (0, 0, 0))
+                canvas._draw_vertical_stack_frame(bg, 900, 600, floor_y, 250, False, 0.0)
+                card_region = bg.crop((450 - 90, floor_y - 220, 450 + 90, floor_y - 20))
+                self.assertIsNotNone(card_region.getbbox())
+                max_luma = max(sum(px) for px in card_region.getdata())
+                self.assertGreater(max_luma, 250)
+        finally:
+            canvas.destroy()
+
+    def test_progressive_fade_curve_and_mini_no_dark_halos(self):
+        """La opacidad de la pila decrece suave y progresivamente (sin cortes) y el Modo Mini no genera halos negros."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        canvas = CoverFlowCanvas(self.root, width=800, height=440)
+        try:
+            alphas = [canvas._eval_stack_slot_params(s, 220, max_s=2.85)[3] for s in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 2.85)]
+            self.assertEqual(alphas[0], 1.0)
+            self.assertAlmostEqual(alphas[-1], 0.0, places=2)
+            for idx in range(len(alphas) - 1):
+                self.assertGreaterEqual(alphas[idx], alphas[idx + 1])
+                self.assertLess(alphas[idx] - alphas[idx + 1], 0.45)
+
+            # En Modo Mini en transición, ningún píxel semitransparente se vuelve halo casi-negro distinto de (0,0,1)
+            canvas.is_transparent_mode = True
+            canvas.last_w = 800
+            canvas.last_h = 440
+            canvas.base_size = 180
+            shelves = [
+                {"id": f"s{i}", "name": f"S{i}", "games": [{"name": f"S{i}G0", "path": f"/s{i}/0.exe"}]}
+                for i in range(4)
+            ]
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (80, 180, 255, 255))):
+                canvas.set_shelves_context(shelves, 0, {})
+                canvas.set_games(shelves[0]["games"], target_index=0, transition_direction=0)
+                for sh in shelves:
+                    canvas._get_bg_shelf_strip(sh, 0, 800, 180, allow_disk=True)
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=0, transition_direction=1)
+                canvas.shelf_offset_y = float(canvas.shelf_distance * 0.55)
+                bg = Image.new("RGB", (800, 440), (0, 0, 1))
+                floor_y = canvas._compute_floor_y(440, 180)
+                canvas._draw_vertical_stack_frame(bg, 800, 440, floor_y, 180, True, 0.55)
+            # Esquinas intactas con color clave exacto y ausencia de manchas oscuras (< 12) alrededor del borde
+            self.assertEqual(bg.getpixel((8, 8)), (0, 0, 1))
+            near_dark = [px for px in bg.getdata() if px != (0, 0, 1) and max(px) < 12]
+            self.assertEqual(len(near_dark), 0, f"Hallados {len(near_dark)} píxeles halo oscuros en Modo Mini")
+        finally:
+            canvas.destroy()
+
+    def test_lateral_backdrop_cache_and_deferred_redraw(self):
+        """El desplazamiento lateral reutiliza el fondo apilado estático y select_index evita doble redraw."""
+        if not self.has_tk:
+            self.skipTest("Tkinter display not available")
+        redraw_calls = [0]
+        canvas = CoverFlowCanvas(self.root, width=900, height=600)
+        try:
+            def on_sel(_idx):
+                if not getattr(canvas, "_defer_redraw", False):
+                    redraw_calls[0] += 1
+
+            canvas.on_selection_changed = on_sel
+            canvas.last_w = 900
+            canvas.last_h = 600
+            canvas.base_size = 240
+            shelves = [
+                {"id": f"s{i}", "name": f"S{i}", "games": [{"name": f"G{j}", "path": f"/g{j}.exe"} for j in range(4)]}
+                for i in range(3)
+            ]
+            with patch.object(canvas, "_get_or_create_jewel_case", return_value=Image.new("RGBA", (220, 220), (140, 160, 200, 255))):
+                canvas.set_shelves_context(shelves, 1, {})
+                canvas.set_games(shelves[1]["games"], target_index=0, transition_direction=0)
+                for rel in (-1, 1):
+                    canvas._get_bg_shelf_strip(shelves[1 + rel], 0, 900, 240, allow_disk=True)
+                canvas.redraw(force_w=900, force_h=600)
+                first_cache = canvas._static_backdrop_cache
+                self.assertIsNotNone(first_cache)
+
+                # Segundo redraw en posición lateral intermedia reutiliza la instancia exacta de backdrop cacheado
+                canvas.current_pos = 0.5
+                with patch.object(canvas, "_draw_resting_stack_neighbors") as mock_bg:
+                    canvas.redraw(force_w=900, force_h=600)
+                    mock_bg.assert_not_called()
+
+                canvas.select_index(1)
+                self.assertEqual(redraw_calls[0], 0)
+
+                # Cambiar de estantería reutiliza la caché de carátulas sin recomputar render_cover_flow_from_flat
+                with patch("ui.coverflow_canvas.render_cover_flow_from_flat") as mock_render:
+                    canvas.set_shelves_context(shelves, 2, {})
+                    canvas.set_games(shelves[2]["games"], target_index=0, transition_direction=1)
+                    mock_render.assert_not_called()
+        finally:
+            canvas.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

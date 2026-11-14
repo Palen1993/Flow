@@ -314,17 +314,60 @@ def scale_alpha_mask(mask: Image.Image, alpha_scale: float) -> Image.Image:
 
 
 _IDENTITY_256_LUT = list(range(256))
-_V_ALPHA_1PX_CACHE: Dict[Tuple[int, int, int, int], bytes] = {}
+_V_ALPHA_1PX_CACHE: Dict[Tuple[int, int, int, int, int], bytes] = {}
+_BRIGHT_POINT_LUT_CACHE: Dict[Tuple[int, bool], List[int]] = {}
+_MINI_ALPHA_CUT_LUT = [0 if i < 32 else 255 for i in range(256)]
 
 
-def _get_vertical_alpha_bytes(target_h: int, tilt_dir: int, a_scale: float, sin_t: float) -> bytes:
-    key = (target_h, -1 if tilt_dir < 0 else 1, int(round(a_scale * 100)), int(round(sin_t * 100)))
+def _get_bright_point_lut(eff_bright: float, transparent_key_safe: bool) -> List[int]:
+    q_b = int(round(max(0.05, min(1.0, eff_bright)) * 100))
+    key = (q_b, bool(transparent_key_safe))
+    cached = _BRIGHT_POINT_LUT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    scale = q_b / 100.0
+    rgb_lut = [int(v * scale) for v in range(256)] if q_b < 99 else _IDENTITY_256_LUT
+    b_lut = [2 if x == 1 else x for x in rgb_lut] if transparent_key_safe else rgb_lut
+    full_lut = rgb_lut + rgb_lut + b_lut + _IDENTITY_256_LUT
+    if len(_BRIGHT_POINT_LUT_CACHE) >= 256:
+        _BRIGHT_POINT_LUT_CACHE.clear()
+    _BRIGHT_POINT_LUT_CACHE[key] = full_lut
+    return full_lut
+
+
+def finalize_transparent_key_frame(rgba_frame: Image.Image) -> Image.Image:
+    """
+    Convierte una capa RGBA compuesta en Modo Mini al lienzo RGB con color clave exacto (#000001),
+    evitando halos oscuros y píxeles rotos alrededor de bordes semitransparentes.
+    """
+    solid = Image.new("RGB", rgba_frame.size, (8, 11, 18))
+    solid.paste(rgba_frame, (0, 0), rgba_frame)
+    cut_mask = rgba_frame.getchannel("A").point(_MINI_ALPHA_CUT_LUT)
+    out = Image.new("RGB", rgba_frame.size, (0, 0, 1))
+    out.paste(solid, (0, 0), cut_mask)
+    return out
+
+
+def _get_vertical_alpha_bytes(
+    target_h: int,
+    tilt_dir: int,
+    a_scale: float,
+    sin_t: float,
+    fade_strength_factor: float = 0.36,
+) -> bytes:
+    key = (
+        target_h,
+        -1 if tilt_dir < 0 else 1,
+        int(round(a_scale * 100)),
+        int(round(sin_t * 100)),
+        int(round(fade_strength_factor * 100)),
+    )
     cached = _V_ALPHA_1PX_CACHE.get(key)
     if cached is not None:
         return cached
     denom = max(1, target_h - 1)
     alpha_vals = bytearray(target_h)
-    fade_strength = 0.55 * sin_t
+    fade_strength = max(0.0, min(0.85, fade_strength_factor)) * sin_t
     is_up = tilt_dir < 0
     for y in range(target_h):
         frac = y / denom
@@ -406,21 +449,20 @@ def render_vertical_shelf_tilt(
 
     coeffs = find_perspective_coeffs(pa, pb)
     if resample is None:
-        # En resoluciones 720p/ventana usa BILINEAR nítido; en 1080p/4K mantiene >60fps fluidos con NEAREST
-        resample = Image.Resampling.BILINEAR if (out_w * target_h <= 260_000) else Image.Resampling.NEAREST
+        # BILINEAR en el rango completo hasta 900k px evita bordes dentados/Moiré durante el movimiento
+        resample = Image.Resampling.BILINEAR if (out_w * target_h <= 900_000) else Image.Resampling.NEAREST
 
     src_rgba = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
     warped = src_rgba.transform((out_w, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
 
-    # Atenuación de brillo en nivel C (point LUT) + desvanecimiento gradual en borde lejano
-    eff_bright = max(0.08, b_scale * (1.0 - 0.16 * sin_t))
+    # Atenuación de brillo en nivel C (point LUT cacheada) + desvanecimiento gradual sin artefactos
+    eff_bright = max(0.08, b_scale * (1.0 - 0.14 * sin_t))
     if eff_bright < 0.99 or transparent_key_safe:
-        rgb_lut = [int(v * eff_bright) for v in range(256)] if eff_bright < 0.99 else _IDENTITY_256_LUT
-        b_lut = [2 if x == 1 else x for x in rgb_lut] if transparent_key_safe else rgb_lut
-        warped = warped.point(rgb_lut + rgb_lut + b_lut + _IDENTITY_256_LUT)
+        warped = warped.point(_get_bright_point_lut(eff_bright, transparent_key_safe))
 
     src_a = warped.getchannel("A")
-    alpha_bytes = _get_vertical_alpha_bytes(target_h, tilt_dir, a_scale, sin_t)
+    fade_factor = 0.22 if transparent_key_safe else 0.38
+    alpha_bytes = _get_vertical_alpha_bytes(target_h, tilt_dir, a_scale, sin_t, fade_strength_factor=fade_factor)
     v_alpha = Image.frombytes("L", (1, target_h), alpha_bytes).resize((out_w, target_h), Image.Resampling.NEAREST)
     final_a = ImageChops.multiply(src_a, v_alpha)
 
@@ -585,3 +627,128 @@ def invalidate_jewel_case_cache(cover_path: str = ""):
                         pass
     except Exception:
         pass
+
+
+def create_empty_shelf_card(shelf_label: str = "Todos", size: int = 320) -> Image.Image:
+    """
+    Genera una carátula estilo jewel case Liquid Glass para estanterías/carruseles sin juegos,
+    mostrando dentro de la propia tarjeta el texto informativo de forma nítida y legible.
+    """
+    import textwrap
+
+    s = max(96, int(size))
+    # Fondo azul pizarra oscuro opaco (evita que se transparente texto o carátulas de atrás)
+    col_lines = bytearray()
+    for y in range(s):
+        frac = y / max(1, s - 1)
+        r = int(20 - 7 * frac)
+        g = int(28 - 10 * frac)
+        b = int(48 - 16 * frac)
+        col_lines.extend((r, g, b, 255))
+    card = Image.frombytes("RGBA", (1, s), bytes(col_lines)).resize((s, s), Image.Resampling.NEAREST)
+
+    # Halos suaves ambientales Liquid Glass
+    glow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    g_draw = ImageDraw.Draw(glow)
+    g_draw.ellipse(
+        [int(s * 0.12), -int(s * 0.18), int(s * 0.88), int(s * 0.42)],
+        fill=(56, 189, 248, 36),
+    )
+    g_draw.ellipse(
+        [int(s * 0.18), int(s * 0.62), int(s * 0.82), int(s * 1.15)],
+        fill=(37, 99, 235, 28),
+    )
+    glow = glow.filter(ImageFilter.GaussianBlur(max(4, s // 20)))
+    card = Image.alpha_composite(card, glow)
+
+    draw = ImageDraw.Draw(card)
+    lbl = (shelf_label or "Todos").strip()
+    is_all = lbl.lower() in ("todos", "todos los juegos", "")
+
+    def _load_font(pt: int, bold: bool = False):
+        names = ("segoeuib.ttf", "arialbd.ttf") if bold else ("segoeui.ttf", "arial.ttf")
+        for fn in names:
+            try:
+                return ImageFont.truetype(fn, max(10, pt))
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    font_badge = _load_font(int(round(s * 0.048)), bold=True)
+    font_title = _load_font(int(round(s * 0.068)), bold=True)
+    font_sub = _load_font(int(round(s * 0.046)), bold=False)
+
+    # Cápsula superior con el nombre de la estantería (visible incluso al asomar en pila 3D)
+    badge_txt = (lbl if not is_all else "BIBLIOTECA").upper()
+    if len(badge_txt) > 22:
+        badge_txt = badge_txt[:20] + "…"
+    pad_x = max(12, int(s * 0.05))
+    bx_box = draw.textbbox((0, 0), badge_txt, font=font_badge)
+    bw = min(int(s * 0.84), (bx_box[2] - bx_box[0]) + pad_x * 2)
+    bh = max(20, int(round(s * 0.10)))
+    bx1 = (s - bw) // 2
+    by1 = int(round(s * 0.085))
+    draw.rounded_rectangle(
+        [bx1, by1, bx1 + bw, by1 + bh],
+        radius=bh // 2,
+        fill=(30, 48, 82, 215),
+        outline=(96, 165, 250, 170),
+        width=max(1, s // 240),
+    )
+    draw.text(
+        (s // 2, by1 + bh // 2),
+        badge_txt,
+        font=font_badge,
+        fill=(147, 197, 253, 255),
+        anchor="mm",
+    )
+
+    # Icono minimalista de estuche vacío centrado sobre el título
+    cx = s // 2
+    ic_cy = int(round(s * 0.30))
+    ic_r = max(12, int(round(s * 0.075)))
+    lw = max(2, s // 110)
+    draw.rounded_rectangle(
+        [cx - ic_r, ic_cy - ic_r, cx + ic_r, ic_cy + ic_r],
+        radius=max(4, ic_r // 3),
+        fill=(22, 34, 58, 210),
+        outline=(125, 211, 252, 200),
+        width=lw,
+    )
+    arm = max(5, int(ic_r * 0.44))
+    draw.line([(cx - arm, ic_cy), (cx + arm, ic_cy)], fill=(186, 230, 253, 235), width=lw)
+    draw.line([(cx, ic_cy - arm), (cx, ic_cy + arm)], fill=(186, 230, 253, 235), width=lw)
+
+    # Título legible dentro de la carátula
+    if is_all:
+        raw_title = "No hay juegos en la biblioteca"
+        raw_hint = "Pulsa Opciones (X) para añadir o escanear juegos"
+    else:
+        raw_title = f"No hay juegos en '{lbl}'"
+        raw_hint = "Usa ↑ / ↓ o LB / RB para cambiar de canal, o añade juegos con (X)"
+
+    title_lines = textwrap.wrap(raw_title, width=19)[:3]
+    hint_lines = textwrap.wrap(raw_hint, width=26)[:3]
+
+    y_cur = int(round(s * 0.47))
+    line_step_t = max(14, int(round(s * 0.088)))
+    for line in title_lines:
+        draw.text((cx + 1, y_cur + 1), line, font=font_title, fill=(0, 0, 0, 200), anchor="mm")
+        draw.text((cx, y_cur), line, font=font_title, fill=(248, 250, 252, 255), anchor="mm")
+        y_cur += line_step_t
+
+    y_hint = max(y_cur + int(round(s * 0.04)), int(round(s * 0.72)))
+    line_step_h = max(11, int(round(s * 0.064)))
+    for line in hint_lines:
+        draw.text((cx + 1, y_hint + 1), line, font=font_sub, fill=(0, 0, 0, 180), anchor="mm")
+        draw.text((cx, y_hint), line, font=font_sub, fill=(186, 202, 224, 240), anchor="mm")
+        y_hint += line_step_h
+
+    # Acabado estuche jewel case (doble marco + reflejo diagonal de cristal)
+    draw.rectangle([0, 0, s - 1, s - 1], outline=(148, 197, 255, 115), width=1)
+    draw.rectangle([1, 1, s - 2, s - 2], outline=(10, 14, 24, 160), width=1)
+
+    gloss = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    gl_draw = ImageDraw.Draw(gloss)
+    gl_draw.polygon([(0, 0), (s, 0), (0, int(s * 0.65))], fill=(255, 255, 255, 16))
+    return prevent_transparency_color_collision(Image.alpha_composite(card, gloss))
