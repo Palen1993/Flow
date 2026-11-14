@@ -174,6 +174,9 @@ class App(ctk.CTk):
         """Resuelve el índice absoluto de un juego en la colección global library.games."""
         if not game:
             return 0
+        for idx, lg in enumerate(self.library.games):
+            if lg is game:
+                return idx
         gp = game.get("path")
         gn = (game.get("name") or "").strip().lower()
         for idx, lg in enumerate(self.library.games):
@@ -1258,11 +1261,15 @@ class App(ctk.CTk):
             return
 
         cur_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
+        cur_name = (cur_game.get("name") or "").strip() if cur_game else ""
+        short_name = cur_name if len(cur_name) <= 16 else (cur_name[:15].rstrip() + "…")
+        edit_label = f"Editar Juego ({short_name})..." if short_name else "Editar Juego..."
         is_fav = bool(cur_game.get("favorite", False)) if cur_game else False
         fav_label = "Quitar de Favoritos (F)" if is_fav else "Marcar como Favorito (F)"
         fav_icon = "★" if is_fav else "☆"
 
         items = [
+            ("✏️", edit_label, self.open_edit_current_game_dialog),
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
             ("🏆", "Logros y Trofeos (Y)...", self.open_achievements_dialog),
@@ -1403,14 +1410,39 @@ class App(ctk.CTk):
             on_library_changed=lambda games: self.apply_filter(self.current_filter_id, keep_selection=True),
         )
 
+    def open_edit_current_game_dialog(self):
+        self.close_active_menu()
+        cur_game = self.games[self.selected_index] if (
+            hasattr(self, "games") and self.games and 0 <= self.selected_index < len(self.games)
+        ) else None
+        if cur_game is None:
+            if self.library.games:
+                self.open_select_game_dialog()
+            else:
+                show_info(
+                    "Editar Juego",
+                    "No hay juegos registrados en la biblioteca.\nUsa 'Importar Juegos...' para añadir juegos primero.",
+                    parent=self
+                )
+            return
+        real_idx = self._get_library_index_for_game(cur_game)
+        self.open_edit_for_game_index(real_idx)
+
     def open_edit_for_game_index(self, index: int, return_callback=None):
         if index < 0 or index >= len(self.library.games):
             if return_callback:
                 return_callback()
             return
+        if hasattr(self, "_edit_dialog") and self._edit_dialog and self._edit_dialog.winfo_exists():
+            try:
+                self._edit_dialog.lift()
+                self._edit_dialog.focus_force()
+            except Exception:
+                pass
+            return
         self.monitors = get_monitors()
         game = self.library.games[index]
-        AddEditGameDialog(
+        self._edit_dialog = AddEditGameDialog(
             self,
             self.monitors,
             game_data=game,

@@ -203,6 +203,13 @@ class TestCollectionsAndFilters(unittest.TestCase):
         self.assertEqual(len(boxes_single), 1)
         self.assertEqual(boxes_single[0][4], "filter_menu")
 
+        # Renderizado seguro para ColorKey Win32 (alpha binario 0/255 y sin píxeles (0, 0, 1))
+        img_mini, _ = render_filter_capsule("Favoritos", 4, height=30, shelf_index=1, total_shelves=3, transparent_key_safe=True)
+        alphas = {px[3] for px in img_mini.getdata()}
+        self.assertTrue(alphas.issubset({0, 255}), f"Alpha debe ser binario para ColorKey, encontrado: {alphas}")
+        opaque_rgb = {(px[0], px[1], px[2]) for px in img_mini.getdata() if px[3] > 0}
+        self.assertNotIn((0, 0, 1), opaque_rgb)
+
 
 if __name__ == "__main__":
     unittest.main()

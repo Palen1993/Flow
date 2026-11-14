@@ -61,21 +61,43 @@ class TestTransitionAndFramerate(unittest.TestCase):
         self.assertIsNotNone(cached_bg)
 
     def test_mode_transition_overlays_hidden_in_transparent_mode(self):
-        """Verifica que en modo transparente se ocultan todos los elementos del modo Big Picture (HUD, strips, etc.)."""
+        """Verifica que en modo transparente se oculta el HUD Big Picture y solo se muestra la píldora compacta del filtro activo."""
         self.canvas.is_transparent_mode = True
+        self.canvas.ui_filter_label = "Favoritos"
+        self.canvas.ui_filter_count = 4
+        self.canvas.ui_shelf_index = 1
+        self.canvas.ui_total_shelves = 3
+        self.canvas.base_size = 260
         test_bg = Image.new("RGB", (800, 450), (0, 0, 1))
-        
+
         # Configurar textos que en Big Picture se pintarían
         self.canvas.ui_title = "Titulo Big Picture"
         self.canvas.ui_status = "Estado Big Picture"
-        self.canvas.hud_hitboxes = [(10, 10, 50, 50, "test")]
-        
+        self.canvas.hud_hitboxes = [(10, 10, 50, 50, "menu")]
+
         self.canvas._draw_overlays(test_bg, 800, 450)
-        
-        # En modo transparente hud_hitboxes debe estar completamente vacío
-        self.assertEqual(len(self.canvas.hud_hitboxes), 0, "No debe haber hitboxes de HUD en modo mini")
-        # El fondo no debe ser modificado por overlays
+
+        # Ningún botón de Big Picture (menu, battery, launch, start, select, exit) debe aparecer en modo mini
+        actions = {act for (_, _, _, _, act) in self.canvas.hud_hitboxes}
+        self.assertTrue(actions.issubset({"shelf_prev", "shelf_next"}), f"Acciones inesperadas en modo mini: {actions}")
+        self.assertEqual(actions, {"shelf_prev", "shelf_next"})
+
+        # El centro y la zona inferior (donde iría el título/botón de Big Picture) permanecen transparentes (0, 0, 1)
         self.assertEqual(test_bg.getpixel((400, 225)), (0, 0, 1))
+        self.assertEqual(test_bg.getpixel((400, 410)), (0, 0, 1))
+
+        # La píldora del filtro activo SÍ debe haberse dibujado centrada arriba
+        top_band = test_bg.crop((250, 0, 550, 90))
+        non_key_pixels = [px for px in top_band.getdata() if px != COLOR_TRANS_KEY]
+        self.assertGreater(len(non_key_pixels), 200, "La píldora de filtro activo debe dibujarse en la banda superior en modo mini")
+
+        # Cambiar de filtro debe cambiar los píxeles de la píldora
+        test_bg_todos = Image.new("RGB", (800, 450), (0, 0, 1))
+        self.canvas.ui_filter_label = "Todos"
+        self.canvas.ui_filter_count = 12
+        self.canvas.ui_shelf_index = 0
+        self.canvas._draw_overlays(test_bg_todos, 800, 450)
+        self.assertNotEqual(top_band.tobytes(), test_bg_todos.crop((250, 0, 550, 90)).tobytes())
 
     def test_window_manager_clean_transition_no_glitch(self):
         """Verifica que las transiciones a modo mini y full configuran correctamente el estado sin excepciones."""

@@ -585,7 +585,7 @@ def render_launch_button_pill(
     return downscaled
 
 
-_FILTER_CAPSULE_CACHE: Dict[Tuple[str, int, str, int, int, int], Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]] = {}
+_FILTER_CAPSULE_CACHE: Dict[Tuple[str, int, str, int, int, int, bool], Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]] = {}
 
 def render_filter_capsule(
     filter_label: str,
@@ -593,14 +593,16 @@ def render_filter_capsule(
     family: str = "xbox",
     height: int = 36,
     shelf_index: int = 0,
-    total_shelves: int = 1
+    total_shelves: int = 1,
+    transparent_key_safe: bool = False,
 ) -> Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]:
     """
     Renderiza la píldora superior izquierda de Estantería / Carrusel en RGBA estilo Glassmorphism:
-      Si hay > 1 estantería: [ (▲) ‹  FAVORITOS (4) • 1/3  › (▼) ]
+      Si hay > 1 estantería: [ (▲) ‹  FAVORITOS (4) · 1/3  › (▼) ]
       Si hay 1 estantería:   [  TODOS LOS JUEGOS (42)  ]
     """
     family_norm = "playstation" if family == "playstation" else "xbox"
+    t_safe = bool(transparent_key_safe)
     clean_lbl = (
         filter_label
         .replace("⭐", "★")
@@ -613,7 +615,7 @@ def render_filter_capsule(
         .replace("💤", "")
         .strip()
     )
-    cache_key = (clean_lbl, count, family_norm, height, shelf_index, total_shelves)
+    cache_key = (clean_lbl, count, family_norm, height, shelf_index, total_shelves, t_safe)
     if cache_key in _FILTER_CAPSULE_CACHE:
         return _FILTER_CAPSULE_CACHE[cache_key]
 
@@ -635,7 +637,6 @@ def render_filter_capsule(
     tw = int(ddraw.textlength(disp_text, font=font_lbl))
     arr_w = int(ddraw.textlength("▲", font=font_arr)) if has_multi else 0
 
-    icon_r = int(h2 * 0.28)
     pad_x = int(h2 * 0.32)
     gap = int(h2 * 0.20)
 
@@ -647,11 +648,12 @@ def render_filter_capsule(
     canvas = Image.new("RGBA", (tot_w2, h2), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 
-    # Cápsula de cristal translúcida
+    # Cápsula de cristal (sólida en modo transparente para evitar halos con ColorKey)
+    fill_alpha = 255 if t_safe else 240
     draw.rounded_rectangle(
         [2, 2, tot_w2 - 3, h2 - 3],
         radius=(h2 // 2) - 2,
-        fill=(20, 23, 34, 240),
+        fill=(20, 23, 34, fill_alpha),
         outline=(43, 51, 69, 255),
         width=3
     )
@@ -663,7 +665,7 @@ def render_filter_capsule(
 
         # 2. Texto central
         tx = pad_x + arr_w + gap + (tw // 2)
-        txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl else (248, 250, 252, 255)
+        txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl.upper() else (248, 250, 252, 255)
         draw.text((tx, cy - 1), disp_text, font=font_lbl, fill=txt_col, anchor="mm")
 
         # 3. Flecha abajo ▼
@@ -682,7 +684,7 @@ def render_filter_capsule(
         ]
     else:
         tx = pad_x + (tw // 2)
-        txt_col = (248, 250, 252, 255)
+        txt_col = (56, 189, 248, 255) if "★" in clean_lbl or "FAVORITOS" in clean_lbl.upper() else (248, 250, 252, 255)
         draw.text((tx, cy - 1), disp_text, font=font_lbl, fill=txt_col, anchor="mm")
 
         downscaled = canvas.resize((tot_w2 // scale, height), Image.Resampling.LANCZOS)
@@ -690,6 +692,12 @@ def render_filter_capsule(
         boxes = [
             (0, 0, w_final, height, "filter_menu")
         ]
+
+    if t_safe:
+        r_ch, g_ch, b_ch, a_ch = downscaled.split()
+        crisp_a = a_ch.point(lambda p: 255 if p >= 135 else 0)
+        downscaled = Image.merge("RGBA", (r_ch, g_ch, b_ch, crisp_a))
+        downscaled = prevent_transparency_color_collision(downscaled)
 
     res = (downscaled, boxes)
     if len(_FILTER_CAPSULE_CACHE) > 32:

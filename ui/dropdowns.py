@@ -380,10 +380,19 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         mw = scale_value(355, scale)
         item_h = scale_value(44, scale)
         mh = len(items) * item_h + scale_value(28, scale)
-        btn_h = scale_value(38, scale)
+        try:
+            screen_h = max(480, int(parent.winfo_screenheight()))
+        except Exception:
+            screen_h = 1080
+        max_logical_h = max(280, int((screen_h - 24) / max(0.5, ctk_scale)))
+        if mh > max_logical_h and items:
+            item_h = max(26, (max_logical_h - scale_value(24, scale)) // len(items))
+            mh = len(items) * item_h + scale_value(24, scale)
+        btn_h = max(22, min(scale_value(38, scale), item_h - 6))
         btn_rad = scale_value(12, scale)
         btn_font = font_button(max(10, int(13 * scale)))
         phys_mw = int(round(mw * ctk_scale))
+        phys_mh = int(round(mh * ctk_scale))
         try:
             if anchor_widget is not None and anchor_widget != parent and anchor_widget.winfo_viewable() and anchor_widget.winfo_height() < int(120 * ctk_scale):
                 bx = anchor_widget.winfo_rootx()
@@ -408,6 +417,8 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                             x = max(10, min(px + pw - phys_mw - int(18 * ctk_scale), sx + hx1))
                             y = sy + hy2 + int(8 * ctk_scale)
                             break
+            if y + phys_mh > screen_h - 10:
+                y = max(10, screen_h - 10 - phys_mh)
         except Exception:
             x, y = 100, 60
         self.geometry(f"{mw}x{mh}+{x}+{y}")

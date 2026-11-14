@@ -1703,8 +1703,30 @@ class CoverFlowCanvas(tk.Canvas):
         scale = getattr(self, "display_scale", 1.0)
 
         if getattr(self, "is_transparent_mode", False):
-            # En modo normal / transparente flotante: ocultar todo el modo Big Picture y mostrar únicamente las carátulas 3D
-            self.hud_hitboxes = []
+            # En modo mini transparente: ocultar todo el HUD de Big Picture, pero mostrar la píldora del filtro/carrusel activo
+            try:
+                filt_lbl = getattr(self, "ui_filter_label", "Todos")
+                filt_cnt = getattr(self, "ui_filter_count", len(self.games))
+                s_idx = getattr(self, "ui_shelf_index", 0)
+                s_tot = getattr(self, "ui_total_shelves", 1)
+                mini_h = max(24, int(round(30 * scale)))
+                filt_img, filt_boxes = render_filter_capsule(
+                    filter_label=filt_lbl,
+                    count=filt_cnt,
+                    family=fam,
+                    height=mini_h,
+                    shelf_index=s_idx,
+                    total_shelves=s_tot,
+                    transparent_key_safe=True,
+                )
+                filt_x = max(0, (w - filt_img.width) // 2)
+                filt_y = max(6, int(round(8 * scale)))
+                bg.paste(filt_img, (filt_x, filt_y), filt_img)
+                for (bx1, by1, bx2, by2, act) in filt_boxes:
+                    if act in ("shelf_prev", "shelf_next"):
+                        self.hud_hitboxes.append((filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2, act))
+            except Exception:
+                pass
             return
 
         # 0. Modo Big Picture: Píldora de Colección y Filtro arriba a la izquierda [ (LB/L1) ‹ FAVORITOS (4) › (RB/R1) ]
