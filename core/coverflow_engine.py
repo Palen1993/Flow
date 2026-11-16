@@ -5,8 +5,10 @@ from typing import List, Tuple, Dict, Optional
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageChops
 from core.config import JEWELS_CACHE_DIR
 
+_IDENTITY_256_LUT = list(range(256))
 _SAFE_BLUE_LUT = list(range(256))
 _SAFE_BLUE_LUT[1] = 2  # Evita colisión con trans_key #000001 (RGB: 0, 0, 1)
+_SAFE_RGBA_LUT = _IDENTITY_256_LUT + _IDENTITY_256_LUT + _SAFE_BLUE_LUT + _IDENTITY_256_LUT
 
 def prevent_transparency_color_collision(img: Image.Image) -> Image.Image:
     """
@@ -18,9 +20,7 @@ def prevent_transparency_color_collision(img: Image.Image) -> Image.Image:
         return img
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
-    r, g, b, a = img.split()
-    b = b.point(_SAFE_BLUE_LUT)
-    return Image.merge('RGBA', (r, g, b, a))
+    return img.point(_SAFE_RGBA_LUT)
 
 def find_perspective_coeffs(pa: List[Tuple[float, float]], pb: List[Tuple[float, float]]) -> List[float]:
     """Resuelve la matriz 8x8 para mapear pa (destino) a pb (origen) en PIL."""
@@ -210,7 +210,9 @@ def create_jewel_case(
 
 def prepare_flat_cover(base_album: Image.Image, size: int, has_reflection: bool = True) -> Tuple[Image.Image, int, int]:
     """Genera la carátula plana (con reflejo inferior opcional) lista para proyecciones."""
-    scaled = base_album.resize((size, size), Image.Resampling.LANCZOS)
+    near_1_to_1 = abs(base_album.width - size) <= 128 and abs(base_album.height - size) <= 128
+    res = Image.Resampling.BILINEAR if near_1_to_1 else Image.Resampling.LANCZOS
+    scaled = base_album if (base_album.size == (size, size)) else base_album.resize((size, size), res)
     if not has_reflection:
         return prevent_transparency_color_collision(scaled), size, size
 
@@ -289,7 +291,7 @@ def render_cover_flow_from_flat(flat_cover: Image.Image, size: int, angle_factor
     target_w, th, coeffs, grad_mask = get_cover_flow_geom(size, angle_factor, has_reflection=has_reflection)
     warped = flat_cover.transform((target_w, th), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BILINEAR)
     
-    warped_alpha = warped.split()[3]
+    warped_alpha = warped.getchannel("A")
     shaded_alpha = ImageChops.multiply(grad_mask, warped_alpha)
     shade_layer = Image.new('RGBA', (target_w, th), (0, 0, 0, 0))
     shade_layer.putalpha(shaded_alpha)
@@ -313,9 +315,9 @@ def scale_alpha_mask(mask: Image.Image, alpha_scale: float) -> Image.Image:
     return mask.point(lut)
 
 
-_IDENTITY_256_LUT = list(range(256))
 _V_ALPHA_1PX_CACHE: Dict[Tuple[int, int, int, int, int], bytes] = {}
 _BRIGHT_POINT_LUT_CACHE: Dict[Tuple[int, bool], List[int]] = {}
+_RGBA_POINT_LUT_CACHE: Dict[Tuple[int, int, bool], List[int]] = {}
 _MINI_ALPHA_CUT_LUT = [0 if i < 32 else 255 for i in range(256)]
 
 
@@ -332,6 +334,26 @@ def _get_bright_point_lut(eff_bright: float, transparent_key_safe: bool) -> List
     if len(_BRIGHT_POINT_LUT_CACHE) >= 256:
         _BRIGHT_POINT_LUT_CACHE.clear()
     _BRIGHT_POINT_LUT_CACHE[key] = full_lut
+    return full_lut
+
+
+def _get_rgba_point_lut(eff_bright: float, eff_alpha: float, transparent_key_safe: bool) -> List[int]:
+    """Combina atenuación de brillo RGB, seguridad #000001 y escala alfa global en una única LUT RGBA."""
+    q_b = int(round(max(0.05, min(1.0, eff_bright)) * 100))
+    q_a = int(round(max(0.0, min(1.0, eff_alpha)) * 100))
+    key = (q_b, q_a, bool(transparent_key_safe))
+    cached = _RGBA_POINT_LUT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    b_scale = q_b / 100.0
+    a_scale = q_a / 100.0
+    rgb_lut = [int(v * b_scale) for v in range(256)] if q_b < 99 else _IDENTITY_256_LUT
+    b_lut = [2 if x == 1 else x for x in rgb_lut] if transparent_key_safe else rgb_lut
+    a_lut = [int(v * a_scale) for v in range(256)] if q_a < 100 else _IDENTITY_256_LUT
+    full_lut = rgb_lut + rgb_lut + b_lut + a_lut
+    if len(_RGBA_POINT_LUT_CACHE) >= 512:
+        _RGBA_POINT_LUT_CACHE.clear()
+    _RGBA_POINT_LUT_CACHE[key] = full_lut
     return full_lut
 
 
@@ -381,6 +403,110 @@ def _get_vertical_alpha_bytes(
     return res
 
 
+def _compute_vertical_tilt_geom(
+    cw: int,
+    sh: int,
+    tilt: float,
+    tilt_dir: int,
+    center_x_in_crop: float,
+    max_angle_rad: float,
+    out_scale: float,
+) -> Tuple[int, int, float, List[Tuple[float, float]], List[Tuple[float, float]]]:
+    """Calcula dimensiones de salida y cuadriláteros proyectivos (pa, pb) para la inclinación 3D vertical."""
+    o_scale = max(0.1, float(out_scale))
+    out_w = cw if abs(o_scale - 1.0) <= 0.015 else max(8, int(round(cw * o_scale)))
+    base_h = float(sh) if out_w == cw else float(max(8, int(round(sh * o_scale))))
+    t = max(0.0, min(1.0, float(tilt)))
+
+    theta = t * max_angle_rad
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    target_h = max(8, int(round(base_h * max(0.28, cos_t))))
+
+    taper = 0.36 * sin_t
+    scale_x = float(out_w) / float(cw)
+    cx_crop = max(0.0, min(float(out_w), float(center_x_in_crop) * scale_x))
+    left_rec = cx_crop * taper
+    right_rec = float(out_w) - (float(out_w) - cx_crop) * taper
+    if right_rec - left_rec < 4.0:
+        half_min = min(2.0, float(out_w) * 0.4)
+        left_rec = max(0.0, cx_crop - half_min)
+        right_rec = min(float(out_w), cx_crop + half_min)
+
+    pb = [(0.0, 0.0), (float(cw), 0.0), (float(cw), float(sh)), (0.0, float(sh))]
+    if tilt_dir < 0:
+        pa = [(left_rec, 0.0), (right_rec, 0.0), (float(out_w), float(target_h)), (0.0, float(target_h))]
+    else:
+        pa = [(0.0, 0.0), (float(out_w), 0.0), (right_rec, float(target_h)), (left_rec, float(target_h))]
+    return out_w, target_h, sin_t, pa, pb
+
+
+def prepare_vertical_tilt_bands(
+    shelf_body: Image.Image,
+    tilt: float,
+    tilt_dir: int,
+    center_x_in_crop: float,
+    alpha_scale: float = 1.0,
+    brightness_scale: float = 1.0,
+    max_angle_rad: float = 1.18,
+    transparent_key_safe: bool = False,
+    out_scale: float = 1.0,
+) -> Optional[Tuple[Image.Image, int, int, Optional[List[int]], List[Tuple[int, int, List[float]]]]]:
+    """
+    Prepara bandas horizontales proyectivamente exactas para ejecutar PERSPECTIVE BILINEAR
+    en paralelo entre múltiples núcleos CPU manteniendo el 100% de la resolución HD.
+    """
+    if not shelf_body or shelf_body.width <= 0 or shelf_body.height <= 0:
+        return None
+    t = max(0.0, min(1.0, float(tilt)))
+    if t <= 0.01:
+        return None
+
+    cw, sh = shelf_body.size
+    out_w, target_h, sin_t, pa, pb = _compute_vertical_tilt_geom(
+        cw, sh, t, tilt_dir, center_x_in_crop, max_angle_rad, out_scale
+    )
+    a_scale = max(0.0, min(1.0, float(alpha_scale)))
+    b_scale = max(0.05, min(1.0, float(brightness_scale)))
+    eff_bright = max(0.08, b_scale * (1.0 - 0.14 * sin_t))
+    fade_factor = 0.22 if transparent_key_safe else 0.38
+    eff_alpha = max(0.0, min(1.0, a_scale * (1.0 - 0.45 * fade_factor * sin_t)))
+    lut = (
+        _get_rgba_point_lut(eff_bright, eff_alpha, transparent_key_safe)
+        if (eff_bright < 0.975 or eff_alpha < 0.975 or transparent_key_safe)
+        else None
+    )
+
+    px_area = out_w * target_h
+    n_bands = 4 if px_area >= 340_000 else (2 if px_area >= 150_000 else 1)
+    n_bands = min(n_bands, max(1, target_h // 24))
+    step = max(1, target_h // n_bands)
+    bands: List[Tuple[int, int, List[float]]] = []
+    for b in range(n_bands):
+        y0 = b * step
+        y1 = target_h if b == n_bands - 1 else (b + 1) * step
+        pa_b = [(px, py - y0) for (px, py) in pa]
+        bands.append((y0, y1 - y0, find_perspective_coeffs(pa_b, pb)))
+
+    src_rgba = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
+    return src_rgba, out_w, target_h, lut, bands
+
+
+def render_vertical_shelf_tilt_band(
+    src_rgba: Image.Image,
+    out_w: int,
+    band_h: int,
+    coeffs: List[float],
+    lut: Optional[List[int]],
+    resample: Image.Resampling = Image.Resampling.BILINEAR,
+) -> Image.Image:
+    """Renderiza en C (liberando el GIL) una banda horizontal proyectiva con su LUT RGBA opcional."""
+    band = src_rgba.transform((out_w, band_h), Image.Transform.PERSPECTIVE, coeffs, resample)
+    if lut is not None:
+        band = band.point(lut)
+    return band
+
+
 def render_vertical_shelf_tilt(
     shelf_body: Image.Image,
     tilt: float,
@@ -392,6 +518,7 @@ def render_vertical_shelf_tilt(
     resample: Optional[Image.Resampling] = None,
     transparent_key_safe: bool = False,
     out_scale: float = 1.0,
+    fast_alpha: bool = False,
 ) -> Tuple[Image.Image, Image.Image, int]:
     """
     Aplica proyección 3D de rotación vertical (eje X) a una fila de carátulas de carrusel:
@@ -423,29 +550,9 @@ def render_vertical_shelf_tilt(
         mask = scale_alpha_mask(src.getchannel("A"), a_scale)
         return src, mask, out_h
 
-    theta = t * max_angle_rad
-    cos_t = math.cos(theta)
-    sin_t = math.sin(theta)
-    target_h = max(8, int(round(base_h * max(0.28, cos_t))))
-
-    # Estrechamiento perspectivo del borde lejano convergiendo hacia el eje central de pantalla
-    taper = 0.36 * sin_t
-    scale_x = float(out_w) / float(cw)
-    cx_crop = max(0.0, min(float(out_w), float(center_x_in_crop) * scale_x))
-    left_rec = cx_crop * taper
-    right_rec = float(out_w) - (float(out_w) - cx_crop) * taper
-    if right_rec - left_rec < 4.0:
-        half_min = min(2.0, float(out_w) * 0.4)
-        left_rec = max(0.0, cx_crop - half_min)
-        right_rec = min(float(out_w), cx_crop + half_min)
-
-    pb = [(0.0, 0.0), (float(cw), 0.0), (float(cw), float(sh)), (0.0, float(sh))]
-    if tilt_dir < 0:
-        # Rotando hacia arriba: el borde superior retrocede y se estrecha, el inferior queda al frente
-        pa = [(left_rec, 0.0), (right_rec, 0.0), (float(out_w), float(target_h)), (0.0, float(target_h))]
-    else:
-        # Rotando hacia abajo: el borde inferior retrocede y se estrecha, el superior queda al frente
-        pa = [(0.0, 0.0), (float(out_w), 0.0), (right_rec, float(target_h)), (left_rec, float(target_h))]
+    out_w, target_h, sin_t, pa, pb = _compute_vertical_tilt_geom(
+        cw, sh, t, tilt_dir, center_x_in_crop, max_angle_rad, o_scale
+    )
 
     coeffs = find_perspective_coeffs(pa, pb)
     if resample is None:
@@ -453,15 +560,24 @@ def render_vertical_shelf_tilt(
         resample = Image.Resampling.BILINEAR if (out_w * target_h <= 900_000) else Image.Resampling.NEAREST
 
     src_rgba = shelf_body if shelf_body.mode == "RGBA" else shelf_body.convert("RGBA")
+    eff_bright = max(0.08, b_scale * (1.0 - 0.14 * sin_t))
+    fade_factor = 0.22 if transparent_key_safe else 0.38
+
+    if fast_alpha:
+        eff_alpha = max(0.0, min(1.0, a_scale * (1.0 - 0.45 * fade_factor * sin_t)))
+        need_lut = eff_bright < 0.99 or eff_alpha < 0.995 or transparent_key_safe
+        warped = src_rgba.transform((out_w, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
+        if need_lut:
+            warped = warped.point(_get_rgba_point_lut(eff_bright, eff_alpha, transparent_key_safe))
+        return warped, warped.getchannel("A"), target_h
+
     warped = src_rgba.transform((out_w, target_h), Image.Transform.PERSPECTIVE, coeffs, resample)
 
     # Atenuación de brillo en nivel C (point LUT cacheada) + desvanecimiento gradual sin artefactos
-    eff_bright = max(0.08, b_scale * (1.0 - 0.14 * sin_t))
     if eff_bright < 0.99 or transparent_key_safe:
         warped = warped.point(_get_bright_point_lut(eff_bright, transparent_key_safe))
 
     src_a = warped.getchannel("A")
-    fade_factor = 0.22 if transparent_key_safe else 0.38
     alpha_bytes = _get_vertical_alpha_bytes(target_h, tilt_dir, a_scale, sin_t, fade_strength_factor=fade_factor)
     v_alpha = Image.frombytes("L", (1, target_h), alpha_bytes).resize((out_w, target_h), Image.Resampling.NEAREST)
     final_a = ImageChops.multiply(src_a, v_alpha)

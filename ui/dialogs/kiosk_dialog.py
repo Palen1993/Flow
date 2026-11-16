@@ -48,7 +48,7 @@ class KioskDialog(BaseGlassDialog):
             title="🎮 Modo Kiosco / Consola Dedicada",
             width=640,
             height=540,
-            corner_radius=24
+            corner_radius=16
         )
         self.on_status_changed = on_status_changed
         self.family = getattr(parent, "_current_controller_family", "xbox")
@@ -65,8 +65,8 @@ class KioskDialog(BaseGlassDialog):
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         self.main_card.grid_columnconfigure(0, weight=1)

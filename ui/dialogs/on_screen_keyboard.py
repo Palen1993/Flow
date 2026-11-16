@@ -41,7 +41,7 @@ class OnScreenKeyboardDialog(BaseGlassDialog):
         on_confirm: Optional[Callable[[str], None]] = None,
         family: Optional[str] = None
     ):
-        super().__init__(parent, title=title, width=self.W, height=self.H, corner_radius=22)
+        super().__init__(parent, title=title, width=self.W, height=self.H, corner_radius=16)
         self.on_confirm_cb = on_confirm
         self.family = family or getattr(parent, "_current_controller_family", None) or get_connected_controller_family()
         self.text_value = str(initial_text or "")
@@ -63,7 +63,7 @@ class OnScreenKeyboardDialog(BaseGlassDialog):
         pad = max(6, int(10 * self.scale_factor))
         self.card = ctk.CTkFrame(
             self, corner_radius=self.corner_radius,
-            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1
         )
         self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)

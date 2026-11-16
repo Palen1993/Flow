@@ -725,6 +725,37 @@ def render_launch_button_pill(
     return downscaled
 
 
+def clean_pillow_text(text: str, mode: str = "filter") -> str:
+    """Limpia emojis fuera de rango bitmap antes de renderizar texto en Pillow (evita glifos '□')."""
+    raw = str(text or "")
+    if mode == "status":
+        cleaned = (
+            raw
+            .replace("🖥", "")
+            .replace("⏱", "Tiempo:")
+            .replace("🎮", "")
+            .replace("⚙", "Opciones")
+            .replace("\ufe0f", "")
+            .strip()
+        )
+        while "  •" in cleaned:
+            cleaned = cleaned.replace("  •", " •")
+        return cleaned.replace(" • ", "   •   ")
+    return (
+        raw
+        .replace("⭐", "★")
+        .replace("🎮", "")
+        .replace("⏳", "")
+        .replace("🔥", "")
+        .replace("🏆", "")
+        .replace("🕹️", "")
+        .replace("🏷️", "")
+        .replace("💤", "")
+        .replace("\ufe0f", "")
+        .strip()
+    )
+
+
 _FILTER_CAPSULE_CACHE: Dict[Tuple[str, int, str, int, int, int, bool, str], Tuple[Image.Image, List[Tuple[int, int, int, int, str]]]] = {}
 
 def render_filter_capsule(
@@ -745,18 +776,7 @@ def render_filter_capsule(
     family_norm = "playstation" if family == "playstation" else "xbox"
     t_safe = bool(transparent_key_safe)
     hov_norm = hovered_action if hovered_action in ("shelf_prev", "filter_menu", "shelf_next") else ""
-    clean_lbl = (
-        filter_label
-        .replace("⭐", "★")
-        .replace("🎮", "")
-        .replace("⏳", "")
-        .replace("🔥", "")
-        .replace("🏆", "")
-        .replace("🕹️", "")
-        .replace("🏷️", "")
-        .replace("💤", "")
-        .strip()
-    )
+    clean_lbl = clean_pillow_text(filter_label, mode="filter")
     cache_key = (clean_lbl, count, family_norm, height, shelf_index, total_shelves, t_safe, hov_norm)
     if cache_key in _FILTER_CAPSULE_CACHE:
         return _FILTER_CAPSULE_CACHE[cache_key]

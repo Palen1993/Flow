@@ -2,6 +2,7 @@ import os
 import time
 import math
 import threading
+import concurrent.futures
 from typing import List, Dict, Tuple, Optional, Any
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
@@ -10,8 +11,8 @@ from core.coverflow_engine import (
     create_procedural_album, create_jewel_case, prepare_flat_cover,
     render_cover_flow_from_flat, prevent_transparency_color_collision,
     compose_big_picture_wallpaper_bg, get_cached_jewel_case, invalidate_jewel_case_cache,
-    render_vertical_shelf_tilt, scale_alpha_mask, create_empty_shelf_card,
-    finalize_transparent_key_frame
+    render_vertical_shelf_tilt, prepare_vertical_tilt_bands, render_vertical_shelf_tilt_band,
+    scale_alpha_mask, create_empty_shelf_card, finalize_transparent_key_frame
 )
 from core.cover_resolver import resolve_game_cover
 from ui.theme import COLOR_BG_CANVAS, COLOR_TRANS_KEY
@@ -19,8 +20,12 @@ from ui.controller_hud import (
     render_controller_hud_strip,
     render_big_picture_top_hud,
     render_launch_button_pill,
-    render_filter_capsule
+    render_filter_capsule,
+    clean_pillow_text
 )
+
+_GLASS_BLUR_MASK_LUT = [255 if a >= 110 else (int((a - 65) * 5.6) if a > 65 else 0) for a in range(256)]
+
 
 class CoverFlowCanvas(tk.Canvas):
     """Componente Canvas interactivo para visualización 3D Cover Flow estilo iPod."""
@@ -44,6 +49,7 @@ class CoverFlowCanvas(tk.Canvas):
         self._cache_generation = 0
         self._library_load_id = 0
         self._cache_lock = threading.RLock()
+        self._bg_gen_inflight: set = set()
 
         # Estado del HUD superpuesto sin barras grises en modo Big Picture
         self.ui_title = ""
@@ -56,6 +62,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.ui_filter_count = 0
         self._launch_hovered = False
         self._hovered_hud_action: Optional[str] = None
+        self._mini_filter_center_box: Optional[Tuple[int, int, int, int]] = None
         self._bottom_overlay_cache: Dict[Tuple[Any, ...], Image.Image] = {}
         self.display_scale = 1.0
         self._current_font_scale = 1.0
@@ -105,12 +112,15 @@ class CoverFlowCanvas(tk.Canvas):
         self._bg_slot_warp_cache: Dict[Tuple[Any, ...], Tuple[Image.Image, Image.Image, int, int]] = {}
         self._empty_card_cache: Dict[Tuple[str, int, bool], Tuple[Image.Image, int, int]] = {}
         self._static_backdrop_cache: Optional[Tuple[Any, Image.Image]] = None
+        self._hud_blur_cache: Dict[Tuple[Any, ...], Tuple[Image.Image, Image.Image]] = {}
+        self._hud_glass_mask_cache: Dict[int, Image.Image] = {}
         self._cached_shelf_hitboxes: List[Tuple[int, int, int, int, int]] = []
         self._defer_redraw: bool = False
         self._stack_prewarm_gen: int = 0
         self._outgoing_shelf_id: Optional[str] = None
         self._outgoing_from_sign: int = 0
         self._current_games_shelf_id: Optional[str] = None
+        self._warp_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
         
         # Interacción arrastre (swipe horizontal y vertical)
         self.drag_start_x = 0
@@ -144,8 +154,21 @@ class CoverFlowCanvas(tk.Canvas):
         self.bind("<Motion>", self._on_mouse_hover)
         self.bind("<Leave>", self._on_mouse_leave)
 
+    def _get_warp_executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        if self._warp_executor is None:
+            workers = min(10, max(4, os.cpu_count() or 4))
+            self._warp_executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+        return self._warp_executor
+
     def destroy(self):
         self._stack_prewarm_gen = getattr(self, "_stack_prewarm_gen", 0) + 1
+        ex = getattr(self, "_warp_executor", None)
+        if ex is not None:
+            self._warp_executor = None
+            try:
+                ex.shutdown(wait=False)
+            except Exception:
+                pass
         super().destroy()
         
     def _on_right_mouse_down(self, event):
@@ -377,8 +400,8 @@ class CoverFlowCanvas(tk.Canvas):
         if n == 0:
             return (shelf_id, shelf_name, "EMPTY", w, full_size)
         center_idx = max(0, min(n - 1, target_idx))
-        start_i = max(0, center_idx - 3)
-        end_i = min(n, center_idx + 4)
+        start_i = max(0, center_idx - 4)
+        end_i = min(n, center_idx + 5)
         cov_keys = tuple(
             (self._get_key(shelf_games[i]), shelf_games[i].get("cover", ""))
             for i in range(start_i, end_i)
@@ -392,9 +415,10 @@ class CoverFlowCanvas(tk.Canvas):
         w: int,
         full_size: int,
         allow_disk: bool = False,
+        cancel_check: Any = None,
     ) -> Optional[Tuple[Image.Image, float, float]]:
         """
-        Compone y cachea una tira horizontal compacta (~58% resolución) para una estantería en segundo plano.
+        Compone y cachea una tira horizontal a resolución completa (1.0x HD) para evitar saltos de definición.
         Si allow_disk=False (hilo UI), jamás bloquea leyendo disco; devuelve None hasta que el hilo de precarga termine.
         """
         shelf_games = shelf.get("games") or []
@@ -410,24 +434,25 @@ class CoverFlowCanvas(tk.Canvas):
         if cached is not None:
             return cached
 
-        STRIP_SCALE = 0.58
-        strip_sz = max(64, int(round(full_size * STRIP_SCALE)))
+        STRIP_SCALE = 1.0
+        strip_sz = max(64, int(full_size))
         if n == 0:
             card_img, _, _ = self._get_empty_shelf_flat_card(shelf_name, strip_sz, has_reflection=False)
             entry = (card_img, strip_sz / 2.0, STRIP_SCALE)
-            if len(self._shelf_strip_cache) >= 28:
-                for old_k in list(self._shelf_strip_cache.keys())[:8]:
-                    self._shelf_strip_cache.pop(old_k, None)
-            self._shelf_strip_cache[strip_sig] = entry
+            with self._cache_lock:
+                if len(self._shelf_strip_cache) >= 28:
+                    for old_k in list(self._shelf_strip_cache.keys())[:8]:
+                        self._shelf_strip_cache.pop(old_k, None)
+                self._shelf_strip_cache[strip_sig] = entry
             return entry
 
-        strip_w = max(80, int(round(w * STRIP_SCALE)))
+        strip_w = max(80, int(w))
         cx = strip_w // 2
         center_spacing = int(strip_sz * 0.82)
         stack_spacing = int(strip_sz * 0.22)
 
-        start_left = max(0, center_idx - 3)
-        end_right = min(n - 1, center_idx + 3)
+        start_left = max(0, center_idx - 4)
+        end_right = min(n - 1, center_idx + 4)
 
         ordered_indices: List[int] = []
         for i in range(start_left, center_idx):
@@ -436,10 +461,27 @@ class CoverFlowCanvas(tk.Canvas):
             ordered_indices.append(i)
         ordered_indices.append(center_idx)
 
+        can_reuse_flat = (
+            getattr(self, "rendered_size", 0) == strip_sz
+            and not getattr(self, "rendered_has_refl", False)
+        )
         jewels_by_idx: Dict[int, Image.Image] = {}
+        reused_covers: Dict[int, Tuple[Image.Image, int]] = {}
         for i in ordered_indices:
+            if cancel_check is not None and cancel_check():
+                return None
             g = shelf_games[i]
             key = self._get_key(g)
+            d = float(i - center_idx)
+            af = 0.0 if abs(d) < 0.02 else max(-1.0, min(1.0, d))
+            if can_reuse_flat:
+                with self._cache_lock:
+                    gc = self.rendered_cache.get(key)
+                    cached_cov = gc.get(af) if gc else None
+                if cached_cov is not None:
+                    reused_covers[i] = cached_cov
+                    continue
+
             jewel = self.raw_jewels.get(key)
             if jewel is None:
                 if not allow_disk:
@@ -452,30 +494,59 @@ class CoverFlowCanvas(tk.Canvas):
             if jewel is not None:
                 jewels_by_idx[i] = jewel
 
-        if center_idx not in jewels_by_idx:
+        if center_idx not in jewels_by_idx and center_idx not in reused_covers:
             return None
 
         layer = Image.new("RGBA", (strip_w, strip_sz), (0, 0, 0, 0))
         for i in ordered_indices:
-            jewel = jewels_by_idx.get(i)
-            if jewel is None:
-                continue
+            if cancel_check is not None and cancel_check():
+                return None
             d = float(i - center_idx)
-            flat_small = prevent_transparency_color_collision(
-                jewel.resize((strip_sz, strip_sz), Image.Resampling.BILINEAR)
-            )
-            if abs(d) < 0.02:
-                w_img = flat_small
-                w_w = strip_sz
-                pos_x = int(cx - w_w // 2)
+            cached_cov = reused_covers.get(i)
+            if cached_cov is not None:
+                w_img, w_w = cached_cov
             else:
-                af = max(-1.0, min(1.0, d))
-                w_img, w_w, _ = render_cover_flow_from_flat(flat_small, strip_sz, af, has_reflection=False)
-                if d <= -1.0:
-                    pos_x = int(cx - center_spacing + (d + 1.0) * stack_spacing - w_w // 2)
+                jewel = jewels_by_idx.get(i)
+                if jewel is None:
+                    continue
+                g = shelf_games[i]
+                key = self._get_key(g)
+                flat_img = None
+                if can_reuse_flat:
+                    with self._cache_lock:
+                        fd = self.flat_covers.get(key)
+                        if fd is not None and fd[1] == strip_sz:
+                            flat_img = fd[0]
+                if flat_img is None:
+                    flat_img, _, _ = prepare_flat_cover(jewel, strip_sz, has_reflection=False)
+                    if can_reuse_flat and len(self.flat_covers) < 40:
+                        with self._cache_lock:
+                            if key not in self.flat_covers:
+                                self.flat_covers[key] = (flat_img, strip_sz, strip_sz)
+                if abs(d) < 0.02:
+                    w_img = flat_img
+                    w_w = strip_sz
+                    if can_reuse_flat and len(self.rendered_cache) < 36:
+                        with self._cache_lock:
+                            gc = self.rendered_cache.setdefault(key, {})
+                            if 0.0 not in gc:
+                                gc[0.0] = (flat_img, strip_sz)
                 else:
-                    pos_x = int(cx + center_spacing + (d - 1.0) * stack_spacing - w_w // 2)
-            if pos_x + w_w < -16 or pos_x > strip_w + 16:
+                    af = max(-1.0, min(1.0, d))
+                    w_img, w_w, _ = render_cover_flow_from_flat(flat_img, strip_sz, af, has_reflection=False)
+                    if can_reuse_flat and len(self.rendered_cache) < 36:
+                        with self._cache_lock:
+                            gc = self.rendered_cache.setdefault(key, {})
+                            if af not in gc:
+                                gc[af] = (w_img, w_w)
+
+            if abs(d) < 0.02:
+                pos_x = int(cx - w_w // 2)
+            elif d <= -1.0:
+                pos_x = int(cx - center_spacing + (d + 1.0) * stack_spacing - w_w // 2)
+            else:
+                pos_x = int(cx + center_spacing + (d - 1.0) * stack_spacing - w_w // 2)
+            if pos_x + w_w < -20 or pos_x > strip_w + 20:
                 continue
             layer.paste(w_img, (pos_x, 0), w_img)
 
@@ -487,11 +558,11 @@ class CoverFlowCanvas(tk.Canvas):
         cx_in_strip = (strip_w / 2.0) - float(bx1)
         entry = (body_crop, cx_in_strip, STRIP_SCALE)
 
-        if len(self._shelf_strip_cache) >= 28:
-            # Evict oldest entries smoothly
-            for old_k in list(self._shelf_strip_cache.keys())[:8]:
-                self._shelf_strip_cache.pop(old_k, None)
-        self._shelf_strip_cache[strip_sig] = entry
+        with self._cache_lock:
+            if len(self._shelf_strip_cache) >= 28:
+                for old_k in list(self._shelf_strip_cache.keys())[:8]:
+                    self._shelf_strip_cache.pop(old_k, None)
+            self._shelf_strip_cache[strip_sig] = entry
         return entry
 
     def _wait_if_animating(self, check_fn=None) -> bool:
@@ -535,11 +606,15 @@ class CoverFlowCanvas(tk.Canvas):
             return
 
         def _worker():
-            if not self._wait_if_animating(lambda: self._stack_prewarm_gen == gen):
+            time.sleep(0.05)
+            if self._stack_prewarm_gen != gen:
                 return
             built_any = False
-            for sh, t_idx in targets:
-                if not self._wait_if_animating(lambda: self._stack_prewarm_gen == gen):
+            for idx_t, (sh, t_idx) in enumerate(targets):
+                if idx_t >= 2:
+                    if not self._wait_if_animating(lambda: self._stack_prewarm_gen == gen):
+                        return
+                elif self._stack_prewarm_gen != gen:
                     return
                 sh_games = sh.get("games") or []
                 sig = self._get_shelf_strip_sig(
@@ -552,7 +627,14 @@ class CoverFlowCanvas(tk.Canvas):
                 )
                 if sig in self._shelf_strip_cache:
                     continue
-                res = self._get_bg_shelf_strip(sh, t_idx, w, full_size, allow_disk=True)
+                res = self._get_bg_shelf_strip(
+                    sh,
+                    t_idx,
+                    w,
+                    full_size,
+                    allow_disk=True,
+                    cancel_check=lambda: self._stack_prewarm_gen != gen,
+                )
                 if res is not None:
                     built_any = True
             if built_any and self._stack_prewarm_gen == gen and not getattr(self, "is_animating", False):
@@ -644,12 +726,28 @@ class CoverFlowCanvas(tk.Canvas):
         is_resting: bool = False,
         extra_alpha: float = 1.0,
         max_s: float = 2.85,
+        precomputed_warp: Optional[Tuple[Any, int, int, float, int]] = None,
     ) -> Optional[Tuple[int, int, int, int]]:
-        """Renderiza una estantería en el slot continuo s de la pila 3D vertical usando caché si está en reposo."""
+        """Renderiza una estantería en el slot continuo s de la pila 3D vertical manteniendo resolución HD (BILINEAR)."""
         scale_d, tilt, tilt_dir, alpha, bright, peek_px = self._eval_stack_slot_params(s, full_size, max_s=max_s)
         alpha *= max(0.0, min(1.0, float(extra_alpha)))
-        if alpha <= 0.05:
+        min_alpha = 0.05 if is_resting else 0.12
+        if alpha <= min_alpha:
             return None
+
+        use_fast_alpha = not is_resting
+        if precomputed_warp is not None:
+            bands_list, out_w, th, cx_in_strip, src_w = precomputed_warp
+            cx_out = cx_in_strip * (float(out_w) / float(max(1, src_w)))
+            x_draw = int(round((w / 2.0) - cx_out))
+            if tilt_dir < 0:
+                y_draw = (floor_y - full_size) - int(round(peek_px))
+            else:
+                y_bot = floor_y + int(round(peek_px))
+                y_draw = y_bot - th
+            for y0_band, warped_band in bands_list:
+                self._composite_rgba(bg, warped_band, x_draw, y_draw + y0_band, None)
+            return (x_draw, y_draw, out_w, th)
 
         shelf_id = str(shelf.get("id", ""))
         shelf_name = str(shelf.get("name", "") or "Todos")
@@ -666,15 +764,15 @@ class CoverFlowCanvas(tk.Canvas):
                 self._composite_rgba(bg, warped, x_draw, y_draw, mask)
                 return (x_draw, y_draw, warped.width, warped.height)
 
-        if not is_resting and abs_s > 0.12 and full_body_mid_override is not None:
-            src_strip, bx1_full, strip_scale = full_body_mid_override
-            cx_in_strip = ((w / 2.0) - float(bx1_full)) * strip_scale
-        elif full_body_override is not None:
+        if full_body_override is not None:
             src_strip, bx1_full = full_body_override
             if src_strip is None:
                 return None
             cx_in_strip = (w / 2.0) - float(bx1_full)
             strip_scale = 1.0
+        elif full_body_mid_override is not None:
+            src_strip, bx1_full, strip_scale = full_body_mid_override
+            cx_in_strip = ((w / 2.0) - float(bx1_full)) * strip_scale
         else:
             strip_res = self._get_bg_shelf_strip(shelf, target_idx, w, full_size, allow_disk=False)
             if strip_res is None:
@@ -682,10 +780,6 @@ class CoverFlowCanvas(tk.Canvas):
             src_strip, cx_in_strip, strip_scale = strip_res
 
         rel_scale = scale_d / max(0.1, strip_scale)
-        # En movimiento vertical activo (>0.14) y tiras grandes (>65k px), NEAREST multiplica por 3x la tasa de FPS
-        # manteniendo alta nitidez visual; las filas en reposo y el aterrizaje (<=0.14) usan BILINEAR cacheado.
-        is_moving_hd = (not is_resting) and (abs_s > 0.14) and (src_strip.width * src_strip.height > 65_000)
-        res_mode = Image.Resampling.NEAREST if is_moving_hd else Image.Resampling.BILINEAR
 
         warped, mask, th = render_vertical_shelf_tilt(
             src_strip,
@@ -695,9 +789,10 @@ class CoverFlowCanvas(tk.Canvas):
             alpha_scale=alpha,
             brightness_scale=bright,
             max_angle_rad=1.15,
-            resample=res_mode,
+            resample=Image.Resampling.BILINEAR,
             transparent_key_safe=is_trans,
             out_scale=rel_scale,
+            fast_alpha=use_fast_alpha,
         )
 
         cx_out = cx_in_strip * (float(warped.width) / float(max(1, src_strip.width)))
@@ -714,7 +809,7 @@ class CoverFlowCanvas(tk.Canvas):
                     self._bg_slot_warp_cache.pop(old_wk, None)
             self._bg_slot_warp_cache[warp_key] = (warped, mask, x_draw, y_draw)
 
-        self._composite_rgba(bg, warped, x_draw, y_draw, mask)
+        self._composite_rgba(bg, warped, x_draw, y_draw, None if use_fast_alpha else mask)
         return (x_draw, y_draw, warped.width, th)
 
     def _iter_visible_cover_slots(self, w: int, size: int):
@@ -834,6 +929,52 @@ class CoverFlowCanvas(tk.Canvas):
         mh = max(8, int(round(body_crop.height * mid_scale)))
         return (body_crop.resize((mw, mh), Image.Resampling.BILINEAR), bx1, mid_scale)
 
+    def _lookup_cached_shelf_mid_override(
+        self,
+        shelf_id: str,
+        shelf_games: List[Dict[str, Any]],
+        target_idx: int,
+        w: int,
+        full_size: int,
+        shelf_name: str = "Todos",
+    ) -> Optional[Tuple[Image.Image, int, float]]:
+        """Reutiliza una tira ya generada en _shelf_strip_cache sin recomponer ni redimensionar."""
+        strip_sig = self._get_shelf_strip_sig(
+            shelf_id, shelf_games, target_idx, w, full_size, shelf_name=shelf_name
+        )
+        cached = self._shelf_strip_cache.get(strip_sig)
+        if cached is None:
+            return None
+        strip_img, cx_in_strip, strip_scale = cached
+        bx1_eq = int(round((w / 2.0) - (cx_in_strip / max(0.05, float(strip_scale)))))
+        return (strip_img, bx1_eq, float(strip_scale))
+
+    def _cache_hd_strip_from_crop(
+        self,
+        shelf_id: str,
+        shelf_games: List[Dict[str, Any]],
+        target_idx: int,
+        w: int,
+        size: int,
+        body_crop: Optional[Image.Image],
+        bx1: int,
+        shelf_name: str = "Todos",
+    ):
+        """Almacena en _shelf_strip_cache una tira 1.0x HD recién compuesta para reutilizarla al vuelo."""
+        if body_crop is None or not shelf_games or w < 50 or size < 40:
+            return
+        strip_sig = self._get_shelf_strip_sig(
+            shelf_id, shelf_games, target_idx, w, size, shelf_name=shelf_name
+        )
+        cx_in_strip = (float(w) / 2.0) - float(bx1)
+        entry = (body_crop, cx_in_strip, 1.0)
+        with self._cache_lock:
+            if strip_sig not in self._shelf_strip_cache:
+                if len(self._shelf_strip_cache) >= 28:
+                    for old_k in list(self._shelf_strip_cache.keys())[:8]:
+                        self._shelf_strip_cache.pop(old_k, None)
+                self._shelf_strip_cache[strip_sig] = entry
+
     def _capture_outgoing_shelf(self):
         """Captura las carátulas de la estantería saliente en una capa RGBA para transición 3D fluida."""
         if not self.games and not getattr(self, "_has_rendered_shelf_once", False):
@@ -856,15 +997,40 @@ class CoverFlowCanvas(tk.Canvas):
         size = self.base_size
         has_refl = self._use_reflection()
         if not has_refl and self._is_vertical_stack_active():
-            body_crop, bx1 = self._extract_body_crop_fast(w, size)
+            cached_mid = None
+            out_sid = str(getattr(self, "_outgoing_shelf_id", "") or "")
+            out_sh = next(
+                (sh for sh in self._shelf_stack if str(sh.get("id", "")) == out_sid),
+                None,
+            )
+            out_name = str(out_sh.get("name", "") or "Todos") if out_sh is not None else "Todos"
+            aligned_int = abs(self.current_pos - round(self.current_pos)) <= 0.01
+            if aligned_int and out_sh is not None:
+                cached_mid = self._lookup_cached_shelf_mid_override(
+                    out_sid,
+                    self.games,
+                    int(round(self.current_pos)),
+                    w,
+                    size,
+                    shelf_name=out_name,
+                )
             self._outgoing_covers_layer = None
             self._outgoing_alpha_mask = None
-            self._outgoing_body_crop = body_crop
-            self._outgoing_body_crop_mid = self._build_mid_strip_override(body_crop, bx1)
-            self._outgoing_body_x = bx1
             self._outgoing_refl_crop = None
             self._outgoing_refl_mask = None
             self._outgoing_size = size
+            self._outgoing_body_crop_mid = None
+            if cached_mid is not None:
+                self._outgoing_body_crop = cached_mid[0]
+                self._outgoing_body_x = cached_mid[1]
+            else:
+                body_crop, bx1 = self._extract_body_crop_fast(w, size)
+                self._outgoing_body_crop = body_crop
+                self._outgoing_body_x = bx1
+                if aligned_int and out_sh is not None:
+                    self._cache_hd_strip_from_crop(
+                        out_sid, self.games, int(round(self.current_pos)), w, size, body_crop, bx1, shelf_name=out_name
+                    )
         else:
             tot_h = (int(size * 1.6) + 20) if has_refl else (size + 4)
             layer = self._compose_shelf_layer(w, tot_h)
@@ -876,7 +1042,7 @@ class CoverFlowCanvas(tk.Canvas):
 
             body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
             self._outgoing_body_crop = body_crop
-            self._outgoing_body_crop_mid = self._build_mid_strip_override(body_crop, bx1)
+            self._outgoing_body_crop_mid = None
             self._outgoing_body_x = bx1
             self._outgoing_refl_crop = refl_crop
             self._outgoing_refl_mask = refl_mask
@@ -891,7 +1057,7 @@ class CoverFlowCanvas(tk.Canvas):
                 floor_y = self._compute_floor_y(h, size)
                 prev_bg = self.get_background_for_game(center_game, w, h, floor_y) or self.bg_cache
                 self._outgoing_bg_id = id(prev_bg) if prev_bg is not None else 0
-                self._outgoing_bg = prev_bg.copy() if prev_bg is not None else None
+                self._outgoing_bg = prev_bg
             except Exception:
                 self._outgoing_bg_id = 0
                 self._outgoing_bg = None
@@ -956,46 +1122,49 @@ class CoverFlowCanvas(tk.Canvas):
                         valid_games_by_key[nk] = ng
 
         valid_keys = set(valid_games_by_key.keys())
-        for k in list(self.raw_jewels.keys()):
-            if k not in valid_keys:
-                self.raw_jewels.pop(k, None)
-                self._cover_sigs.pop(k, None)
-        for k in list(self.raw_wallpapers.keys()):
-            if k not in valid_keys:
-                self.raw_wallpapers.pop(k, None)
-                self._wp_sigs.pop(k, None)
+        if norm_dir == 0 or len(self.raw_jewels) > 64:
+            for k in list(self.raw_jewels.keys()):
+                if k not in valid_keys:
+                    self.raw_jewels.pop(k, None)
+                    self._cover_sigs.pop(k, None)
+        if norm_dir == 0 or len(self.raw_wallpapers) > 16:
+            for k in list(self.raw_wallpapers.keys()):
+                if k not in valid_keys:
+                    self.raw_wallpapers.pop(k, None)
+                    self._wp_sigs.pop(k, None)
 
-        # Optimización masiva (+500 juegos): solo comprobar cambios en disco para los juegos que ya residen en memoria
-        for key in list(self.raw_jewels.keys()):
-            g = valid_games_by_key.get(key)
-            if not g:
-                self.raw_jewels.pop(key, None)
-                self.flat_covers.pop(key, None)
-                self.rendered_cache.pop(key, None)
-                self._cover_sigs.pop(key, None)
-                continue
-            new_cov_sig = self._get_cover_sig(g)
-            if self._cover_sigs.get(key) != new_cov_sig:
-                self.raw_jewels.pop(key, None)
-                self.flat_covers.pop(key, None)
-                self.rendered_cache.pop(key, None)
-                self._cover_sigs[key] = new_cov_sig
-                self._shelf_strip_cache.clear()
-                self._bg_slot_warp_cache.clear()
+        # Optimización masiva (+500 juegos): solo comprobar cambios en disco cuando no es un cambio rápido de carrusel
+        if norm_dir == 0:
+            for key in list(self.raw_jewels.keys()):
+                g = valid_games_by_key.get(key)
+                if not g:
+                    self.raw_jewels.pop(key, None)
+                    self.flat_covers.pop(key, None)
+                    self.rendered_cache.pop(key, None)
+                    self._cover_sigs.pop(key, None)
+                    continue
+                new_cov_sig = self._get_cover_sig(g)
+                if self._cover_sigs.get(key) != new_cov_sig:
+                    self.raw_jewels.pop(key, None)
+                    self.flat_covers.pop(key, None)
+                    self.rendered_cache.pop(key, None)
+                    self._cover_sigs[key] = new_cov_sig
+                    self._shelf_strip_cache.clear()
+                    self._bg_slot_warp_cache.clear()
 
-        for key in list(self.raw_wallpapers.keys()):
-            g = valid_games_by_key.get(key)
-            if not g:
-                self.raw_wallpapers.pop(key, None)
-                self._wp_sigs.pop(key, None)
-                continue
-            new_wp_sig = self._get_wallpaper_sig(g)
-            if self._wp_sigs.get(key) != new_wp_sig:
-                self.raw_wallpapers.pop(key, None)
-                to_remove = [k for k in self.wallpaper_bg_cache.keys() if k[0] == key]
-                for k in to_remove:
-                    self.wallpaper_bg_cache.pop(k, None)
-                self._wp_sigs[key] = new_wp_sig
+            for key in list(self.raw_wallpapers.keys()):
+                g = valid_games_by_key.get(key)
+                if not g:
+                    self.raw_wallpapers.pop(key, None)
+                    self._wp_sigs.pop(key, None)
+                    continue
+                new_wp_sig = self._get_wallpaper_sig(g)
+                if self._wp_sigs.get(key) != new_wp_sig:
+                    self.raw_wallpapers.pop(key, None)
+                    to_remove = [k for k in self.wallpaper_bg_cache.keys() if k[0] == key]
+                    for k in to_remove:
+                        self.wallpaper_bg_cache.pop(k, None)
+                    self._wp_sigs[key] = new_wp_sig
 
         has_refl_now = self._use_reflection()
         can_reuse_cache = (
@@ -1024,7 +1193,7 @@ class CoverFlowCanvas(tk.Canvas):
             if key not in self.raw_jewels:
                 self.raw_jewels[key] = self._get_or_create_jewel_case(g)
                 self._cover_sigs[key] = self._get_cover_sig(g)
-            if key not in self.raw_wallpapers:
+            if norm_dir == 0 and key not in self.raw_wallpapers:
                 self._load_wallpaper_for_game(g)
                 self._wp_sigs[key] = self._get_wallpaper_sig(g)
 
@@ -1112,9 +1281,16 @@ class CoverFlowCanvas(tk.Canvas):
             i for i in range(max(0, center_idx - 7), min(n, center_idx + 8))
         ]
         active_Indices_sorted = sorted(active_indices, key=lambda idx: abs(idx - center_idx))
-        sync_indices = [i for i in active_Indices_sorted if abs(i - center_idx) <= 4]
+        defer_viewport = bool(preserve_existing and getattr(self, "is_shelf_animating", False))
+        sync_radius = 0 if defer_viewport else 4
+        sync_indices = [i for i in active_Indices_sorted if abs(i - center_idx) <= sync_radius]
+        defer_vp_indices = (
+            [i for i in active_Indices_sorted if sync_radius < abs(i - center_idx) <= 4]
+            if defer_viewport
+            else []
+        )
 
-        # 1. Fase síncrona instantánea: solo genera carátulas planas y ángulos base faltantes en el viewport visible (±4)
+        # 1. Fase síncrona instantánea: solo genera carátulas planas y ángulos base faltantes en el viewport prioritario
         for idx in sync_indices:
             g = self.games[idx]
             key = self._get_key(g)
@@ -1123,27 +1299,73 @@ class CoverFlowCanvas(tk.Canvas):
                 jewel = self.raw_jewels.get(key)
                 if not jewel:
                     jewel = self._get_or_create_jewel_case(g)
-                    self.raw_jewels[key] = jewel
+                    with self._cache_lock:
+                        self.raw_jewels[key] = jewel
                 if not jewel:
                     continue
                 flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
-                self.flat_covers[key] = (flat_cover, sz, tot_h)
+                with self._cache_lock:
+                    self.flat_covers[key] = (flat_cover, sz, tot_h)
             else:
                 flat_cover, sz, _ = flat_data
 
             g_cache = self.rendered_cache.get(key)
-            if g_cache is None or (-1.0 not in g_cache) or (0.0 not in g_cache) or (1.0 not in g_cache):
+            if defer_viewport:
+                if g_cache is None or 0.0 not in g_cache:
+                    with self._cache_lock:
+                        g_cache = self.rendered_cache.setdefault(key, {})
+                        g_cache[0.0] = (flat_cover, sz)
+                if idx not in defer_vp_indices and (-1.0 not in g_cache or 1.0 not in g_cache):
+                    defer_vp_indices.insert(0, idx)
+            elif g_cache is None or (-1.0 not in g_cache) or (0.0 not in g_cache) or (1.0 not in g_cache):
                 w_left, w_lw, _ = render_cover_flow_from_flat(flat_cover, size, -1.0, has_reflection=has_refl)
                 w_right, w_rw, _ = render_cover_flow_from_flat(flat_cover, size, 1.0, has_reflection=has_refl)
-                if g_cache is None:
-                    g_cache = {}
-                    self.rendered_cache[key] = g_cache
-                g_cache[-1.0] = (w_left, w_lw)
-                g_cache[0.0] = (flat_cover, sz)
-                g_cache[1.0] = (w_right, w_rw)
+                with self._cache_lock:
+                    if key not in self.rendered_cache:
+                        self.rendered_cache[key] = {}
+                    g_cache = self.rendered_cache[key]
+                    g_cache[-1.0] = (w_left, w_lw)
+                    g_cache[0.0] = (flat_cover, sz)
+                    g_cache[1.0] = (w_right, w_rw)
 
-        # 2. Fase asíncrona: cede la CPU si hay animación activa y precalcula ángulos intermedios sin bloquear la UI
+        # 2. Fase asíncrona: completa el resto del viewport (±2..±4) durante la transición vertical y ángulos intermedios en reposo
         def _bg_precompute():
+            for idx in defer_vp_indices:
+                if self._cache_generation != current_gen or idx >= len(self.games):
+                    return
+                g = self.games[idx]
+                key = self._get_key(g)
+                with self._cache_lock:
+                    flat_data = self.flat_covers.get(key)
+                    jewel = self.raw_jewels.get(key) if not flat_data else None
+                if not flat_data:
+                    if not jewel:
+                        jewel = self._get_or_create_jewel_case(g)
+                        if jewel:
+                            with self._cache_lock:
+                                self.raw_jewels[key] = jewel
+                    if not jewel:
+                        continue
+                    flat_cover, sz, tot_h = prepare_flat_cover(jewel, size, has_reflection=has_refl)
+                    with self._cache_lock:
+                        self.flat_covers[key] = (flat_cover, sz, tot_h)
+                else:
+                    flat_cover, sz, _ = flat_data
+                with self._cache_lock:
+                    g_cache = self.rendered_cache.get(key)
+                    need_l = g_cache is None or -1.0 not in g_cache
+                    need_r = g_cache is None or 1.0 not in g_cache
+                w_left = render_cover_flow_from_flat(flat_cover, sz, -1.0, has_reflection=has_refl) if need_l else None
+                w_right = render_cover_flow_from_flat(flat_cover, sz, 1.0, has_reflection=has_refl) if need_r else None
+                with self._cache_lock:
+                    g_cache = self.rendered_cache.setdefault(key, {})
+                    if 0.0 not in g_cache:
+                        g_cache[0.0] = (flat_cover, sz)
+                    if w_left is not None:
+                        g_cache[-1.0] = (w_left[0], w_left[1])
+                    if w_right is not None:
+                        g_cache[1.0] = (w_right[0], w_right[1])
+
             if not self._wait_if_animating(lambda: self._cache_generation == current_gen):
                 return
             intermediate_angles = [
@@ -1282,35 +1504,38 @@ class CoverFlowCanvas(tk.Canvas):
 
         # 2. Acotar raw_jewels (máx 64 en modo fila única, 80 con pila 3D multi-estantería; prioriza vecinos)
         MAX_JEWELS = 80 if len(shelf_stack) >= 2 else 64
-        if len(self.raw_jewels) > MAX_JEWELS:
-            sorted_jewels = sorted(
-                self.raw_jewels.keys(),
-                key=lambda k: 0 if k in neighbor_keys else abs(key_to_idx.get(k, 9999) - center_idx),
-                reverse=True
-            )
-            for k in sorted_jewels[:len(self.raw_jewels) - MAX_JEWELS]:
-                self.raw_jewels.pop(k, None)
+        with self._cache_lock:
+            if len(self.raw_jewels) > MAX_JEWELS:
+                sorted_jewels = sorted(
+                    self.raw_jewels.keys(),
+                    key=lambda k: 0 if k in neighbor_keys else abs(key_to_idx.get(k, 9999) - center_idx),
+                    reverse=True
+                )
+                for k in sorted_jewels[:len(self.raw_jewels) - MAX_JEWELS]:
+                    self.raw_jewels.pop(k, None)
 
         # 3. Acotar raw_wallpapers y wallpaper_bg_cache (máx 12 fondos crudos, 6 compuestos)
         MAX_WP = 12
-        if len(self.raw_wallpapers) > MAX_WP:
-            sorted_wp = sorted(
-                self.raw_wallpapers.keys(),
-                key=lambda k: abs(key_to_idx.get(k, 9999) - center_idx),
-                reverse=True
-            )
-            for k in sorted_wp[:len(self.raw_wallpapers) - MAX_WP]:
-                self.raw_wallpapers.pop(k, None)
+        with self._cache_lock:
+            if len(self.raw_wallpapers) > MAX_WP:
+                sorted_wp = sorted(
+                    self.raw_wallpapers.keys(),
+                    key=lambda k: abs(key_to_idx.get(k, 9999) - center_idx),
+                    reverse=True
+                )
+                for k in sorted_wp[:len(self.raw_wallpapers) - MAX_WP]:
+                    self.raw_wallpapers.pop(k, None)
 
         MAX_BG_COMPOSED = 6
-        if len(self.wallpaper_bg_cache) > MAX_BG_COMPOSED:
-            sorted_bg = sorted(
-                self.wallpaper_bg_cache.keys(),
-                key=lambda item: abs(key_to_idx.get(item[0], 9999) - center_idx),
-                reverse=True
-            )
-            for bg_k in sorted_bg[:len(self.wallpaper_bg_cache) - MAX_BG_COMPOSED]:
-                self.wallpaper_bg_cache.pop(bg_k, None)
+        with self._cache_lock:
+            if len(self.wallpaper_bg_cache) > MAX_BG_COMPOSED:
+                sorted_bg = sorted(
+                    self.wallpaper_bg_cache.keys(),
+                    key=lambda item: abs(key_to_idx.get(item[0], 9999) - center_idx),
+                    reverse=True
+                )
+                for bg_k in sorted_bg[:len(self.wallpaper_bg_cache) - MAX_BG_COMPOSED]:
+                    self.wallpaper_bg_cache.pop(bg_k, None)
 
     def get_rendered_cover(self, game_key: str, af: float) -> Tuple[Optional[Image.Image], int]:
         """Obtiene la carátula proyectada en 3D del caché o la calcula bajo demanda con política LRU acotada."""
@@ -1382,6 +1607,7 @@ class CoverFlowCanvas(tk.Canvas):
         self.wallpaper_bg_cache.clear()
         self._bottom_overlay_cache.clear()
         self._static_backdrop_cache = None
+        self._hud_blur_cache.clear()
 
     def _precache_wallpapers_async(self, w: int, h: int, floor_y: int):
         """Pre-compone en segundo plano únicamente los wallpapers adyacentes (+/- 2) al juego seleccionado."""
@@ -1410,11 +1636,22 @@ class CoverFlowCanvas(tk.Canvas):
                 opacity = round(float(g.get("wallpaper_opacity", 0.30)), 2)
                 blur_rad = round(float(g.get("wallpaper_blur", 1.8)), 2)
                 cache_key = (key, w, h, opacity, blur_rad)
-                if cache_key not in self.wallpaper_bg_cache:
-                    composed = compose_big_picture_wallpaper_bg(
-                        wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
-                    )
-                    self.wallpaper_bg_cache[cache_key] = composed
+                inflight = getattr(self, "_bg_gen_inflight", None)
+                with self._cache_lock:
+                    already = (cache_key in self.wallpaper_bg_cache) or (inflight is not None and cache_key in inflight)
+                    if not already and inflight is not None:
+                        inflight.add(cache_key)
+                if not already:
+                    try:
+                        composed = compose_big_picture_wallpaper_bg(
+                            wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
+                        )
+                        with self._cache_lock:
+                            self.wallpaper_bg_cache[cache_key] = composed
+                    finally:
+                        if inflight is not None:
+                            with self._cache_lock:
+                                inflight.discard(cache_key)
             self._prune_memory_caches(center_int)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -1462,7 +1699,12 @@ class CoverFlowCanvas(tk.Canvas):
 
         key = self._get_key(g)
         wp_img = self.raw_wallpapers.get(key)
-        if not wp_img:
+        is_moving_now = (
+            getattr(self, "is_animating", False)
+            or getattr(self, "is_shelf_animating", False)
+            or getattr(self, "is_dragging", False)
+        )
+        if not wp_img and not is_moving_now:
             self._load_wallpaper_for_game(g)
             wp_img = self.raw_wallpapers.get(key)
         if not wp_img:
@@ -1471,18 +1713,32 @@ class CoverFlowCanvas(tk.Canvas):
         opacity = round(float(g.get("wallpaper_opacity", 0.30)), 2)
         blur_rad = round(float(g.get("wallpaper_blur", 1.8)), 2)
         cache_key = (key, w, h, opacity, blur_rad)
-        cached = self.wallpaper_bg_cache.get(cache_key)
+        with self._cache_lock:
+            cached = self.wallpaper_bg_cache.get(cache_key)
         if cached is not None:
             return cached
 
-        # Si estamos en plena animación física o arrastre, devolver el fondo base para mantener 60 FPS fijos
-        # y generar el wallpaper en segundo plano para que esté listo al detenerse
+        inflight = getattr(self, "_bg_gen_inflight", None)
+        if inflight is None:
+            inflight = set()
+            self._bg_gen_inflight = inflight
+        with self._cache_lock:
+            if cache_key in inflight:
+                return self.bg_cache
+            inflight.add(cache_key)
+
+        # Si estamos en plena animación física o arrastre, devolver el fondo base para mantener FPS fijos
+        # y generar el wallpaper en un único hilo deduplicado en segundo plano
         def _bg_generate():
-            if cache_key not in self.wallpaper_bg_cache:
+            try:
+                with self._cache_lock:
+                    if cache_key in self.wallpaper_bg_cache:
+                        return
                 composed = compose_big_picture_wallpaper_bg(
                     wp_img, w=w, h=h, floor_y=floor_y, opacity=opacity, blur_radius=blur_rad
                 )
-                self.wallpaper_bg_cache[cache_key] = composed
+                with self._cache_lock:
+                    self.wallpaper_bg_cache[cache_key] = composed
                 # Si el usuario sigue posicionado en este juego, actualizar suavemente vía cola segura
                 if not self.is_animating and not self.is_dragging:
                     center_int = int(round(self.current_pos))
@@ -1490,6 +1746,9 @@ class CoverFlowCanvas(tk.Canvas):
                         q = getattr(self.master, "_action_queue", None)
                         if q is not None:
                             q.put(("callable", self.redraw))
+            finally:
+                with self._cache_lock:
+                    inflight.discard(cache_key)
 
         threading.Thread(target=_bg_generate, daemon=True).start()
         return self.bg_cache
@@ -1601,54 +1860,66 @@ class CoverFlowCanvas(tk.Canvas):
             self._anim_tick()
 
     def _anim_tick(self):
-        now = time.perf_counter()
-        dt = min(0.05, max(0.001, now - getattr(self, "_last_anim_time", now)))
-        self._last_anim_time = now
+        try:
+            now = time.perf_counter()
+            dt = min(0.05, max(0.001, now - getattr(self, "_last_anim_time", now)))
+            self._last_anim_time = now
 
-        diff_h = self.target_pos - self.current_pos
-        diff_v = 0.0 - getattr(self, "shelf_offset_y", 0.0)
+            diff_h = self.target_pos - self.current_pos
+            diff_v = 0.0 - getattr(self, "shelf_offset_y", 0.0)
 
-        need_anim_h = abs(diff_h) > 0.002
-        was_shelf_anim = getattr(self, "is_shelf_animating", False)
-        need_anim_v = abs(diff_v) > 0.6 and was_shelf_anim
+            need_anim_h = abs(diff_h) > 0.002
+            was_shelf_anim = getattr(self, "is_shelf_animating", False)
+            need_anim_v = abs(diff_v) > 0.6 and was_shelf_anim
 
-        if need_anim_h or need_anim_v:
-            # Física adaptativa independiente de FPS:
-            # horizontal ultra-ágil (k=24) para carátulas, vertical pausado y sedoso (k=6.8) para apreciar la rotación 3D
-            if need_anim_h:
-                factor_h = 1.0 - math.exp(-24.0 * dt)
-                self.current_pos += diff_h * factor_h
+            if need_anim_h or need_anim_v:
+                # Física adaptativa independiente de FPS:
+                # horizontal ultra-ágil (k=24) para carátulas, vertical pausado y sedoso (k=6.8) para apreciar la rotación 3D
+                if need_anim_h:
+                    factor_h = 1.0 - math.exp(-24.0 * dt)
+                    self.current_pos += diff_h * factor_h
+                else:
+                    self.current_pos = self.target_pos
+
+                if need_anim_v:
+                    factor_v = 1.0 - math.exp(-6.8 * dt)
+                    self.shelf_offset_y += diff_v * factor_v
+                else:
+                    self.shelf_offset_y = 0.0
+                    self.is_shelf_animating = False
+                    self._clear_outgoing_shelf()
+                    if was_shelf_anim and self._is_vertical_stack_active():
+                        self._prewarm_neighbor_shelves_async()
+
+                t0 = time.perf_counter()
+                self.redraw()
+                draw_ms = (time.perf_counter() - t0) * 1000.0
+                # Mínimo 4 ms de respiro para evitar saturar la cola de mensajes Tk/Windows en 1080p
+                delay = max(4, int(round(16.0 - draw_ms)))
+                self.anim_timer = self.after(delay, self._anim_tick)
             else:
                 self.current_pos = self.target_pos
-
-            if need_anim_v:
-                factor_v = 1.0 - math.exp(-6.8 * dt)
-                self.shelf_offset_y += diff_v * factor_v
-            else:
                 self.shelf_offset_y = 0.0
                 self.is_shelf_animating = False
                 self._clear_outgoing_shelf()
+                self.is_animating = False
+                self.anim_timer = None
+                self._prune_memory_caches(int(round(self.target_pos)))
+                self._precache_wallpapers_async(self.winfo_width(), self.winfo_height(), getattr(self, "floor_y", 0))
+                self._prewarm_cover_angles_async()
                 if was_shelf_anim and self._is_vertical_stack_active():
                     self._prewarm_neighbor_shelves_async()
-
-            t0 = time.perf_counter()
-            self.redraw()
-            draw_ms = (time.perf_counter() - t0) * 1000.0
-            delay = max(1, int(round(16.0 - draw_ms)))
-            self.anim_timer = self.after(delay, self._anim_tick)
-        else:
-            self.current_pos = self.target_pos
+                self.redraw()
+        except Exception:
+            self.current_pos = getattr(self, "target_pos", 0.0)
             self.shelf_offset_y = 0.0
             self.is_shelf_animating = False
-            self._clear_outgoing_shelf()
             self.is_animating = False
             self.anim_timer = None
-            self._prune_memory_caches(int(round(self.target_pos)))
-            self._precache_wallpapers_async(self.winfo_width(), self.winfo_height(), getattr(self, "floor_y", 0))
-            self._prewarm_cover_angles_async()
-            if was_shelf_anim and self._is_vertical_stack_active():
-                self._prewarm_neighbor_shelves_async()
-            self.redraw()
+            try:
+                self._clear_outgoing_shelf()
+            except Exception:
+                pass
 
     def _trigger_shelf_step(self, step: int):
         """Solicita cambiar de carrusel verticalmente `step` posiciones (<0 arriba, >0 abajo)."""
@@ -1820,6 +2091,10 @@ class CoverFlowCanvas(tk.Canvas):
                 self.on_hud_action(hud_act)
                 return
 
+            if self._is_in_mini_filter_center(event.x, event.y) and self.on_hud_action:
+                self.on_hud_action("start")
+                return
+
             clicked_idx = self._get_index_at(event.x, event.y)
             if clicked_idx is not None:
                 self.select_index(clicked_idx)
@@ -1880,6 +2155,15 @@ class CoverFlowCanvas(tk.Canvas):
         if changed:
             self.redraw()
 
+    def _is_in_mini_filter_center(self, x: int, y: int) -> bool:
+        if not getattr(self, "is_transparent_mode", False):
+            return False
+        box = getattr(self, "_mini_filter_center_box", None)
+        if not box:
+            return False
+        bx1, by1, bx2, by2 = box
+        return bx1 <= x <= bx2 and by1 <= y <= by2
+
     def _on_mouse_hover(self, event):
         hud_act = self._get_hud_action_at(event.x, event.y)
         prev_hud = getattr(self, "_hovered_hud_action", None)
@@ -1892,6 +2176,7 @@ class CoverFlowCanvas(tk.Canvas):
 
         if (
             hud_act is not None
+            or self._is_in_mini_filter_center(event.x, event.y)
             or self._get_index_at(event.x, event.y) is not None
             or self._get_shelf_rel_at(event.x, event.y) is not None
         ):
@@ -1929,7 +2214,9 @@ class CoverFlowCanvas(tk.Canvas):
         hud_img: Image.Image,
         x: int,
         y: int,
-        blur_radius: int = 12
+        blur_radius: int = 12,
+        cache_sig: Any = None,
+        fast_motion: bool = False,
     ):
         """Compone una píldora HUD translúcida difuminando en tiempo real el fondo detrás de ella."""
         try:
@@ -1942,24 +2229,66 @@ class CoverFlowCanvas(tk.Canvas):
             if rx1 <= rx0 or ry1 <= ry0:
                 return
 
+            if cache_sig is not None:
+                c_key = (cache_sig, id(hud_img), rx0, ry0, rx1, ry1, blur_radius)
+                cached = self._hud_blur_cache.get(c_key)
+                if cached is not None:
+                    comp_patch, g_mask = cached
+                    bg.paste(comp_patch, (rx0, ry0), g_mask)
+                    return
+
             pad = blur_radius * 2
             sx0 = max(0, rx0 - pad)
             sy0 = max(0, ry0 - pad)
             sx1 = min(w, rx1 + pad)
             sy1 = min(h, ry1 + pad)
 
-            blurred_region = bg.crop((sx0, sy0, sx1, sy1)).filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            reg = bg.crop((sx0, sy0, sx1, sy1))
+            if fast_motion and reg.width >= 96 and reg.height >= 48:
+                blurred_region = reg.resize(
+                    (max(16, reg.width // 2), max(16, reg.height // 2)),
+                    Image.Resampling.BILINEAR,
+                ).filter(ImageFilter.GaussianBlur(radius=max(2.0, blur_radius * 0.5))).resize(
+                    reg.size, Image.Resampling.BILINEAR
+                )
+            else:
+                blurred_region = reg.filter(ImageFilter.GaussianBlur(radius=blur_radius))
             blurred_crop = blurred_region.crop((rx0 - sx0, ry0 - sy0, rx1 - sx0, ry1 - sy0))
+
             hc = hud_img.crop((rx0 - x, ry0 - y, rx1 - x, ry1 - y))
-            alpha_ch = hc.split()[3]
-            glass_mask = alpha_ch.point(lambda a: 255 if a >= 110 else (int((a - 65) * 5.6) if a > 65 else 0))
+            is_full_hc = (rx0 == x and ry0 == y and rx1 == x + hw and ry1 == y + hh)
+            if is_full_hc:
+                glass_mask = self._hud_glass_mask_cache.get(id(hud_img))
+                if glass_mask is None or glass_mask.size != hud_img.size:
+                    glass_mask = hud_img.getchannel("A").point(_GLASS_BLUR_MASK_LUT)
+                    if len(self._hud_glass_mask_cache) >= 32:
+                        self._hud_glass_mask_cache.clear()
+                    self._hud_glass_mask_cache[id(hud_img)] = glass_mask
+            else:
+                glass_mask = hc.getchannel("A").point(_GLASS_BLUR_MASK_LUT)
+
+            if cache_sig is not None:
+                comp_patch = blurred_crop.copy()
+                comp_patch.paste(hc, (0, 0), hc)
+                if len(self._hud_blur_cache) >= 24:
+                    self._hud_blur_cache.clear()
+                self._hud_blur_cache[c_key] = (comp_patch, glass_mask)
+                bg.paste(comp_patch, (rx0, ry0), glass_mask)
+                return
 
             bg.paste(blurred_crop, (rx0, ry0), glass_mask)
             bg.paste(hc, (rx0, ry0), hc)
         except Exception:
             bg.paste(hud_img, (x, y), hud_img)
 
-    def _draw_overlays(self, bg: Image.Image, w: int, h: int):
+    def _draw_overlays(
+        self,
+        bg: Image.Image,
+        w: int,
+        h: int,
+        static_backdrop_sig: Any = None,
+        fast_motion: bool = False,
+    ):
         """
         Superpone con transparencia RGBA real:
           - En modo Transparente: la cápsula superior derecha [Vista | Ocultar | Salir].
@@ -1968,6 +2297,7 @@ class CoverFlowCanvas(tk.Canvas):
               2. Abajo centrado: Título del juego, Monitor/Tiempo jugado y botón '▶ INICIAR JUEGO (A)' (sin barra gris inferior).
         """
         self.hud_hitboxes = []
+        self._mini_filter_center_box = None
         fam = getattr(self, "controller_family", "xbox")
         scale = getattr(self, "display_scale", 1.0)
         hov_act = getattr(self, "_hovered_hud_action", None)
@@ -1995,6 +2325,8 @@ class CoverFlowCanvas(tk.Canvas):
                 for (bx1, by1, bx2, by2, act) in filt_boxes:
                     if act in ("shelf_prev", "shelf_next"):
                         self.hud_hitboxes.append((filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2, act))
+                    elif act == "filter_menu":
+                        self._mini_filter_center_box = (filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2)
             except Exception:
                 pass
             return
@@ -2017,7 +2349,10 @@ class CoverFlowCanvas(tk.Canvas):
             )
             filt_x = int(18 * scale)
             filt_y = int(14 * scale)
-            self._paste_hud_with_backdrop_blur(bg, filt_img, filt_x, filt_y, blur_radius=12)
+            self._paste_hud_with_backdrop_blur(
+                bg, filt_img, filt_x, filt_y, blur_radius=12,
+                cache_sig=static_backdrop_sig, fast_motion=fast_motion,
+            )
             for (bx1, by1, bx2, by2, act) in filt_boxes:
                 self.hud_hitboxes.append((filt_x + bx1, filt_y + by1, filt_x + bx2, filt_y + by2, act))
         except Exception:
@@ -2035,7 +2370,10 @@ class CoverFlowCanvas(tk.Canvas):
             )
             hud_x = max(10, w - top_img.width - int(18 * scale))
             hud_y = int(14 * scale)
-            self._paste_hud_with_backdrop_blur(bg, top_img, hud_x, hud_y, blur_radius=12)
+            self._paste_hud_with_backdrop_blur(
+                bg, top_img, hud_x, hud_y, blur_radius=12,
+                cache_sig=static_backdrop_sig, fast_motion=fast_motion,
+            )
             for (bx1, by1, bx2, by2, act) in top_boxes:
                 self.hud_hitboxes.append((hud_x + bx1, hud_y + by1, hud_x + bx2, hud_y + by2, act))
         except Exception:
@@ -2074,18 +2412,7 @@ class CoverFlowCanvas(tk.Canvas):
                 # Subtítulo (Monitor 2 - SAMSUNG (1920x1080) • Tiempo jugado)
                 # Limpiamos emojis fuera de Latin/Geometric que segoeuib.ttf en Pillow renderizaría como '□'
                 if self.ui_status:
-                    clean_status = (
-                        self.ui_status
-                        .replace("🖥", "")
-                        .replace("⏱", "Tiempo:")
-                        .replace("🎮", "")
-                        .replace("⚙", "Opciones")
-                        .replace("\ufe0f", "")
-                        .strip()
-                    )
-                    while "  •" in clean_status:
-                        clean_status = clean_status.replace("  •", " •")
-                    clean_status = clean_status.replace(" • ", "   •   ")
+                    clean_status = clean_pillow_text(self.ui_status, mode="status")
                     bdraw.text((cx + 1, sub_y + 1), clean_status, font=self._font_sub_bp, fill=(0, 0, 0, 215), anchor="mm")
                     bdraw.text((cx, sub_y), clean_status, font=self._font_sub_bp, fill=(*self.ui_status_color, 255), anchor="mm")
 
@@ -2203,13 +2530,37 @@ class CoverFlowCanvas(tk.Canvas):
             return cached[1], cached[2], cached[3], cached[4]
 
         if not has_refl:
+            cur_sid = str(getattr(self, "_current_games_shelf_id", "") or "")
+            cur_sh = next(
+                (sh for sh in self._shelf_stack if str(sh.get("id", "")) == cur_sid),
+                None,
+            )
+            cur_name = str(cur_sh.get("name", "") or getattr(self, "ui_filter_label", "Todos")) if cur_sh else str(getattr(self, "ui_filter_label", "Todos"))
+            aligned_int = self._is_vertical_stack_active() and abs(self.current_pos - round(self.current_pos)) <= 0.01
+            if aligned_int:
+                cached_mid = self._lookup_cached_shelf_mid_override(
+                    cur_sid,
+                    self.games,
+                    int(round(self.current_pos)),
+                    w,
+                    size,
+                    shelf_name=cur_name,
+                )
+                if cached_mid is not None:
+                    self._incoming_shelf_mid_override = None
+                    self._incoming_shelf_cache = (sig, cached_mid[0], cached_mid[1], None, None)
+                    return cached_mid[0], cached_mid[1], None, None
             body_crop, bx1 = self._extract_body_crop_fast(w, size)
+            if aligned_int and body_crop is not None:
+                self._cache_hd_strip_from_crop(
+                    cur_sid, self.games, int(round(self.current_pos)), w, size, body_crop, bx1, shelf_name=cur_name
+                )
             refl_crop, refl_mask = None, None
         else:
             tot_h = int(size * 1.6) + 20
             layer = self._compose_shelf_layer(w, tot_h)
             body_crop, bx1, refl_crop, refl_mask = self._extract_shelf_crops(layer, w, size)
-        self._incoming_shelf_mid_override = self._build_mid_strip_override(body_crop, bx1)
+        self._incoming_shelf_mid_override = None
         self._incoming_shelf_cache = (sig, body_crop, bx1, refl_crop, refl_mask)
         return body_crop, bx1, refl_crop, refl_mask
 
@@ -2232,7 +2583,7 @@ class CoverFlowCanvas(tk.Canvas):
             return Image.blend(prev_bg, base_bg, blend_t)
         return base_bg.copy()
 
-    def _present_frame(self, bg: Image.Image, w: int, h: int, dirty_box: Optional[Tuple[int, int, int, int]] = None):
+    def _present_frame(self, bg: Image.Image, w: int, h: int):
         """Actualiza el Tkinter Canvas reutilizando el DIB bitmap cuando las dimensiones no cambian."""
         if self.photo_ref is None or getattr(self, "_photo_w", 0) != w or getattr(self, "_photo_h", 0) != h:
             self._photo_w = w
@@ -2308,7 +2659,7 @@ class CoverFlowCanvas(tk.Canvas):
 
     def _draw_vertical_stack_frame(
         self,
-        bg: Image.Image,
+        bg: Optional[Image.Image],
         w: int,
         h: int,
         floor_y: int,
@@ -2316,7 +2667,8 @@ class CoverFlowCanvas(tk.Canvas):
         is_vertical_anim: bool,
         progress: float,
         dir_override: int = 0,
-    ):
+        bg_builder: Any = None,
+    ) -> Optional[Image.Image]:
         """
         Renderiza la pila 3D vertical completa en Orden de Pintor (Z-order: fondo -> primer plano):
           - En reposo: dibuja -2, +2, -1, +1 en segundo plano cacheados (0 ms tilt), y al frente (s=0) nítido.
@@ -2326,7 +2678,7 @@ class CoverFlowCanvas(tk.Canvas):
         n_shelves = len(self._shelf_stack)
         cur_idx = self._shelf_stack_idx
         if n_shelves <= 0:
-            return
+            return bg if bg is not None else (bg_builder() if bg_builder is not None else None)
 
         is_trans = bool(getattr(self, "is_transparent_mode", False))
 
@@ -2353,9 +2705,95 @@ class CoverFlowCanvas(tk.Canvas):
             out_bx1 = getattr(self, "_outgoing_body_x", 0)
             out_valid = (out_body is not None and getattr(self, "_outgoing_size", 0) == size)
             out_override = (out_body, out_bx1) if out_valid else None
-            out_mid_override = getattr(self, "_outgoing_body_crop_mid", None) if out_valid else None
 
+            # Precálculo paralelo multi-hilo de las proyecciones BILINEAR 1.0x HD (Pillow libera el GIL en C)
+            in_crops = None
+            if any(rel == 0 and abs(s) > 0.012 for rel, s in slots):
+                in_crops = self._get_incoming_shelf_crops(w, size)
+
+            warp_jobs = []
+            for rel, s in slots:
+                if rel == 0 and abs(s) <= 0.012:
+                    continue
+                scale_d, tilt, tilt_dir, alpha, bright, _ = self._eval_stack_slot_params(s, size, max_s=max_s)
+                if alpha <= 0.12:
+                    continue
+                sh = self._shelf_stack[(cur_idx + rel) % n_shelves]
+                src_strip = None
+                cx_in_strip = 0.0
+                strip_scale = 1.0
+                if rel == 0:
+                    if in_crops is not None and in_crops[0] is not None:
+                        src_strip = in_crops[0]
+                        cx_in_strip = (w / 2.0) - float(in_crops[1])
+                elif rel == -dir_sign:
+                    sh_id = str(sh.get("id", ""))
+                    out_sid = getattr(self, "_outgoing_shelf_id", None)
+                    use_out = out_override if (dir_override == 0 or out_sid is None or sh_id == out_sid) else None
+                    if use_out is not None and use_out[0] is not None:
+                        src_strip = use_out[0]
+                        cx_in_strip = (w / 2.0) - float(use_out[1])
+                    else:
+                        t_idx = self._get_shelf_center_idx(sh)
+                        s_res = self._get_bg_shelf_strip(sh, t_idx, w, size, allow_disk=False)
+                        if s_res is not None:
+                            src_strip, cx_in_strip, strip_scale = s_res
+                else:
+                    t_idx = self._get_shelf_center_idx(sh)
+                    s_res = self._get_bg_shelf_strip(sh, t_idx, w, size, allow_disk=False)
+                    if s_res is not None:
+                        src_strip, cx_in_strip, strip_scale = s_res
+                if src_strip is not None:
+                    rel_scale = scale_d / max(0.1, strip_scale)
+                    warp_jobs.append((rel, src_strip, cx_in_strip, rel_scale, tilt, tilt_dir, alpha, bright))
+
+            precomputed_warps: Dict[int, Tuple[Any, int, int, float, int]] = {}
+            slot_band_plans = []
+            if len(warp_jobs) >= 2:
+                executor = self._get_warp_executor()
+                for (rel, src_strip, cx_in_strip, rel_scale, tilt, tilt_dir, alpha, bright) in warp_jobs:
+                    plan = prepare_vertical_tilt_bands(
+                        src_strip,
+                        tilt=tilt,
+                        tilt_dir=tilt_dir,
+                        center_x_in_crop=cx_in_strip,
+                        alpha_scale=alpha,
+                        brightness_scale=bright,
+                        max_angle_rad=1.15,
+                        transparent_key_safe=is_trans,
+                        out_scale=rel_scale,
+                    )
+                    if plan is None:
+                        continue
+                    src_rgba, out_w, th, lut, bands = plan
+                    band_futs = [
+                        (
+                            y0_band,
+                            executor.submit(
+                                render_vertical_shelf_tilt_band,
+                                src_rgba,
+                                out_w,
+                                band_h,
+                                coeffs,
+                                lut,
+                                Image.Resampling.BILINEAR,
+                            ),
+                        )
+                        for (y0_band, band_h, coeffs) in bands
+                    ]
+                    slot_band_plans.append((rel, out_w, th, cx_in_strip, src_strip.width, band_futs))
+
+            # Construimos el lienzo base MIENTRAS los núcleos calculan los warps en paralelo (solapamiento 0 ms)
+            if bg is None and bg_builder is not None:
+                bg = bg_builder()
             target = Image.new("RGBA", (w, h), (8, 11, 18, 0)) if (is_trans and bg.mode != "RGBA") else bg
+
+            for (rel, out_w, th, cx_in_strip, src_w, band_futs) in slot_band_plans:
+                try:
+                    bands_done = [(y0_band, fut.result()) for (y0_band, fut) in band_futs]
+                    precomputed_warps[rel] = (bands_done, out_w, th, cx_in_strip, src_w)
+                except Exception:
+                    pass
 
             for rel, s in slots:
                 sh = self._shelf_stack[(cur_idx + rel) % n_shelves]
@@ -2366,7 +2804,7 @@ class CoverFlowCanvas(tk.Canvas):
                             card, _, _ = self._get_empty_shelf_flat_card(lbl, size, has_reflection=False)
                             self._composite_rgba(target, card, (w - card.width) // 2, floor_y - size)
                         else:
-                            in_body, in_bx1, _, _ = self._get_incoming_shelf_crops(w, size)
+                            in_body, in_bx1, _, _ = in_crops if in_crops is not None else self._get_incoming_shelf_crops(w, size)
                             if in_body is not None:
                                 self._draw_stack_shelf_slot(
                                     target,
@@ -2378,9 +2816,9 @@ class CoverFlowCanvas(tk.Canvas):
                                     floor_y,
                                     size,
                                     full_body_override=(in_body, in_bx1),
-                                    full_body_mid_override=self._incoming_shelf_mid_override,
                                     is_resting=False,
                                     max_s=max_s,
+                                    precomputed_warp=precomputed_warps.get(rel),
                                 )
                         continue
                     if abs(s) <= 0.012:
@@ -2389,7 +2827,7 @@ class CoverFlowCanvas(tk.Canvas):
                             self._composite_rgba(target, w_img, pos_x, pos_y)
                             self.hitboxes.append((pos_x, pos_y, pos_x + w_w, pos_y + size, i))
                     else:
-                        in_body, in_bx1, _, _ = self._get_incoming_shelf_crops(w, size)
+                        in_body, in_bx1, _, _ = in_crops if in_crops is not None else self._get_incoming_shelf_crops(w, size)
                         if in_body is None:
                             continue
                         slot_box = self._draw_stack_shelf_slot(
@@ -2402,9 +2840,9 @@ class CoverFlowCanvas(tk.Canvas):
                             floor_y,
                             size,
                             full_body_override=(in_body, in_bx1),
-                            full_body_mid_override=self._incoming_shelf_mid_override,
                             is_resting=False,
                             max_s=max_s,
+                            precomputed_warp=precomputed_warps.get(rel),
                         )
                         if slot_box is not None:
                             _, y_draw_in, _, th_in = slot_box
@@ -2414,7 +2852,6 @@ class CoverFlowCanvas(tk.Canvas):
                     sh_id = str(sh.get("id", ""))
                     out_sid = getattr(self, "_outgoing_shelf_id", None)
                     use_out = out_override if (dir_override == 0 or out_sid is None or sh_id == out_sid) else None
-                    use_out_mid = out_mid_override if use_out is not None else None
                     t_idx = self._get_shelf_center_idx(sh)
                     self._draw_stack_shelf_slot(
                         target,
@@ -2426,9 +2863,9 @@ class CoverFlowCanvas(tk.Canvas):
                         floor_y,
                         size,
                         full_body_override=use_out,
-                        full_body_mid_override=use_out_mid,
                         is_resting=False,
                         max_s=max_s,
+                        precomputed_warp=precomputed_warps.get(rel),
                     )
                 else:
                     t_idx = self._get_shelf_center_idx(sh)
@@ -2443,10 +2880,14 @@ class CoverFlowCanvas(tk.Canvas):
                         size,
                         is_resting=False,
                         max_s=max_s,
+                        precomputed_warp=precomputed_warps.get(rel),
                     )
             if target is not bg:
                 bg.paste(finalize_transparent_key_frame(target), (0, 0))
-            return
+            return bg
+
+        if bg is None and bg_builder is not None:
+            bg = bg_builder()
 
         if is_trans and bg.mode != "RGBA":
             backdrop_sig = self._build_stack_backdrop_sig("mini", 0, w, h, floor_y, size)
@@ -2558,13 +2999,33 @@ class CoverFlowCanvas(tk.Canvas):
                     and getattr(self, "_outgoing_from_sign", 0) != 0
                     and drag_dir_sign != self._outgoing_from_sign
                 )
-                bg = self._blend_transition_bg(base_bg, w, h, progress, allow_outgoing=allow_out_bg)
-                self._draw_vertical_stack_frame(bg, w, h, floor_y, size, is_vertical_anim, progress, dir_override=drag_dir_sign)
-            self._draw_overlays(bg, w, h)
-            dirty_box = self._compute_And_update_dirty_box(
-                w, h, is_vertical_anim, is_stack, is_trans, id(base_bg), backdrop_sig, extra_h=0
+                bg = self._draw_vertical_stack_frame(
+                    None,
+                    w,
+                    h,
+                    floor_y,
+                    size,
+                    is_vertical_anim,
+                    progress,
+                    dir_override=drag_dir_sign,
+                    bg_builder=lambda: self._blend_transition_bg(base_bg, w, h, progress, allow_outgoing=allow_out_bg),
+                )
+                prev_bg_ref = getattr(self, "_outgoing_bg", None)
+                is_blending_bg = (
+                    allow_out_bg
+                    and prev_bg_ref is not None
+                    and base_bg is not None
+                    and id(base_bg) != getattr(self, "_outgoing_bg_id", 0)
+                    and progress > 0.06
+                )
+                if not is_blending_bg and w >= 1200:
+                    backdrop_sig = ("anim_corner_hud", id(base_bg), w, h)
+            self._draw_overlays(
+                bg, w, h,
+                static_backdrop_sig=(backdrop_sig if not is_trans else None),
+                fast_motion=is_vertical_anim,
             )
-            self._present_frame(bg, w, h, dirty_box=dirty_box)
+            self._present_frame(bg, w, h)
             return
 
         bg = self._blend_transition_bg(base_bg, w, h, progress) if is_vertical_anim else base_bg.copy()
@@ -2610,7 +3071,6 @@ class CoverFlowCanvas(tk.Canvas):
                         self.hitboxes.append((pos_x, y_draw_in, pos_x + w_w, y_draw_in + th_in, i))
                 drawn_vertical_3d = True
 
-        refl_extra = int(size * 0.44) if has_refl else 0
         if not drawn_vertical_3d:
             if n == 0:
                 lbl = getattr(self, "ui_filter_label", "Todos")
@@ -2626,68 +3086,8 @@ class CoverFlowCanvas(tk.Canvas):
                     self.hitboxes.append((pos_x, pos_y, pos_x + w_w, pos_y + size, i))
 
         # 3.5. Superposición de HUD superior e inferior sin barras grises (RGBA transparente)
-        self._draw_overlays(bg, w, h)
+        single_sig = ("single", id(base_bg), w, h, is_trans) if (not is_vertical_anim and not is_trans) else None
+        self._draw_overlays(bg, w, h, static_backdrop_sig=single_sig, fast_motion=is_vertical_anim)
 
         # 4. Actualización eficiente de Tkinter Canvas (sin recrear DIB bitmaps de GDI)
-        dirty_box = self._compute_And_update_dirty_box(
-            w, h, is_vertical_anim, is_stack, is_trans, id(base_bg), None, extra_h=refl_extra
-        )
-        self._present_frame(bg, w, h, dirty_box=dirty_box)
-
-    def _compute_And_update_dirty_box(
-        self,
-        w: int,
-        h: int,
-        is_vertical_anim: bool,
-        is_stack: bool,
-        is_trans: bool,
-        base_bg_id: int,
-        backdrop_sig: Any,
-        extra_h: int = 0,
-    ) -> Optional[Tuple[int, int, int, int]]:
-        """Calcula el rectángulo sucio entre frames consecutivos cuando el fondo y el HUD permanecen invariantes."""
-        static_sig = (
-            w,
-            h,
-            is_stack,
-            is_trans,
-            base_bg_id,
-            backdrop_sig,
-            self.ui_title,
-            self.ui_status,
-            self.ui_status_color,
-            getattr(self, "controller_family", "xbox"),
-            getattr(self, "ui_battery_text", ""),
-            getattr(self, "ui_battery_color", None),
-            getattr(self, "ui_filter_label", ""),
-            getattr(self, "ui_filter_count", 0),
-            getattr(self, "ui_shelf_index", 0),
-            getattr(self, "ui_total_shelves", 1),
-            bool(self._launch_hovered),
-            getattr(self, "_hovered_hud_action", None),
-            bool(self.ui_launch_disabled),
-        )
-        fg_boxes = self.hitboxes or ([self._empty_card_hitbox] if self._empty_card_hitbox else [])
-        if fg_boxes and not is_vertical_anim:
-            cur_box = (
-                max(0, min(b[0] for b in fg_boxes) - 2),
-                max(0, min(b[1] for b in fg_boxes) - 2),
-                min(w, max(b[2] for b in fg_boxes) + 2),
-                min(h, max(b[3] + extra_h for b in fg_boxes) + 2),
-            )
-        else:
-            cur_box = None
-
-        prev_sig = getattr(self, "_last_static_frame_sig", None)
-        prev_box = getattr(self, "_last_fg_dirty_box", None)
-        self._last_static_frame_sig = static_sig
-        self._last_fg_dirty_box = cur_box
-
-        if is_vertical_anim or cur_box is None or prev_box is None or prev_sig != static_sig:
-            return None
-        return (
-            min(prev_box[0], cur_box[0]),
-            min(prev_box[1], cur_box[1]),
-            max(prev_box[2], cur_box[2]),
-            max(prev_box[3], cur_box[3]),
-        )
+        self._present_frame(bg, w, h)

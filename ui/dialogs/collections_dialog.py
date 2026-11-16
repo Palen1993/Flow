@@ -65,8 +65,6 @@ class CollectionsFilterDialog(BaseGlassDialog):
 
         self.create_widgets()
 
-    _center_window = BaseGlassDialog.center_window
-
     def _load_shelves_data(self):
         cfg = load_collections_config()
         saved_shelves = cfg.get("shelves", [])

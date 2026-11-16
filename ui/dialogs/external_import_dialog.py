@@ -15,7 +15,7 @@ from core.cover_downloader import download_and_save_cover, download_and_save_wal
 from core.config import COVERS_DIR, WALLPAPERS_DIR, sanitize_game_filename
 from ui.dialogs import browse_folder
 from ui.theme import (
-    COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_GLASS_BORDER,
+    COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_GLASS_BORDER, COLOR_GLASS_HOVER,
     COLOR_CYAN_ACCENT, COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG, COLOR_STATUS_SUCCESS, COLOR_STATUS_WARNING,
     COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
@@ -53,7 +53,7 @@ class ExternalImportDialog(BaseGlassDialog):
             title="Importar Juegos Externos",
             width=820,
             height=620,
-            corner_radius=22
+            corner_radius=16
         )
 
         self._action_queue = queue.Queue()
@@ -68,8 +68,8 @@ class ExternalImportDialog(BaseGlassDialog):
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.card.pack(fill="both", expand=True, padx=4, pady=4)
         self.card.grid_columnconfigure(0, weight=1)
@@ -117,7 +117,7 @@ class ExternalImportDialog(BaseGlassDialog):
             width=100,
             height=30,
             fg_color=COLOR_BTN_SECONDARY_BG,
-            hover_color="#262d3d",
+            hover_color=COLOR_GLASS_HOVER,
             border_color=COLOR_GLASS_BORDER,
             border_width=1.2,
             corner_radius=15,
@@ -136,7 +136,7 @@ class ExternalImportDialog(BaseGlassDialog):
             width=135,
             height=30,
             fg_color=COLOR_BTN_SECONDARY_BG,
-            hover_color="#262d3d",
+            hover_color=COLOR_GLASS_HOVER,
             border_color=COLOR_GLASS_BORDER,
             border_width=1.2,
             corner_radius=15,
@@ -229,7 +229,7 @@ class ExternalImportDialog(BaseGlassDialog):
             width=115,
             height=38,
             fg_color=COLOR_BTN_SECONDARY_BG,
-            hover_color="#262d3d",
+            hover_color=COLOR_GLASS_HOVER,
             border_color=COLOR_GLASS_BORDER,
             border_width=1.2,
             corner_radius=19,

@@ -46,7 +46,7 @@ class InGameOverlayDialog(BaseGlassDialog):
         on_exit_game_callback: Optional[Callable[[], None]] = None,
         on_open_settings_callback: Optional[Callable[[], None]] = None
     ):
-        super().__init__(parent, title="🎮 GameFlow Overlay", width=540, height=640, corner_radius=24)
+        super().__init__(parent, title="🎮 GameFlow Overlay", width=540, height=640, corner_radius=16)
         self.on_resume_cb = on_resume_callback
         self.on_return_to_launcher_cb = on_return_to_launcher_callback
         self.on_exit_game_cb = on_exit_game_callback
@@ -76,8 +76,6 @@ class InGameOverlayDialog(BaseGlassDialog):
         if not (parent is not None and hasattr(parent, "gamepad_service")):
             self._poll_gamepad_loop()
 
-    _center_window = BaseGlassDialog.center_window
-
     def create_widgets(self):
         scale = getattr(self, "scale_factor", 1.0)
         pad = max(6, int(10 * scale))
@@ -88,7 +86,7 @@ class InGameOverlayDialog(BaseGlassDialog):
             corner_radius=self.corner_radius,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_CYAN_BORDER,
-            border_width=1.5
+            border_width=1
         )
         self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
         self.make_draggable(self.card)

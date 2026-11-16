@@ -113,10 +113,6 @@ class FloatingGlassDropdown(ctk.CTkToplevel):
                 break
 
         for i, val in enumerate(values):
-            if i > 0 and not use_scroll:
-                sep = ctk.CTkFrame(container, height=1, fg_color="#2a2a38")
-                sep.pack(fill="x", padx=8, pady=1)
-                
             is_active = (val == current_value)
             prefix = "✓  " if is_active else "     "
             icon = self.item_icon if (self.item_icon and not val.startswith(self.item_icon.strip())) else ""
@@ -380,16 +376,22 @@ class FloatingGlassMenu(ctk.CTkToplevel):
         ctk_scale = get_ctk_window_scaling(self)
         scale = get_display_scale_factor(parent)
         mw = scale_value(355, scale)
-        item_h = scale_value(44, scale)
-        mh = len(items) * item_h + scale_value(28, scale)
+        item_h = scale_value(38, scale)
+        divider_indices = set()
+        if (self.anchor_hud_action or "menu") == "filter_menu" and len(items) > 1:
+            divider_indices.add(len(items) - 1)
+        elif len(items) >= 12:
+            divider_indices.update({5, 9})
+        extra_sep_h = len(divider_indices) * 9
+        mh = len(items) * item_h + scale_value(24, scale) + extra_sep_h
         from ui.display_scale import get_monitor_work_area_for_window
         mon_w, mon_h, (m_left, m_top, m_right, m_bottom) = get_monitor_work_area_for_window(parent)
         screen_h = max(480, int(mon_h))
         max_logical_h = max(280, int((screen_h - 24) / max(0.5, ctk_scale)))
         if mh > max_logical_h and items:
-            item_h = max(26, (max_logical_h - scale_value(24, scale)) // len(items))
-            mh = len(items) * item_h + scale_value(24, scale)
-        btn_h = max(22, min(scale_value(38, scale), item_h - 6))
+            item_h = max(24, (max_logical_h - scale_value(20, scale) - extra_sep_h) // len(items))
+            mh = len(items) * item_h + scale_value(20, scale) + extra_sep_h
+        btn_h = max(22, min(scale_value(33, scale), item_h - 4))
         btn_rad = scale_value(12, scale)
         btn_font = font_button(max(10, int(13 * scale)))
         phys_mw = int(round(mw * ctk_scale))
@@ -460,9 +462,9 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 cmd()
                 
         for i, (icon, label, action) in enumerate(items):
-            if i > 0:
-                sep = ctk.CTkFrame(content, height=1, fg_color="#2a2a38")
-                sep.pack(fill="x", padx=10, pady=2)
+            if i in divider_indices:
+                sep = ctk.CTkFrame(content, height=1, fg_color="#2e2e3e")
+                sep.pack(fill="x", padx=10, pady=4)
 
             # Eliminar selector de variación U+FE0F que en Tcl/Tk introduce un hueco ancho extra tras el icono
             clean_icon = str(icon or "").replace("\ufe0f", "").strip()
@@ -479,7 +481,7 @@ class FloatingGlassMenu(ctk.CTkToplevel):
                 font=btn_font,
                 command=lambda a=action: on_item(a)
             )
-            btn.pack(fill="x", padx=4, pady=2)
+            btn.pack(fill="x", padx=4, pady=1)
             btn.bind("<Enter>", lambda e, idx=i: self._on_hover(idx))
             self.item_buttons.append(btn)
 

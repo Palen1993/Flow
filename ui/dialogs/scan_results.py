@@ -9,7 +9,7 @@ from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
-    COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
+    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
     COLOR_CYAN_ACCENT, COLOR_CYAN_GLOW,
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
@@ -21,7 +21,7 @@ from ui.theme import (
 class ScanResultsDialog(BaseGlassDialog):
     """Diálogo modal para previsualizar, renombrar e importar juegos escaneados."""
     def __init__(self, parent, scanned_folder: str, candidates: List[Dict[str, Any]], on_import_callback=None):
-        super().__init__(parent, title="📁 Juegos Detectados", width=760, height=580, corner_radius=26)
+        super().__init__(parent, title="📁 Juegos Detectados", width=760, height=580, corner_radius=16)
         self.on_import = on_import_callback
         self.candidates = candidates
         self.scanned_folder = scanned_folder
@@ -37,15 +37,13 @@ class ScanResultsDialog(BaseGlassDialog):
         self.bind("<Down>", lambda e: self._step_row(1))
         self.bind("<Return>", lambda e: self.import_selected())
 
-    _center_window = BaseGlassDialog.center_window
-
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         self.main_card.grid_columnconfigure(0, weight=1)
@@ -82,7 +80,7 @@ class ScanResultsDialog(BaseGlassDialog):
         btn_desel_all = ctk.CTkButton(
             top_row, text="Desmarcar ", image=get_button_icon_ctk("y", self.family, size=18), compound="right",
             width=115, height=30,
-            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_GLASS_HOVER, border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=15, text_color=COLOR_TEXT_MUTED,
             font=font_button(11), command=lambda: self.select_all(False)
         )
@@ -149,7 +147,7 @@ class ScanResultsDialog(BaseGlassDialog):
         btn_cancel = ctk.CTkButton(
             bottom_frame, text="Cancelar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=125, height=38,
-            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d", border_color=COLOR_GLASS_BORDER, border_width=1.2,
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_GLASS_HOVER, border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_MUTED, font=font_button(12),
             command=self.destroy
         )

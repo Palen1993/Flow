@@ -55,7 +55,7 @@ class AchievementsDialog(BaseGlassDialog):
             title=f"Logros y Trofeos - {game.get('name', 'Juego')}",
             width=860,
             height=620,
-            corner_radius=22
+            corner_radius=16
         )
         self.game = game
         self.on_game_updated = on_game_updated
@@ -78,15 +78,13 @@ class AchievementsDialog(BaseGlassDialog):
         self._build_ui()
         self._load_data(force_refresh=False)
 
-    _center_window = BaseGlassDialog.center_window
-
     def _build_ui(self):
         self.main_card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -700,21 +698,19 @@ class AchievementsSettingsDialog(BaseGlassDialog):
             title="Ajustes de Logros y APIs",
             width=620,
             height=540,
-            corner_radius=20
+            corner_radius=16
         )
         self.on_saved = on_saved
         self.config = load_achievements_config()
         self._build_ui()
-
-    _center_window = BaseGlassDialog.center_window
 
     def _build_ui(self):
         card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=20
+            border_width=1,
+            corner_radius=16
         )
         card.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -925,21 +921,19 @@ class LinkGameIdDialog(BaseGlassDialog):
             title="Vincular IDs de Logros",
             width=540,
             height=380,
-            corner_radius=20
+            corner_radius=16
         )
         self.game = game
         self.on_linked = on_linked
         self._build_ui()
-
-    _center_window = BaseGlassDialog.center_window
 
     def _build_ui(self):
         card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=20
+            border_width=1,
+            corner_radius=16
         )
         card.pack(fill="both", expand=True, padx=4, pady=4)
 

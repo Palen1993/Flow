@@ -61,7 +61,7 @@ class SaveBackupDialog(BaseGlassDialog):
             title=f"Copias de Seguridad - {game.get('name', 'Juego')}",
             width=840,
             height=600,
-            corner_radius=22
+            corner_radius=16
         )
         self.game = game
         self.on_game_updated = on_game_updated
@@ -78,16 +78,14 @@ class SaveBackupDialog(BaseGlassDialog):
         self._build_ui()
         self._refresh_backups()
 
-    _center_window = BaseGlassDialog.center_window
-
     def _build_ui(self):
         # Tarjeta principal con efecto iOS Liquid Glass
         self.main_card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
 

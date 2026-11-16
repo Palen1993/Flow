@@ -39,8 +39,6 @@ class GamepadConfigDialog(BaseGlassDialog):
         
         self.after(100, self._poll_status)
 
-    _center_window = BaseGlassDialog.center_window
-
     def _start_drag(self, event):
         if hasattr(self, "device_combo") and getattr(self.device_combo, "_active_dropdown", None):
             try:

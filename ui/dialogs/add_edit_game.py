@@ -27,7 +27,7 @@ from ui.theme import (
 class AddEditGameDialog(BaseGlassDialog):
     def __init__(self, parent, monitors: List[Dict[str, Any]], game_data: Optional[Dict[str, Any]] = None, callback=None, delete_callback=None, on_close_callback=None):
         title = "Editar Juego" if game_data else "Agregar Juego"
-        super().__init__(parent, title=title, width=680, height=640, corner_radius=26)
+        super().__init__(parent, title=title, width=680, height=640, corner_radius=16)
         self.callback = callback
         self.delete_callback = delete_callback
         self.on_close_callback = on_close_callback
@@ -46,8 +46,6 @@ class AddEditGameDialog(BaseGlassDialog):
         self.preview_image_ref = None
         
         self.create_widgets()
-
-    _center_window = BaseGlassDialog.center_window
 
     def _start_drag(self, event):
         for dd_name in ("monitor_dropdown", "status_dropdown"):
@@ -137,7 +135,7 @@ class AddEditGameDialog(BaseGlassDialog):
         
         ctk.CTkLabel(left_frame, text="Carátula 3D", font=font_button(14), text_color=COLOR_TEXT_BRIGHT).pack(pady=(12, 4))
         
-        self.cover_canvas = tk.Canvas(left_frame, width=180, height=220, bg="#0d0f14", highlightthickness=0, cursor="hand2")
+        self.cover_canvas = tk.Canvas(left_frame, width=180, height=220, bg=COLOR_BG_DARK, highlightthickness=0, cursor="hand2")
         self.cover_canvas.pack(pady=4)
         self.cover_canvas.bind("<Button-1>", lambda e: self.download_online_hd_cover())
 

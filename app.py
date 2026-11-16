@@ -22,32 +22,21 @@ logger = get_logger("App")
 
 from core.system import get_monitors
 from core.cover_resolver import resolve_game_cover
-from core.scanner import scan_directory_for_games
 from core.library_service import GameLibraryService, format_monitor_label
 from core.execution_service import GameExecutionService
 from ui.window_manager import WindowStateService
 from ui.gamepad_service import GamepadNavigationService
 from ui.modal_manager import register_modal_stack, unregister_modal_stack
 
-from ui.theme import (
-    bring_to_front_absolute,
-    COLOR_BG_DARK, COLOR_BG_CANVAS, COLOR_BG_CARD,
-    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER,
-    COLOR_CYAN_ACCENT,
-    COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER, COLOR_IOS_BLUE_BORDER,
-    COLOR_STATUS_DANGER, COLOR_STATUS_WARNING, COLOR_STATUS_SUCCESS,
-    COLOR_TEXT_MAIN, COLOR_TEXT_WHITE, COLOR_TEXT_MUTED, COLOR_TEXT_DIM,
-    font_title, font_button, font_body
-)
+from ui.theme import bring_to_front_absolute, COLOR_BG_DARK
 from ui.coverflow_canvas import CoverFlowCanvas
-from ui.controller_hud import render_controller_hud_strip, get_button_icon_ctk
 from ui.dropdowns import FloatingGlassMenu
 from ui.dialogs import (
-    AddEditGameDialog, ScanResultsDialog, SelectGameToEditDialog,
+    AddEditGameDialog, SelectGameToEditDialog,
     GamepadConfigDialog, ConfirmExitDialog, CoverPickerDialog,
     ExternalImportDialog, BatchSteamGridDBDialog, CollectionsFilterDialog,
     KioskDialog,
-    invalidate_thumb_cache, show_info, show_error, ask_yes_no, browse_folder
+    invalidate_thumb_cache, show_info, show_error, ask_yes_no
 )
 from gamepad_manager import (
     load_gamepad_config, poll_active_gamepad, get_connected_controller_family,
@@ -315,23 +304,41 @@ class App(ctk.CTk):
         self.current_filter_id = filter_id
         self.refresh_shelves(keep_selection=keep_selection)
 
-    def open_collections_dialog(self):
-        """Abre el diálogo modal de configuración de estanterías y filtros del dashboard."""
+    def _open_or_focus_dialog(self, attr_name: str, factory, use_bring_to_front: bool = False):
+        """Garantiza instancia única por diálogo modal, trayendo al frente la existente si sigue abierta."""
         self.close_active_menu()
-        if hasattr(self, "_collections_dialog") and self._collections_dialog and self._collections_dialog.winfo_exists():
+        existing = getattr(self, attr_name, None)
+        if existing is not None:
             try:
-                self._collections_dialog.lift()
-                self._collections_dialog.focus_force()
+                if existing.winfo_exists():
+                    if use_bring_to_front:
+                        bring_to_front_absolute(existing)
+                    else:
+                        existing.lift()
+                        existing.focus_force()
+                    return existing
             except Exception:
                 pass
-            return
+        dlg = factory()
+        setattr(self, attr_name, dlg)
+        return dlg
 
+    def _on_game_metadata_updated(self, _updated_game=None):
+        self.save_games()
+        self.cover_stage.set_games(self.games, target_index=self.selected_index)
+        self.update_ui_details(self.selected_index)
+
+    def open_collections_dialog(self):
+        """Abre el diálogo modal de configuración de estanterías y filtros del dashboard."""
         cur_shelf_id = self.active_shelves[self.current_shelf_idx]["id"] if self.active_shelves else "all"
-        self._collections_dialog = CollectionsFilterDialog(
-            self,
-            all_games=self.library.games,
-            current_shelf_id=cur_shelf_id,
-            on_shelves_updated=lambda: self.refresh_shelves(keep_selection=True)
+        self._open_or_focus_dialog(
+            "_collections_dialog",
+            lambda: CollectionsFilterDialog(
+                self,
+                all_games=self.library.games,
+                current_shelf_id=cur_shelf_id,
+                on_shelves_updated=lambda: self.refresh_shelves(keep_selection=True)
+            ),
         )
 
     def open_in_game_overlay(self):
@@ -351,137 +358,61 @@ class App(ctk.CTk):
 
     def open_game_stats_dialog(self):
         """Abre la pantalla de estadísticas avanzadas, gráficas de tiempo y metas para el juego actual."""
-        self.close_active_menu()
-        if hasattr(self, "_stats_dialog") and self._stats_dialog and self._stats_dialog.winfo_exists():
-            try:
-                self._stats_dialog.lift()
-                self._stats_dialog.focus_force()
-            except Exception:
-                pass
-            return
-
         if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
             return
-
         game = self.games[self.selected_index]
-        from ui.dialogs.game_stats_dialog import GameStatsDialog
 
-        def _on_updated(updated_game):
-            self.save_games()
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
-            self.update_ui_details(self.selected_index)
+        def _create():
+            from ui.dialogs.game_stats_dialog import GameStatsDialog
+            return GameStatsDialog(parent=self, game=game, on_game_updated=self._on_game_metadata_updated)
 
-        self._stats_dialog = GameStatsDialog(
-            parent=self,
-            game=game,
-            on_game_updated=_on_updated
-        )
+        self._open_or_focus_dialog("_stats_dialog", _create)
 
     def open_save_backup_dialog(self):
         """Abre la pantalla de copias de seguridad y restauración de partidas guardadas para el juego actual."""
-        self.close_active_menu()
-        if hasattr(self, "_backup_dialog") and self._backup_dialog and self._backup_dialog.winfo_exists():
-            try:
-                self._backup_dialog.lift()
-                self._backup_dialog.focus_force()
-            except Exception:
-                pass
-            return
-
         if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
             return
-
         game = self.games[self.selected_index]
-        from ui.dialogs.save_backup_dialog import SaveBackupDialog
 
-        def _on_updated(updated_game):
-            self.save_games()
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
-            self.update_ui_details(self.selected_index)
+        def _create():
+            from ui.dialogs.save_backup_dialog import SaveBackupDialog
+            return SaveBackupDialog(parent=self, game=game, on_game_updated=self._on_game_metadata_updated)
 
-        self._backup_dialog = SaveBackupDialog(
-            parent=self,
-            game=game,
-            on_game_updated=_on_updated
-        )
+        self._open_or_focus_dialog("_backup_dialog", _create)
 
     def open_performance_dialog(self):
         """Abre el panel de Modos de Rendimiento y Energía (Handheld Mode / Perfiles de Batería)."""
-        self.close_active_menu()
-        if hasattr(self, "_perf_dialog") and self._perf_dialog and self._perf_dialog.winfo_exists():
-            try:
-                self._perf_dialog.lift()
-                self._perf_dialog.focus_force()
-            except Exception:
-                pass
-            return
+        game = self.games[self.selected_index] if (self.games and 0 <= self.selected_index < len(self.games)) else None
 
-        game = None
-        if self.games and 0 <= self.selected_index < len(self.games):
-            game = self.games[self.selected_index]
+        def _create():
+            from ui.dialogs.performance_dialog import PerformanceProfileDialog
+            return PerformanceProfileDialog(parent=self, game=game, on_game_updated=self._on_game_metadata_updated)
 
-        from ui.dialogs.performance_dialog import PerformanceProfileDialog
-
-        def _on_updated(updated_game):
-            self.save_games()
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
-            self.update_ui_details(self.selected_index)
-
-        self._perf_dialog = PerformanceProfileDialog(
-            parent=self,
-            game=game,
-            on_game_updated=_on_updated
-        )
+        self._open_or_focus_dialog("_perf_dialog", _create)
 
     def open_cloud_sync_dialog(self):
         """Abre el panel de Sincronización de Partidas en la Nube (Cloud Save Sync)."""
-        self.close_active_menu()
-        if hasattr(self, "_cloud_sync_dialog") and self._cloud_sync_dialog and self._cloud_sync_dialog.winfo_exists():
-            try:
-                self._cloud_sync_dialog.lift()
-                self._cloud_sync_dialog.focus_force()
-            except Exception:
-                pass
-            return
+        def _create():
+            from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
+            return CloudSyncDialog(
+                parent=self,
+                games=self.library.games,
+                on_sync_completed=lambda: self.update_ui_details(self.selected_index)
+            )
 
-        from ui.dialogs.cloud_sync_dialog import CloudSyncDialog
-
-        def _on_sync_done():
-            self.update_ui_details(self.selected_index)
-
-        self._cloud_sync_dialog = CloudSyncDialog(
-            parent=self,
-            games=self.library.games,
-            on_sync_completed=_on_sync_done
-        )
+        self._open_or_focus_dialog("_cloud_sync_dialog", _create)
 
     def open_achievements_dialog(self):
         """Abre el panel de Logros y Trofeos (Steam & RetroAchievements) para el juego seleccionado."""
-        self.close_active_menu()
-        if hasattr(self, "_achievements_dialog") and self._achievements_dialog and self._achievements_dialog.winfo_exists():
-            try:
-                self._achievements_dialog.lift()
-                self._achievements_dialog.focus_force()
-            except Exception:
-                pass
-            return
-
         if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
             return
-
         game = self.games[self.selected_index]
-        from ui.dialogs.achievements_dialog import AchievementsDialog
 
-        def _on_updated(updated_game):
-            self.save_games()
-            self.cover_stage.set_games(self.games, target_index=self.selected_index)
-            self.update_ui_details(self.selected_index)
+        def _create():
+            from ui.dialogs.achievements_dialog import AchievementsDialog
+            return AchievementsDialog(parent=self, game=game, on_game_updated=self._on_game_metadata_updated)
 
-        self._achievements_dialog = AchievementsDialog(
-            parent=self,
-            game=game,
-            on_game_updated=_on_updated
-        )
+        self._open_or_focus_dialog("_achievements_dialog", _create)
 
     def toggle_current_game_favorite(self):
         """Alterna el estado favorito del juego actualmente seleccionado."""
@@ -561,64 +492,14 @@ class App(ctk.CTk):
     # -------------------------------------------------------------
     def create_widgets(self):
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-
-        # 1. Barra Superior (instanciada pero desmapeada para que el CoverFlowCanvas llegue a y=0)
-        top_bar = ctk.CTkFrame(self, height=52, fg_color="transparent", corner_radius=0)
-        top_bar.grid_columnconfigure(0, weight=1)
-        self.top_bar = top_bar
-
-        actions_box = ctk.CTkFrame(top_bar, fg_color="transparent")
-        actions_box.pack(side="right", padx=0, pady=2)
+        self.grid_rowconfigure(0, weight=1)
 
         self._current_controller_family = get_connected_controller_family(self.gamepad_config)
-        self.btn_menu = ctk.CTkButton(
-            actions_box,
-            text="⚙ ",
-            image=get_button_icon_ctk("x", self._current_controller_family, size=18),
-            compound="right",
-            width=58,
-            height=36,
-            corner_radius=18,
-            fg_color=COLOR_BG_CARD,
-            hover_color=COLOR_GLASS_HOVER,
-            border_color=COLOR_GLASS_BORDER,
-            border_width=1.2,
-            text_color=COLOR_TEXT_MAIN,
-            font=("Segoe UI", 15, "bold"),
-            command=self.toggle_top_menu
-        )
-        self.btn_menu.pack(side="left", padx=2, pady=0)
+        # Widgets de respaldo ocultos (sin mapear) por compatibilidad con anclas de menú y tests
+        self.btn_menu = ctk.CTkButton(self, text="⚙", width=1, height=1, command=self.toggle_top_menu)
+        self.btn_launch = ctk.CTkButton(self, text="▶", width=1, height=1, command=self.launch_current_game)
 
-        self.btn_battery = ctk.CTkButton(
-            actions_box,
-            text="🔋 --",
-            width=78,
-            height=36,
-            corner_radius=18,
-            fg_color=COLOR_BG_CARD,
-            hover_color=COLOR_GLASS_HOVER,
-            border_color=COLOR_GLASS_BORDER,
-            border_width=1.2,
-            text_color=COLOR_CYAN_ACCENT,
-            font=font_button(12),
-            command=self._show_battery_info
-        )
-        self.btn_battery.pack(side="left", padx=2, pady=0)
-
-        self._hud_ctk_images = {}
-        self._top_hud_boxes = []
-
-        self.hud_strip_label = ctk.CTkLabel(
-            actions_box,
-            text="",
-            fg_color="transparent",
-            cursor="hand2"
-        )
-        self.hud_strip_label.pack(side="left", padx=(2, 2), pady=0)
-        self.hud_strip_label.bind("<Button-1>", self._on_top_hud_click)
-
-        # 2. Escenario Central a Pantalla Completa 100% (de y=0 a y=h sin barras grises)
+        # Escenario Central Cover Flow 3D + HUD RGBA superpuesto
         self.cover_stage = CoverFlowCanvas(
             self,
             on_selection_changed=self.on_cover_selected,
@@ -626,43 +507,9 @@ class App(ctk.CTk):
             on_hud_action=self._on_canvas_hud_action,
             on_shelf_step=self.cycle_shelf
         )
-        self.cover_stage.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
-
-        # 3. Panel Inferior (instanciado sin mapear para eliminar cualquier barra inferior)
-        bottom_panel = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
-        bottom_panel.grid_columnconfigure(0, weight=1)
-        self.bottom_panel = bottom_panel
-
-        self.lbl_game_title = ctk.CTkLabel(
-            bottom_panel, text="",
-            font=font_title(26),
-            text_color=COLOR_TEXT_MAIN
-        )
-        self.lbl_game_title.grid(row=0, column=0, pady=(0, 2))
-
-        self.lbl_status = ctk.CTkLabel(
-            bottom_panel, text="",
-            font=font_body(12),
-            text_color=COLOR_TEXT_DIM
-        )
-        self.lbl_status.grid(row=1, column=0, pady=(0, 10))
+        self.cover_stage.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         self._status_reset_job = None
 
-        self.btn_launch = ctk.CTkButton(
-            bottom_panel, text="▶  INICIAR JUEGO ",
-            image=get_button_icon_ctk("a", self._current_controller_family, size=22),
-            compound="right",
-            width=245, height=48,
-            font=font_button(14),
-            fg_color=COLOR_IOS_BLUE,
-            hover_color=COLOR_IOS_BLUE_HOVER,
-            border_color=COLOR_IOS_BLUE_BORDER,
-            border_width=1.2,
-            corner_radius=24,
-            text_color=COLOR_TEXT_WHITE,
-            command=self.launch_current_game
-        )
-        self.btn_launch.grid(row=2, column=0, pady=(0, 4))
         self._sync_controller_family_ui(force=True)
 
         # Cargar juegos en el Cover Flow
@@ -704,6 +551,8 @@ class App(ctk.CTk):
         self.bind("<P>", lambda e: self.open_performance_dialog())
         self.bind("<y>", lambda e: self.open_achievements_dialog())
         self.bind("<Y>", lambda e: self.open_achievements_dialog())
+        self.bind("<t>", lambda e: self.open_achievements_dialog())
+        self.bind("<T>", lambda e: self.open_achievements_dialog())
         self.bind("<Configure>", self._on_window_configure, add="+")
 
     def on_cover_selected(self, index: int):
@@ -735,21 +584,14 @@ class App(ctk.CTk):
         elif action == "exit":
             self.open_exit_dialog()
 
-    def _on_top_hud_click(self, event):
-        x = event.x
-        for (bx1, _by1, bx2, _by2, act) in getattr(self, "_top_hud_boxes", []):
-            if bx1 <= x <= bx2:
-                self._on_canvas_hud_action(act)
-                return
-
     def _sync_controller_family_ui(self, force: bool = False):
-        """Actualiza dinámicamente la cápsula superior derecha e iconos según el mando conectado."""
+        """Actualiza dinámicamente los glifos de mando del HUD según el controlador conectado."""
         try:
             fam = get_connected_controller_family(self.gamepad_config)
         except Exception:
             fam = "xbox"
 
-        if not force and fam == getattr(self, "_current_controller_family", None) and getattr(self, "_hud_ctk_images", None):
+        if not force and fam == getattr(self, "_current_controller_family", None):
             return
 
         self._current_controller_family = fam
@@ -759,32 +601,11 @@ class App(ctk.CTk):
             if prev_fam != fam or force:
                 self.cover_stage.redraw()
 
-        try:
-            strip_img, boxes = render_controller_hud_strip(fam, height=36)
-            self._top_hud_boxes = boxes
-            ctk_strip = ctk.CTkImage(
-                light_image=strip_img,
-                dark_image=strip_img,
-                size=(strip_img.width, strip_img.height)
-            )
-            self._hud_ctk_images["strip"] = ctk_strip
-            if hasattr(self, "hud_strip_label") and self.hud_strip_label.winfo_exists():
-                self.hud_strip_label.configure(image=ctk_strip, text="", width=strip_img.width, height=strip_img.height)
-
-            if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
-                self.btn_launch.configure(image=get_button_icon_ctk("a", fam, size=22), compound="right")
-            if hasattr(self, "btn_menu") and self.btn_menu.winfo_exists():
-                self.btn_menu.configure(image=get_button_icon_ctk("x", fam, size=18), compound="right")
-        except Exception:
-            pass
-
     def update_ui_details(self, index: int):
         n = len(self.games)
         if n == 0 or index >= n:
-            self.lbl_game_title.configure(text="")
-            if hasattr(self, "lbl_status") and self.lbl_status:
-                self.lbl_status.configure(text="Añade o escanea tu carpeta de juegos desde el menú ⚙", text_color=COLOR_TEXT_DIM)
-            self.btn_launch.configure(state="disabled")
+            if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
+                self.btn_launch.configure(state="disabled")
             if hasattr(self, "cover_stage") and self.cover_stage:
                 self.cover_stage.ui_title = ""
                 self.cover_stage.ui_status = "Añade o escanea tu carpeta de juegos desde el menú ⚙"
@@ -797,10 +618,8 @@ class App(ctk.CTk):
         game = self.games[index]
         title_str = game.get("name", "Juego")
         sub_str = self._get_game_subtitle(game)
-        self.lbl_game_title.configure(text=title_str)
-        if hasattr(self, "lbl_status") and self.lbl_status and not getattr(self, "_status_reset_job", None):
-            self.lbl_status.configure(text=sub_str, text_color=COLOR_TEXT_MUTED)
-        self.btn_launch.configure(state="normal")
+        if hasattr(self, "btn_launch") and self.btn_launch.winfo_exists():
+            self.btn_launch.configure(state="normal")
         if hasattr(self, "cover_stage") and self.cover_stage:
             self.cover_stage.ui_title = title_str
             if not getattr(self, "_status_reset_job", None):
@@ -862,9 +681,13 @@ class App(ctk.CTk):
         )
 
     def _poll_action_queue(self):
+        deferred_callables = []
+        seen_callable_ids = set()
         try:
-            while True:
+            processed = 0
+            while processed < 32:
                 action, payload = self._action_queue.get_nowait()
+                processed += 1
                 if not self.winfo_exists():
                     return
                 if action == "status":
@@ -889,11 +712,23 @@ class App(ctk.CTk):
                         self.set_status(f"Error iniciando juego: {err_msg}")
                         show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
                 elif action == "callable" and callable(payload):
-                    payload()
+                    pid = id(payload)
+                    if pid not in seen_callable_ids:
+                        seen_callable_ids.add(pid)
+                        deferred_callables.append(payload)
         except queue.Empty:
             pass
         except Exception as e:
             logger.error(f"Error procesando cola de acciones UI: {e}")
+
+        for fn in deferred_callables:
+            try:
+                if not self.winfo_exists():
+                    return
+                fn()
+            except Exception as e:
+                logger.error(f"Error ejecutando acción en cola UI: {e}")
+
         if self.winfo_exists():
             self.after(50, self._poll_action_queue)
 
@@ -911,7 +746,7 @@ class App(ctk.CTk):
         show_error("Error al Iniciar", f"No se pudo iniciar el juego:\n{err_msg}", parent=self)
 
     def set_status(self, msg: str):
-        if hasattr(self, "lbl_status") and self.lbl_status:
+        if hasattr(self, "cover_stage") and self.cover_stage:
             try:
                 if getattr(self, "_status_reset_job", None):
                     try:
@@ -919,18 +754,15 @@ class App(ctk.CTk):
                     except Exception:
                         pass
                     self._status_reset_job = None
-                self.lbl_status.configure(text=msg, text_color=COLOR_CYAN_ACCENT)
-                if hasattr(self, "cover_stage") and self.cover_stage:
-                    self.cover_stage.ui_status = msg
-                    self.cover_stage.ui_status_color = (56, 189, 248)
-                    if not getattr(self.cover_stage, "_defer_redraw", False):
-                        self.cover_stage.redraw()
+                self.cover_stage.ui_status = msg
+                self.cover_stage.ui_status_color = (56, 189, 248)
+                if not getattr(self.cover_stage, "_defer_redraw", False):
+                    self.cover_stage.redraw()
 
                 def _restore_subtitle():
                     self._status_reset_job = None
                     if 0 <= self.selected_index < len(self.games):
                         sub_s = self._get_game_subtitle(self.games[self.selected_index])
-                        self.lbl_status.configure(text=sub_s, text_color=COLOR_TEXT_DIM)
                         if hasattr(self, "cover_stage") and self.cover_stage:
                             self.cover_stage.ui_status = sub_s
                             self.cover_stage.ui_status_color = (203, 213, 225)
@@ -944,14 +776,12 @@ class App(ctk.CTk):
     # Gestión de Estados de Ventana (Delegación a WindowStateService)
     # -------------------------------------------------------------
     def set_mini_mode(self):
-        if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
-            self.glass_menu.destroy()
-            self.glass_menu = None
-        self.window_manager.set_mini_mode(self.cover_stage, self.top_bar, self.bottom_panel)
+        self.close_active_menu()
+        self.window_manager.set_mini_mode(self.cover_stage)
         self._sync_controller_family_ui()
 
     def set_full_mode(self):
-        self.window_manager.set_full_mode(self.cover_stage, self.top_bar, self.bottom_panel)
+        self.window_manager.set_full_mode(self.cover_stage)
         self._sync_controller_family_ui()
 
     def toggle_size_mode(self):
@@ -1054,20 +884,15 @@ class App(ctk.CTk):
                 txt = f"{info['icon']} {info['text']}"
                 lvl = info.get("level", "")
                 if lvl == "empty":
-                    t_color = COLOR_STATUS_DANGER
                     rgb_col = (255, 45, 85)
                 elif lvl == "low":
-                    t_color = COLOR_STATUS_WARNING
                     rgb_col = (255, 149, 0)
                 elif info.get("is_wired") or lvl == "directinput":
-                    t_color = COLOR_IOS_BLUE
                     rgb_col = (56, 189, 248)
                 else:
-                    t_color = COLOR_STATUS_SUCCESS
                     rgb_col = (52, 199, 89)
             else:
                 txt = "🎮 Mando"
-                t_color = COLOR_TEXT_DIM
                 rgb_col = (100, 116, 139)
 
             sec = info.get("secondary") if info.get("connected") else None
@@ -1080,8 +905,6 @@ class App(ctk.CTk):
                     sec_txt = sec.get("text", "--")
                 txt = f"{txt}  ·  2º {sec_txt}"
 
-            if hasattr(self, "btn_battery") and self.btn_battery.winfo_exists():
-                self.btn_battery.configure(text=txt, text_color=t_color)
             if hasattr(self, "cover_stage") and self.cover_stage:
                 changed = (self.cover_stage.ui_battery_text != txt or self.cover_stage.ui_battery_color != rgb_col)
                 self.cover_stage.ui_battery_text = txt
@@ -1094,17 +917,12 @@ class App(ctk.CTk):
         self.after(4000, self._poll_battery_status)
 
     def _show_battery_info(self):
-        from ui.dialogs import ControllerInfoDialog
-        existing = getattr(self, "_controller_info_dialog", None)
-        try:
-            if existing is not None and existing.winfo_exists():
-                existing.lift()
-                existing.focus_set()
-                return
-        except Exception:
-            pass
-        fam = getattr(self, "_current_controller_family", "xbox")
-        self._controller_info_dialog = ControllerInfoDialog(self, family=fam)
+        def _create():
+            from ui.dialogs import ControllerInfoDialog
+            fam = getattr(self, "_current_controller_family", "xbox")
+            return ControllerInfoDialog(self, family=fam)
+
+        self._open_or_focus_dialog("_controller_info_dialog", _create)
 
     def open_cover_picker_for_selected_game(self, initial_mode: str = "cover"):
         if not self.games or self.selected_index < 0 or self.selected_index >= len(self.games):
@@ -1114,125 +932,66 @@ class App(ctk.CTk):
         game = self.games[self.selected_index]
         game_name = game.get("name", "Juego")
 
-        cur_cover_pil = None
-        try:
-            from PIL import Image
-            c_path = resolve_game_cover(game)
-            if c_path and os.path.isfile(c_path):
-                with Image.open(c_path) as im:
-                    cur_cover_pil = im.convert("RGBA").copy()
-        except Exception:
-            pass
-
-        def _on_cover_chosen(new_cover_path: str):
-            if new_cover_path and os.path.isfile(new_cover_path):
-                game["cover"] = new_cover_path
-                self.save_games()
-                if hasattr(self, "cover_stage") and self.cover_stage:
-                    self.cover_stage.update_game_cover(game)
-                self.update_ui_details(self.selected_index)
-                self.set_status(f"¡Carátula oficial actualizada para '{game_name}'!")
-
-        def _on_wallpaper_chosen(new_wp_path: str, wp_opacity: float, wp_blur: float = 1.5):
-            if new_wp_path and os.path.isfile(new_wp_path):
-                game["wallpaper"] = new_wp_path
-                game["wallpaper_opacity"] = round(float(wp_opacity), 2)
-                game["wallpaper_blur"] = round(float(wp_blur), 2)
-                self.save_games()
-                if hasattr(self, "cover_stage") and self.cover_stage:
-                    self.cover_stage.update_game_wallpaper(game)
-                self.set_status(
-                    f"¡Wallpaper 16:9 aplicado para '{game_name}' ({int(round(wp_opacity * 100))}% opacidad, desenfoque {wp_blur:.1f})!"
-                )
-            elif new_wp_path == "":
-                game.pop("wallpaper", None)
-                game.pop("wallpaper_opacity", None)
-                game.pop("wallpaper_blur", None)
-                self.save_games()
-                if hasattr(self, "cover_stage") and self.cover_stage:
-                    self.cover_stage.update_game_wallpaper(game)
-                self.set_status(f"Wallpaper de fondo eliminado para '{game_name}'.")
-
-        if hasattr(self, "_cover_picker_dialog") and self._cover_picker_dialog and self._cover_picker_dialog.winfo_exists():
+        def _create():
+            cur_cover_pil = None
             try:
-                self._cover_picker_dialog.lift()
-                self._cover_picker_dialog.focus_force()
+                from PIL import Image
+                c_path = resolve_game_cover(game)
+                if c_path and os.path.isfile(c_path):
+                    with Image.open(c_path) as im:
+                        cur_cover_pil = im.convert("RGBA").copy()
             except Exception:
                 pass
-            return
-        self._cover_picker_dialog = CoverPickerDialog(
-            self,
-            initial_query=game_name,
-            game_name=game_name,
-            on_selected_callback=_on_cover_chosen,
-            initial_mode=initial_mode,
-            on_wallpaper_selected_callback=_on_wallpaper_chosen,
-            initial_wallpaper_opacity=float(game.get("wallpaper_opacity", 0.30)),
-            initial_wallpaper_blur=float(game.get("wallpaper_blur", 1.8)),
-            current_cover_pil=cur_cover_pil,
-            current_wallpaper_path=game.get("wallpaper", "")
-        )
+
+            def _on_cover_chosen(new_cover_path: str):
+                if new_cover_path and os.path.isfile(new_cover_path):
+                    game["cover"] = new_cover_path
+                    self.save_games()
+                    if hasattr(self, "cover_stage") and self.cover_stage:
+                        self.cover_stage.update_game_cover(game)
+                    self.update_ui_details(self.selected_index)
+                    self.set_status(f"¡Carátula oficial actualizada para '{game_name}'!")
+
+            def _on_wallpaper_chosen(new_wp_path: str, wp_opacity: float, wp_blur: float = 1.5):
+                if new_wp_path and os.path.isfile(new_wp_path):
+                    game["wallpaper"] = new_wp_path
+                    game["wallpaper_opacity"] = round(float(wp_opacity), 2)
+                    game["wallpaper_blur"] = round(float(wp_blur), 2)
+                    self.save_games()
+                    if hasattr(self, "cover_stage") and self.cover_stage:
+                        self.cover_stage.update_game_wallpaper(game)
+                    self.set_status(
+                        f"¡Wallpaper 16:9 aplicado para '{game_name}' ({int(round(wp_opacity * 100))}% opacidad, desenfoque {wp_blur:.1f})!"
+                    )
+                elif new_wp_path == "":
+                    game.pop("wallpaper", None)
+                    game.pop("wallpaper_opacity", None)
+                    game.pop("wallpaper_blur", None)
+                    self.save_games()
+                    if hasattr(self, "cover_stage") and self.cover_stage:
+                        self.cover_stage.update_game_wallpaper(game)
+                    self.set_status(f"Wallpaper de fondo eliminado para '{game_name}'.")
+
+            return CoverPickerDialog(
+                self,
+                initial_query=game_name,
+                game_name=game_name,
+                on_selected_callback=_on_cover_chosen,
+                initial_mode=initial_mode,
+                on_wallpaper_selected_callback=_on_wallpaper_chosen,
+                initial_wallpaper_opacity=float(game.get("wallpaper_opacity", 0.30)),
+                initial_wallpaper_blur=float(game.get("wallpaper_blur", 1.8)),
+                current_cover_pil=cur_cover_pil,
+                current_wallpaper_path=game.get("wallpaper", "")
+            )
+
+        self._open_or_focus_dialog("_cover_picker_dialog", _create)
 
     def open_external_import_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_external_import_dialog") and self._external_import_dialog and self._external_import_dialog.winfo_exists():
-            try:
-                self._external_import_dialog.lift()
-                self._external_import_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        self._external_import_dialog = ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.library.games)
-
-    def scan_folder_for_games(self):
-        folder = browse_folder(parent=self, title="Seleccionar Carpeta de Juegos")
-        if not folder:
-            return
-
-        folder_name = os.path.basename(os.path.abspath(folder)) or folder
-        self.set_status(f"Escaneando '{folder_name}' en busca de juegos...")
-
-        existing_paths = {
-            os.path.normcase(os.path.abspath(g["path"]))
-            for g in self.library.games if g.get("path")
-        }
-
-        scan_q = queue.Queue()
-
-        def _scan_worker():
-            candidates = scan_directory_for_games(folder, existing_paths=existing_paths)
-            scan_q.put(candidates)
-
-        def _poll_scan():
-            try:
-                candidates = scan_q.get_nowait()
-                if not self.winfo_exists():
-                    return
-                if not candidates:
-                    show_info(
-                        "Escanear Carpeta",
-                        f"No se encontraron ejecutables correspondientes a juegos en:\n{folder}\n\n"
-                        "Consejo: Selecciona la carpeta donde tienes instalados tus juegos (por ej. C:/Juegos o la carpeta de un juego).",
-                        parent=self
-                    )
-                    self.set_status("Escaneo finalizado sin juegos encontrados.")
-                    return
-                self.set_status(f"¡Se encontraron {len(candidates)} juegos en '{folder_name}'!")
-                if hasattr(self, "_scan_results_dialog") and self._scan_results_dialog and self._scan_results_dialog.winfo_exists():
-                    try:
-                        self._scan_results_dialog.lift()
-                        self._scan_results_dialog.focus_force()
-                    except Exception:
-                        pass
-                    return
-                self._scan_results_dialog = ScanResultsDialog(self, folder, candidates, on_import_callback=self.on_games_imported)
-                return
-            except queue.Empty:
-                if self.winfo_exists():
-                    self.after(50, _poll_scan)
-
-        self.after(50, _poll_scan)
-        threading.Thread(target=_scan_worker, daemon=True).start()
+        self._open_or_focus_dialog(
+            "_external_import_dialog",
+            lambda: ExternalImportDialog(self, on_import_callback=self.on_games_imported, existing_games=self.library.games),
+        )
 
     def _focus_game_in_shelves(self, target_game: Optional[Dict[str, Any]]) -> None:
         """Asegura que el juego dado sea visible y quede seleccionado en el carrusel activo."""
@@ -1310,19 +1069,21 @@ class App(ctk.CTk):
         fav_icon = "★" if is_fav else "☆"
 
         items = [
+            # Bloque 1: Juego Actual
             ("✏️", edit_label, self.open_edit_current_game_dialog),
             (fav_icon, fav_label, self.toggle_current_game_favorite),
             ("⏱", "Estadísticas y Metas (S)...", self.open_game_stats_dialog),
-            ("🏆", "Logros y Trofeos (Y)...", self.open_achievements_dialog),
-            ("💾", "Copias de Seguridad (Save Backup)...", self.open_save_backup_dialog),
-            ("☁️", "Sincronización en la Nube (Cloud Sync)...", self.open_cloud_sync_dialog),
-            ("🏷", "Colecciones y Filtros (LB/RB)...", self.open_collections_dialog),
-            ("🎛️", "Modos de Rendimiento y Energía (P)...", self.open_performance_dialog),
-            ("🪟", "In-Game Overlay (Reloj / Batería / Volumen)...", self.open_in_game_overlay),
+            ("🏆", "Logros y Trofeos (Tecla Y)...", self.open_achievements_dialog),
+            ("💾", "Copias de Seguridad (C)...", self.open_save_backup_dialog),
+            # Bloque 2: Biblioteca
+            ("＋", "Añadir Juego Manualmente...", self.open_add_dialog),
             ("🚀", "Importar Juegos...", self.open_external_import_dialog),
             ("🎨", "Descargar Arte Masivo (SteamGridDB)...", self.open_batch_steamgriddb_dialog),
-            ("📺", "Modo Kiosco / Consola Dedicada...", self.open_kiosk_dialog),
             ("📋", "Administrar Todos los Juegos...", self.open_select_game_dialog),
+            # Bloque 3: Sistema y Consola
+            ("☁️", "Sincronización en la Nube (Cloud Sync)...", self.open_cloud_sync_dialog),
+            ("🎛️", "Modos de Rendimiento y Energía (P)...", self.open_performance_dialog),
+            ("📺", "Modo Kiosco / Consola Dedicada...", self.open_kiosk_dialog),
             ("🎮", "Configurar Mando...", self.open_gamepad_config_dialog),
         ]
         self.glass_menu = FloatingGlassMenu(self, self.btn_menu, items)
@@ -1358,44 +1119,31 @@ class App(ctk.CTk):
             self.glass_menu._update_highlight()
 
     def open_kiosk_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_kiosk_dialog") and self._kiosk_dialog and self._kiosk_dialog.winfo_exists():
-            try:
-                self._kiosk_dialog.lift()
-                self._kiosk_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        self._kiosk_dialog = KioskDialog(self)
+        self._open_or_focus_dialog("_kiosk_dialog", lambda: KioskDialog(self))
 
     def open_batch_steamgriddb_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_batch_sgdb_dialog") and self._batch_sgdb_dialog and self._batch_sgdb_dialog.winfo_exists():
-            try:
-                self._batch_sgdb_dialog.lift()
-                self._batch_sgdb_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        if not self.library.games:
-            show_info(
-                "SteamGridDB",
-                "No hay juegos en la biblioteca para actualizar.\nUsa 'Importar Juegos...' primero.",
-                parent=self
+        def _create():
+            if not self.library.games:
+                show_info(
+                    "SteamGridDB",
+                    "No hay juegos en la biblioteca para actualizar.\nUsa 'Importar Juegos...' primero.",
+                    parent=self
+                )
+                return None
+
+            def _on_batch_complete():
+                invalidate_thumb_cache()
+                self.save_games()
+                self.refresh_shelves(keep_selection=True)
+                self.set_status(f"Arte actualizado con éxito desde SteamGridDB ({len(self.library.games)} juegos).")
+
+            return BatchSteamGridDBDialog(
+                self,
+                self.library.games,
+                on_complete_callback=_on_batch_complete
             )
-            return
 
-        def _on_batch_complete():
-            invalidate_thumb_cache()
-            self.save_games()
-            self.refresh_shelves(keep_selection=True)
-            self.set_status(f"Arte actualizado con éxito desde SteamGridDB ({len(self.library.games)} juegos).")
-
-        self._batch_sgdb_dialog = BatchSteamGridDBDialog(
-            self,
-            self.library.games,
-            on_complete_callback=_on_batch_complete
-        )
+        self._open_or_focus_dialog("_batch_sgdb_dialog", _create)
 
     def _on_global_click(self, event):
         if hasattr(self, "glass_menu") and self.glass_menu and self.glass_menu.winfo_exists():
@@ -1420,7 +1168,7 @@ class App(ctk.CTk):
                     sx = stage.winfo_rootx()
                     sy = stage.winfo_rooty()
                     for (hx1, hy1, hx2, hy2, hact) in stage.hud_hitboxes:
-                        if hact == "menu" and (sx + hx1 <= event.x_root <= sx + hx2 and sy + hy1 <= event.y_root <= sy + hy2):
+                        if hact in ("menu", "filter_menu") and (sx + hx1 <= event.x_root <= sx + hx2 and sy + hy1 <= event.y_root <= sy + hy2):
                             return
 
                 self.close_active_menu()
@@ -1428,15 +1176,10 @@ class App(ctk.CTk):
                 self.close_active_menu()
 
     def open_gamepad_config_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_gamepad_dialog") and self._gamepad_dialog and self._gamepad_dialog.winfo_exists():
-            try:
-                self._gamepad_dialog.lift()
-                self._gamepad_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        self._gamepad_dialog = GamepadConfigDialog(self, on_save_callback=self.on_gamepad_config_saved)
+        self._open_or_focus_dialog(
+            "_gamepad_dialog",
+            lambda: GamepadConfigDialog(self, on_save_callback=self.on_gamepad_config_saved),
+        )
 
     def on_gamepad_config_saved(self, new_cfg):
         self.gamepad_config = new_cfg
@@ -1445,40 +1188,30 @@ class App(ctk.CTk):
         self.set_status(f"Mando configurado: {dev_label}")
 
     def open_add_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_add_dialog") and self._add_dialog and self._add_dialog.winfo_exists():
-            try:
-                self._add_dialog.lift()
-                self._add_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        self.monitors = get_monitors()
-        self._add_dialog = AddEditGameDialog(self, self.monitors, callback=self.on_game_added)
+        def _create():
+            self.monitors = get_monitors()
+            return AddEditGameDialog(self, self.monitors, callback=self.on_game_added)
+
+        self._open_or_focus_dialog("_add_dialog", _create)
 
     def open_select_game_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "_select_dialog") and self._select_dialog and self._select_dialog.winfo_exists():
-            try:
-                self._select_dialog.lift()
-                self._select_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        if not self.library.games:
-            show_info(
-                "Editar Juego",
-                "No hay juegos registrados en la biblioteca.\nUsa '🚀 Importar Juegos...' en el menú ⚙ para añadir o escanear juegos primero.",
-                parent=self
+        def _create():
+            if not self.library.games:
+                show_info(
+                    "Editar Juego",
+                    "No hay juegos registrados en la biblioteca.\nUsa '🚀 Importar Juegos...' en el menú ⚙ para añadir o escanear juegos primero.",
+                    parent=self
+                )
+                return None
+            return SelectGameToEditDialog(
+                self,
+                self.library.games,
+                on_select_callback=self.open_edit_for_game_index,
+                initial_index=self._get_library_index_for_game(self.games[self.selected_index]) if self.games else 0,
+                on_library_changed=lambda games: self.apply_filter(self.current_filter_id, keep_selection=True),
             )
-            return
-        self._select_dialog = SelectGameToEditDialog(
-            self,
-            self.library.games,
-            on_select_callback=self.open_edit_for_game_index,
-            initial_index=self._get_library_index_for_game(self.games[self.selected_index]) if self.games else 0,
-            on_library_changed=lambda games: self.apply_filter(self.current_filter_id, keep_selection=True),
-        )
+
+        self._open_or_focus_dialog("_select_dialog", _create)
 
     def open_edit_current_game_dialog(self):
         self.close_active_menu()
@@ -1503,26 +1236,20 @@ class App(ctk.CTk):
             if return_callback:
                 return_callback()
             return
-        if hasattr(self, "_edit_dialog") and self._edit_dialog and self._edit_dialog.winfo_exists():
-            try:
-                self._edit_dialog.lift()
-                self._edit_dialog.focus_force()
-            except Exception:
-                pass
-            return
-        self.monitors = get_monitors()
-        game = self.library.games[index]
-        self._edit_dialog = AddEditGameDialog(
-            self,
-            self.monitors,
-            game_data=game,
-            callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None, fav=False, st="Por jugar", gen="", plat="PC", colls=None: self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb, fav, st, gen, plat, colls),
-            delete_callback=lambda: self.delete_specific_game(index, confirm=False),
-            on_close_callback=return_callback
-        )
 
-    def open_edit_dialog(self):
-        self.open_select_game_dialog()
+        def _create():
+            self.monitors = get_monitors()
+            game = self.library.games[index]
+            return AddEditGameDialog(
+                self,
+                self.monitors,
+                game_data=game,
+                callback=lambda name, path, mon, hp, cov, args="", wp=None, wpo=None, wpb=None, fav=False, st="Por jugar", gen="", plat="PC", colls=None: self.on_specific_game_edited(index, name, path, mon, hp, cov, args, wp, wpo, wpb, fav, st, gen, plat, colls),
+                delete_callback=lambda: self.delete_specific_game(index, confirm=False),
+                on_close_callback=return_callback
+            )
+
+        self._open_or_focus_dialog("_edit_dialog", _create)
 
     def on_game_added(
         self, name, path, monitor, high_priority, cover, launch_args: str = "",
@@ -1555,11 +1282,6 @@ class App(ctk.CTk):
             self.refresh_shelves(keep_selection=True)
             self.set_status(f"Juego '{name}' actualizado.")
 
-    def on_game_edited(self, name, path, monitor, high_priority, cover, launch_args: str = "", wallpaper: Optional[str] = None, wallpaper_opacity: Optional[float] = None, wallpaper_blur: Optional[float] = None):
-        target_game = self.games[self.selected_index] if 0 <= self.selected_index < len(self.games) else None
-        real_idx = self._get_library_index_for_game(target_game) if target_game else self.selected_index
-        self.on_specific_game_edited(real_idx, name, path, monitor, high_priority, cover, launch_args, wallpaper=wallpaper, wallpaper_opacity=wallpaper_opacity, wallpaper_blur=wallpaper_blur)
-
     def delete_specific_game(self, index: int, confirm: bool = False):
         if index < 0 or index >= len(self.library.games):
             return
@@ -1583,17 +1305,14 @@ class App(ctk.CTk):
         self.set_status(f"Monitores detectados: {len(self.monitors)}")
 
     def open_exit_dialog(self):
-        self.close_active_menu()
-        if hasattr(self, "exit_dialog") and self.exit_dialog and self.exit_dialog.winfo_exists():
-            try:
-                bring_to_front_absolute(self.exit_dialog)
-            except Exception:
-                pass
-            return
-        if self.is_minimized:
-            self.restore_window()
-        self.exit_dialog = ConfirmExitDialog(self, on_confirm=self.close_application)
-        bring_to_front_absolute(self.exit_dialog)
+        def _create():
+            if self.is_minimized:
+                self.restore_window()
+            dlg = ConfirmExitDialog(self, on_confirm=self.close_application)
+            bring_to_front_absolute(dlg)
+            return dlg
+
+        self._open_or_focus_dialog("exit_dialog", _create, use_bring_to_front=True)
 
     def close_application(self, from_game_launch: bool = False):
         if not from_game_launch:

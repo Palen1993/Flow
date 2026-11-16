@@ -231,6 +231,19 @@ class WindowStateService:
         if cover_stage:
             cw = max(self.app.winfo_screenwidth(), self.app.winfo_width())
             ch = max(self.app.winfo_screenheight(), self.app.winfo_height())
+            cover_stage.display_scale = max(0.75, min(2.5, ch / 1080.0))
+            is_stack = hasattr(cover_stage, "_is_vertical_stack_active") and cover_stage._is_vertical_stack_active()
+            h_ratio = 0.42 if is_stack else 0.44
+            target_size = max(180, min(int(ch * h_ratio), int(cw * 0.36)))
+            already_synced = (
+                cover_stage.last_w == cw
+                and cover_stage.last_h == ch
+                and cover_stage.base_size == target_size
+                and getattr(cover_stage, "rendered_size", 0) == target_size
+                and getattr(cover_stage, "rendered_has_refl", None) == cover_stage._use_reflection()
+                and getattr(cover_stage, "bg_cache", None) is not None
+                and cover_stage.bg_cache.size == (cw, ch)
+            )
             cover_stage.last_w = cw
             cover_stage.last_h = ch
             cover_stage._last_mode_was_trans = False
@@ -238,19 +251,17 @@ class WindowStateService:
                 cover_stage.configure(width=cw, height=ch)
             except Exception:
                 pass
-            cover_stage.display_scale = max(0.75, min(2.5, ch / 1080.0))
-            is_stack = hasattr(cover_stage, "_is_vertical_stack_active") and cover_stage._is_vertical_stack_active()
-            h_ratio = 0.42 if is_stack else 0.44
-            cover_stage.base_size = max(180, min(int(ch * h_ratio), int(cw * 0.36)))
-            if hasattr(cover_stage, "_shelf_strip_cache"):
-                cover_stage._shelf_strip_cache.clear()
-            if hasattr(cover_stage, "_bg_slot_warp_cache"):
-                cover_stage._bg_slot_warp_cache.clear()
-            cover_stage._rebuild_background(cw, ch)
-            cover_stage._rebuild_rendered_cache()
-            if is_stack and hasattr(cover_stage, "_prewarm_neighbor_shelves_async"):
-                cover_stage._prewarm_neighbor_shelves_async()
-            cover_stage.redraw(force_w=cw, force_h=ch)
+            cover_stage.base_size = target_size
+            if not already_synced:
+                if hasattr(cover_stage, "_shelf_strip_cache"):
+                    cover_stage._shelf_strip_cache.clear()
+                if hasattr(cover_stage, "_bg_slot_warp_cache"):
+                    cover_stage._bg_slot_warp_cache.clear()
+                cover_stage._rebuild_background(cw, ch)
+                cover_stage._rebuild_rendered_cache()
+                if is_stack and hasattr(cover_stage, "_prewarm_neighbor_shelves_async"):
+                    cover_stage._prewarm_neighbor_shelves_async()
+                cover_stage.redraw(force_w=cw, force_h=ch)
 
         try:
             self.app.deiconify()

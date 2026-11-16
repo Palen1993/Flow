@@ -176,6 +176,8 @@ class BaseGlassDialog(ctk.CTkToplevel):
         except Exception:
             pass
 
+    _center_window = center_window
+
     def apply_rounded_corners(self):
         """Aplica esquinas redondeadas nativas Win32 sin parpadeos ni artefactos GDI."""
         try:

@@ -107,7 +107,7 @@ class ControllerInfoDialog(BaseGlassDialog):
 
     def __init__(self, parent, family: str = "xbox"):
         self.family = family or "xbox"
-        super().__init__(parent, title="Estado de los Mandos", width=self.W, height=self.H, corner_radius=22)
+        super().__init__(parent, title="Estado de los Mandos", width=self.W, height=self.H, corner_radius=16)
         self._refresh_job = None
 
         self._build_ui()
@@ -119,7 +119,7 @@ class ControllerInfoDialog(BaseGlassDialog):
         pad = max(6, int(12 * self.scale_factor))
         self.card = ctk.CTkFrame(
             self, corner_radius=self.corner_radius,
-            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1.5
+            fg_color=COLOR_BG_CARD, border_color=COLOR_GLASS_BORDER, border_width=1
         )
         self.card.pack(fill="both", expand=True, padx=pad, pady=pad)
 

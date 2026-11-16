@@ -30,7 +30,7 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
     """
 
     def __init__(self, parent, games: List[Dict[str, Any]], on_complete_callback=None):
-        super().__init__(parent, title="🎨 Descargar Arte Masivo — SteamGridDB", width=780, height=620, corner_radius=26)
+        super().__init__(parent, title="🎨 Descargar Arte Masivo — SteamGridDB", width=780, height=620, corner_radius=16)
         self.games = games
         self.on_complete_callback = on_complete_callback
         self.family = getattr(parent, "_current_controller_family", "xbox")
@@ -59,15 +59,13 @@ class BatchSteamGridDBDialog(BaseGlassDialog):
             pass
         super().destroy()
 
-    _center_window = BaseGlassDialog.center_window
-
     def create_widgets(self):
         self.main_card = ctk.CTkFrame(
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         self.main_card.grid_columnconfigure(0, weight=1)

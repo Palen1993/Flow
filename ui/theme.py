@@ -310,44 +310,44 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
     if role == "danger":
         if is_focused:
             widget.configure(
-                fg_color="#ff1744",
-                hover_color="#ff2d55",
+                fg_color=COLOR_IOS_RED_HOVER,
+                hover_color="#ff5c7c",
                 border_color="#ffffff",
-                border_width=3,
+                border_width=2,
                 text_color="#ffffff"
             )
         else:
             widget.configure(
-                fg_color="#7f1d1d",
-                hover_color="#991b1b",
-                border_color="#b91c1c",
+                fg_color=COLOR_BTN_DANGER_BG,
+                hover_color=COLOR_BTN_DANGER_HOVER,
+                border_color=COLOR_BTN_DANGER_BORDER,
                 border_width=1,
-                text_color="#fecaca"
+                text_color="#ffd6de"
             )
     elif role == "primary":
         if is_focused:
             widget.configure(
-                fg_color="#007aff",
-                hover_color="#0062cc",
+                fg_color=COLOR_IOS_BLUE_HOVER,
+                hover_color=COLOR_IOS_BLUE_HOVER,
                 border_color="#ffffff",
-                border_width=3,
+                border_width=2,
                 text_color="#ffffff"
             )
         else:
             widget.configure(
-                fg_color="#1e3a8a",
-                hover_color="#1d4ed8",
-                border_color="#3b82f6",
-                border_width=1,
-                text_color="#dbeafe"
+                fg_color=COLOR_IOS_BLUE,
+                hover_color=COLOR_IOS_BLUE_HOVER,
+                border_color=COLOR_IOS_BLUE_BORDER,
+                border_width=0,
+                text_color="#ffffff"
             )
     elif role == "secondary":
         if is_focused:
             widget.configure(
-                fg_color="#0284c7",
-                hover_color="#0369a1",
+                fg_color=COLOR_BTN_SECONDARY_HOVER,
+                hover_color="#424258",
                 border_color="#ffffff",
-                border_width=3,
+                border_width=2,
                 text_color="#ffffff"
             )
         else:
@@ -356,13 +356,13 @@ def apply_gamepad_focus(widget, is_focused: bool, role: str = "secondary"):
                 hover_color=COLOR_BTN_SECONDARY_HOVER,
                 border_color=COLOR_BTN_SECONDARY_BORDER,
                 border_width=1,
-                text_color=COLOR_TEXT_MUTED_LIGHT
+                text_color=COLOR_TEXT_WHITE
             )
     elif role == "dropdown":
         if is_focused:
             widget.configure(
-                fg_color="#32394a",
-                hover_color="#3d465a",
+                fg_color=COLOR_BG_ITEM_HOVER,
+                hover_color=COLOR_BG_ITEM_HOVER,
                 border_color="#ffffff",
                 border_width=2,
                 text_color="#ffffff"

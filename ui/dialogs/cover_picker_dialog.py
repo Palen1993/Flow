@@ -79,7 +79,7 @@ class CoverPickerDialog(BaseGlassDialog):
         current_cover_pil: Optional[Image.Image] = None,
         current_wallpaper_path: str = ""
     ):
-        super().__init__(parent, title="Selector de Carátula y Wallpaper HD", width=1140, height=860, corner_radius=28)
+        super().__init__(parent, title="Selector de Carátula y Wallpaper HD", width=1140, height=860, corner_radius=16)
 
         self.initial_query = initial_query.strip()
         self.game_name = (game_name or initial_query).strip()
@@ -172,8 +172,6 @@ class CoverPickerDialog(BaseGlassDialog):
         # Disparar búsqueda automática tras abrir
         self.after(60, self._start_search)
 
-    _center_window = BaseGlassDialog.center_window
-
     def _match_wp_preset_idx(self) -> int:
         """Devuelve el preset de wallpaper que coincide con la opacidad/borrosidad actual (o -1 si es personalizado)."""
         for i, (_, op_v, bl_v) in enumerate(self._wp_presets):
@@ -191,10 +189,10 @@ class CoverPickerDialog(BaseGlassDialog):
         # Contenedor principal con borde elegante
         self.card = ctk.CTkFrame(
             self,
-            corner_radius=20,
+            corner_radius=16,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5
+            border_width=1
         )
         self.card.pack(fill="both", expand=True, padx=2, pady=2)
 

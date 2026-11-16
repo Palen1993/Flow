@@ -12,7 +12,7 @@ from ui.controller_hud import get_button_icon_ctk
 from ui.dialogs.base_dialog import BaseGlassDialog
 from ui.theme import (
     COLOR_TRANS_KEY, COLOR_BG_CARD, COLOR_BG_CARD_SECONDARY, COLOR_BG_DARK,
-    COLOR_GLASS_BORDER, COLOR_BORDER_CARD,
+    COLOR_GLASS_BORDER, COLOR_GLASS_HOVER, COLOR_BORDER_CARD,
     COLOR_CYAN_ACCENT, COLOR_CYAN_BORDER,
     COLOR_IOS_BLUE, COLOR_IOS_BLUE_HOVER,
     COLOR_BTN_SECONDARY_BG,
@@ -86,7 +86,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
     CHUNK_SIZE = 12
 
     def __init__(self, parent, games: List[Dict[str, Any]], on_select_callback=None, initial_index: int = 0, on_library_changed=None):
-        super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=26)
+        super().__init__(parent, title="⚙ Seleccionar Juego para Editar", width=920, height=640, corner_radius=16)
         self.games = games
         self.on_select = on_select_callback
         self.on_library_changed = on_library_changed
@@ -116,8 +116,6 @@ class SelectGameToEditDialog(BaseGlassDialog):
         self.bind("<Up>", lambda e: self._step_row(-1))
         self.bind("<Down>", lambda e: self._step_row(1))
         self.bind("<Return>", lambda e: self._activate_selected_row())
-
-    _center_window = BaseGlassDialog.center_window
 
     def _on_search_entry_changed(self, *args):
         """Aplica un debouncing de 140ms al teclear en la búsqueda para evitar congelaciones de UI innecesarias."""
@@ -246,8 +244,8 @@ class SelectGameToEditDialog(BaseGlassDialog):
             self,
             fg_color=COLOR_BG_CARD,
             border_color=COLOR_GLASS_BORDER,
-            border_width=1.5,
-            corner_radius=22
+            border_width=1,
+            corner_radius=16
         )
         self.main_card.pack(fill="both", expand=True, padx=4, pady=4)
         self.main_card.grid_columnconfigure(0, weight=1)
@@ -380,7 +378,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
         btn_close = ctk.CTkButton(
             footer, text="Cerrar ", image=get_button_icon_ctk("b", self.family, size=20), compound="right",
             width=128, height=38,
-            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_GLASS_HOVER,
             border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_MUTED,
             font=font_button(12), command=self.destroy
@@ -390,7 +388,7 @@ class SelectGameToEditDialog(BaseGlassDialog):
         btn_search = ctk.CTkButton(
             footer, text="Buscar ", image=get_button_icon_ctk("select", self.family, size=20), compound="right",
             width=128, height=38,
-            fg_color=COLOR_BTN_SECONDARY_BG, hover_color="#262d3d",
+            fg_color=COLOR_BTN_SECONDARY_BG, hover_color=COLOR_GLASS_HOVER,
             border_color=COLOR_GLASS_BORDER, border_width=1.2,
             corner_radius=19, text_color=COLOR_TEXT_MUTED,
             font=font_button(12), command=self._open_search_keyboard

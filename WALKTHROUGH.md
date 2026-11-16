@@ -2,6 +2,7 @@
 
 > **Nota para futuras sesiones de IA / desarrolladores:**  
 > Este documento es el mapa maestro de **GameFlow Launcher**. Léelo antes de explorar el código para ahorrar tokens y evitar regresiones.  
+> **Regla obligatoria de entrega e iteración:** Tras cualquier cambio verificado con tests, **empaqueta y sincroniza la app local** (`.\venv\Scripts\python.exe scripts\sync_to_player.py`) para que el usuario pueda probarlo, y **NO hagas `git commit` ni `git push` automáticamente** — pregunta primero al usuario si aprueba el cambio y desea subirlo al repositorio (ver [Invariante #7](#-5-invariantes-técnicas-y-reglas-de-desarrollo-gotchas)).  
 > **Regla de mantenimiento:** Cada vez que añadas una funcionalidad, refactorices arquitectura o corrijas un bug relevante, **actualiza la sección afectada y añade una entrada al [Historial de Cambios y Arreglos](#-8-historial-de-cambios-y-arreglos-changelog-vivo)**.
 
 ---
@@ -123,20 +124,24 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 6. **Pruebas Herméticas y Aislamiento Tcl/Tk:**
    - Ejecutar múltiples raíces `CTk()`/`Tk()` dentro de un solo proceso provoca `Tcl_AsyncDelete` en Linux/headless. Por eso `tests/run_all_tests.py` corre cada `tests/test_*.py` en su propio subproceso.
    - Los tests que creen portadas, cachés o configs deben redirigir `COVERS_DIR`, `CONFIG_FILE`, `CLOUD_SYNC_CONFIG_FILE`, etc., hacia `tempfile.mkdtemp()` y limpiar en `tearDown` / `tearDownClass`.
+7. **Flujo de Trabajo Iterativo (Empaquetado Local Obligatorio + Confirmación antes de Git):**
+   - Tras aplicar cualquier cambio de código o UI y comprobar que `.\venv\Scripts\python.exe tests\run_all_tests.py` pasa con 0 fallos, es **obligatorio** compilar y sincronizar la aplicación particular ejecutando `.\venv\Scripts\python.exe scripts\sync_to_player.py` (invoca `build.py` con PyInstaller y actualiza `C:\Users\jorge\Documents\Programas\GameFlow\GameFlow Launcher.exe` sin sobrescribir `games.json`, `covers/`, `wallpapers/` ni configs del usuario) para que el usuario pueda probarlo directamente en el `.exe` e iterar.
+   - **NUNCA ejecutar `git commit`, `git push` ni `scripts/auto_update.py` automáticamente tras un cambio.** Primero entrega la build local empaquetada al usuario y **pregunta siempre explícitamente** si el cambio está bien y si desea actualizar los repositorios (`.\venv\Scripts\python.exe scripts\verify_clean_git.py` → `git commit` → `git push origin main`). Solo cuando el usuario lo confirme se cierra la tarea en Git.
 
 ---
 
 ## 6. Comandos Esenciales de Desarrollo y Verificación
 
 - **Ejecutar toda la suite de pruebas + Mega Auditoría:**
-  - Windows: `python tests/run_all_tests.py`
+  - Windows: `.\venv\Scripts\python.exe tests\run_all_tests.py`
   - Linux / CI headless: `xvfb-run -a /home/antigravity/.venv/bin/python tests/run_all_tests.py`
-- **Verificar seguridad Git (antes de cada commit):**
-  - `python scripts/verify_clean_git.py`
-- **Compilar ejecutable portable (Windows):**
-  - `python build.py` (o `build.bat`) → genera `dist/GameFlow Launcher/` y `dist/GameFlow_Launcher_Portable.zip`.
-- **Sincronización entorno Jugador ↔ Desarrollo:**
-  - `python scripts/sync_to_player.py` / `python scripts/sync_from_player.py` (o `.bat` equivalentes).
+- **Compilar y sincronizar la app local para pruebas (OBLIGATORIO tras cada cambio en Windows):**
+  - `.\venv\Scripts\python.exe scripts\sync_to_player.py` (compila `dist/GameFlow Launcher/` vía `build.py` y actualiza `C:\Users\jorge\Documents\Programas\GameFlow` preservando los datos personales).
+- **Compilar solo ejecutable portable (Windows):**
+  - `.\venv\Scripts\python.exe build.py` (o `build.bat`) → genera `dist/GameFlow Launcher/` y `dist/GameFlow_Launcher_Portable.zip`.
+- **Verificar seguridad Git y subir a remoto (SOLO tras aprobación explícita del usuario):**
+  - `.\venv\Scripts\python.exe scripts\verify_clean_git.py` (obligatorio antes de cada `git commit`).
+  - `git commit` + `git push origin main` (o `scripts\auto_update.py` únicamente cuando se solicite sincronizar/subir explícitamente).
 
 ---
 
@@ -152,6 +157,19 @@ Según `core/config.is_portable_mode()`, si existe el archivo marcador `.portabl
 
 > Mantén esta sección actualizada en orden cronológico inverso al completar cada tarea.
 
+- **2026-11-16 (Optimización del Carrusel 3D Vertical 1.0x HD Paralelo + Estabilidad Big Picture):**
+  - [`core/coverflow_engine.py`](core/coverflow_engine.py): añadidas `_get_rgba_point_lut()`, `fast_alpha=True`, `_compute_vertical_tilt_geom()`, `prepare_vertical_tilt_bands()` y `render_vertical_shelf_tilt_band()` para proyectar carruseles verticales con `BILINEAR` a resolución `1.0x HD` en bandas horizontales paralelas (`4/2/1`) aprovechando liberación del GIL en Pillow C; optimizadas `prevent_transparency_color_collision()` (LUT RGBA de una pasada), `prepare_flat_cover()` (`BILINEAR` cercano 1:1) y `render_cover_flow_from_flat()`.
+  - [`ui/coverflow_canvas.py`](ui/coverflow_canvas.py): eliminado el downscaling (`0.58x`/`0.62x`) y `NEAREST` en movimiento (`STRIP_SCALE = 1.0` + `BILINEAR` siempre) con ejecución paralela vía `_warp_executor`; omitidos `os.stat` y decodificaciones sincrónicas de wallpapers en cambios rápidos (`transition_direction != 0`), caché de blur HUD (`_hud_blur_cache`), solapamiento de copia de fondo mientras trabajan los núcleos, deduplicación `_bg_gen_inflight` + `_cache_lock` en wallpapers, cancelación temprana de precarga de estanterías, recuperación en `_anim_tick` ante excepciones y mínimo `delay = max(4, ...)` ms para no saturar Tk en 1080p.
+  - [`app.py`](app.py) y [`ui/window_manager.py`](ui/window_manager.py): coalescencia de callbacks `redraw` duplicados en `_poll_action_queue()` y omisión de reconstrucción doble en `set_full_mode()` cuando `<Configure>` ya sincronizó dimensiones.
+- **2026-11-16 (Auditoría UI del Sistema — Consolidación de Modales, Menús Apple Glass y Limpieza de Código Muerto):**
+  - [`app.py`](app.py): reorganizado `toggle_top_menu()` en 3 bloques (*Juego Actual*, *Biblioteca* con `＋ Añadir Juego Manualmente...` y *Sistema y Consola*), unificados 16 lanzadores de diálogos mediante `_open_or_focus_dialog()`, corregido `_on_global_click()` para contemplar `"filter_menu"`, añadidos atajos `<t>`/`<T>` a logros y eliminados widgets/métodos huérfanos (`top_bar`, `bottom_panel`, `btn_battery`, `scan_folder_for_games`, etc.).
+  - [`ui/dropdowns.py`](ui/dropdowns.py), [`ui/coverflow_canvas.py`](ui/coverflow_canvas.py), [`ui/controller_hud.py`](ui/controller_hud.py), [`ui/theme.py`](ui/theme.py), [`ui/dialogs/base_dialog.py`](ui/dialogs/base_dialog.py) y 18 diálogos en `ui/dialogs/`: separadores agrupados en `FloatingGlassMenu`, restauración Big Picture al clicar el centro de la cápsula de filtro en Modo Mini (`_mini_filter_center_box`), helper centralizado `clean_pillow_text()`, `_center_window` en `BaseGlassDialog`, radios/bordes unificados (`corner_radius=16`, `border_width=1`) y foco de mando Apple Glass (`#ffffff`, `border_width=2`, actualizado [`tests/test_edit_dialog_usability.py`](tests/test_edit_dialog_usability.py)).
+- **2026-11-16 (`AGENTS.md` + Regla de Flujo Iterativo en `WALKTHROUGH.md`):**
+  - Creado [`AGENTS.md`](AGENTS.md) en la raíz del proyecto y añadida la **Invariante #7** en [`WALKTHROUGH.md`](WALKTHROUGH.md): obliga a ejecutar los tests y empaquetar/sincronizar la app local (`scripts/sync_to_player.py`) tras cada cambio para permitir pruebas e iteraciones del usuario en el `.exe`, prohibiendo hacer `git commit`/`git push` automáticamente sin preguntar y recibir confirmación explícita previa del usuario.
+- **2026-11-14 (`d4efdd0`, `8f63587` — Rediseño Visual Apple Dark Glassmorphism + Desplegable de Filtro Activo):**
+  - [`ui/theme.py`](ui/theme.py), [`ui/controller_hud.py`](ui/controller_hud.py) y [`ui/coverflow_canvas.py`](ui/coverflow_canvas.py): píldoras HUD translúcidas con gradiente ahumado, borde `1px`, reflejo especular superior, estado `hover` por píldora/segmento (`_hovered_hud_action`), desenfoque de fondo en tiempo real (`_paste_hud_with_backdrop_blur`) en modo Big Picture y botón `▶ INICIAR JUEGO` azul eléctrico con halo en hover.
+  - [`app.py`](app.py) y [`ui/dropdowns.py`](ui/dropdowns.py): al pulsar la píldora de filtro (`filter_menu`) se despliega `open_filter_dropdown_menu()` alineado bajo el filtro (`FloatingGlassMenu(..., anchor_hud_action="filter_menu")`) con todas las estanterías activas y acceso directo a `Organizar estanterías y filtros...`.
+  - [`ui/dialogs/base_dialog.py`](ui/dialogs/base_dialog.py) y diálogos principales: radios `16px`, cabeceras con botón `✕`, icono de aviso `⚠` en confirmación de salida y translucidez (`-alpha 0.96`) aplicada antes de `hide_from_taskbar()` para preservar `WS_EX_TOOLWINDOW`.
 - **2026-11-14 (Mini Mode Filter Pill & Big Picture "Editar Juego" First Menu Item):**
   - **Indicador de filtro activo en Modo Mini Transparente:** En [`ui/controller_hud.py`](ui/controller_hud.py) se añadió `transparent_key_safe: bool = False` a [`render_filter_capsule()`](ui/controller_hud.py) (relleno opaco `(20, 23, 34, 255)`, umbral binario de alfa `p >= 135` y `prevent_transparency_color_collision()`) y en [`ui/coverflow_canvas.py`](ui/coverflow_canvas.py) (`_draw_overlays`) se renderiza centrada arriba del carrusel activo cuando `is_transparent_mode=True`, exponiendo únicamente `shelf_prev`/`shelf_next` para alternar estanterías con clic sin mostrar ningún HUD de Big Picture.
   - **"Editar Juego" como primera opción en Opciones (Big Picture):** En [`app.py`](app.py) se añadió [`open_edit_current_game_dialog()`](app.py) y se colocó `("✏️", f"Editar Juego ({short_name})...", self.open_edit_current_game_dialog)` como primer elemento de `toggle_top_menu()` para abrir [`AddEditGameDialog`](ui/dialogs/add_edit_game.py) directamente sobre el juego seleccionado en el carrusel activo (mapeado vía `_get_library_index_for_game()` con comprobación por identidad `lg is game` primero). En [`ui/dropdowns.py`](ui/dropdowns.py) (`FloatingGlassMenu`) se añadió ajuste/clamp de altura vertical para evitar recortes en resoluciones 720p/768p.
